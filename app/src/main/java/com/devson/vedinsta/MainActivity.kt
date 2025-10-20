@@ -21,18 +21,27 @@ import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import android.content.Intent
+import android.view.Menu
+import android.view.MenuItem
+import androidx.documentfile.provider.DocumentFile
+import java.net.URL
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var imageAdapter: ImageAdapter
     private val mediaList = mutableListOf<ImageCard>()
+    private lateinit var settingsManager: SettingsManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        setSupportActionBar(binding.toolbar)
+
+        settingsManager = SettingsManager(this)
         setupRecyclerView()
 
         binding.btnFetch.setOnClickListener {
@@ -61,6 +70,20 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        menuInflater.inflate(R.menu.main_menu, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_settings -> {
+                startActivity(Intent(this, SettingsActivity::class.java))
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
 
     private fun setupRecyclerView() {
         imageAdapter = ImageAdapter(mediaList)
@@ -69,8 +92,6 @@ class MainActivity : AppCompatActivity() {
             layoutManager = GridLayoutManager(this@MainActivity, 2) // 2 columns
         }
     }
-
-    // In src/main/java/com/devson/vedinsta/MainActivity.kt
 
     private fun fetchMedia(url: String) {
         binding.progressBar.visibility = View.VISIBLE
@@ -99,13 +120,15 @@ class MainActivity : AppCompatActivity() {
             val result = JSONObject(jsonString)
             when (result.getString("status")) {
                 "success" -> {
+                    val username = result.getString("username")
                     val mediaArray = result.getJSONArray("media")
                     for (i in 0 until mediaArray.length()) {
                         val mediaObject = mediaArray.getJSONObject(i)
                         mediaList.add(
                             ImageCard(
                                 url = mediaObject.getString("url"),
-                                type = mediaObject.getString("type")
+                                type = mediaObject.getString("type"),
+                                username = username
                             )
                         )
                     }
@@ -125,13 +148,74 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun downloadFiles(filesToDownload: List<ImageCard>) {
-        val downloadManager = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        var downloadCount = 0
-        filesToDownload.forEach { media ->
+        lifecycleScope.launch(Dispatchers.IO) {
+            var downloadedCount = 0
+            for (media in filesToDownload) {
+                val directoryUriString = if (media.type == "video") {
+                    settingsManager.videoDirectoryUri
+                } else {
+                    settingsManager.imageDirectoryUri
+                }
+
+                // If a custom path is set, use it. Otherwise, fallback to default.
+                if (directoryUriString != null) {
+                    if (downloadWithSAF(media, Uri.parse(directoryUriString))) {
+                        downloadedCount++
+                    }
+                } else {
+                    if (downloadWithDownloadManager(media)) {
+                        downloadedCount++
+                    }
+                }
+            }
+            withContext(Dispatchers.Main) {
+                Toast.makeText(this@MainActivity, "Downloaded $downloadedCount / ${filesToDownload.size} files.", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+    // NEW HELPER: For downloading to a user-picked (SAF) folder
+    private fun downloadWithSAF(media: ImageCard, directoryUri: Uri): Boolean {
+        return try {
+            val directory = DocumentFile.fromTreeUri(this, directoryUri)
+            if (directory == null || !directory.canWrite()) {
+                // Folder permission might have been revoked
+                return false
+            }
+
+            val mimeType = if (media.type == "video") "video/mp4" else "image/jpeg"
+            val fileExtension = if (media.type == "video") ".mp4" else ".jpg"
+            val timestamp = SimpleDateFormat("ddMMyyyyHHmmssSSS", Locale.US).format(Date())
+            val fileName = "${media.username}_175${timestamp}$fileExtension"
+
+            val newFile = directory.createFile(mimeType, fileName)
+            newFile?.uri?.let { fileUri ->
+                contentResolver.openOutputStream(fileUri)?.use { outputStream ->
+                    URL(media.url).openStream().use { inputStream ->
+                        inputStream.copyTo(outputStream)
+                    }
+                }
+            }
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    // NEW HELPER: For downloading to default public folders
+    private fun downloadWithDownloadManager(media: ImageCard): Boolean {
+        try {
+            val downloadManager = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
             val uri = Uri.parse(media.url)
             val fileExtension = if (media.type == "video") ".mp4" else ".jpg"
-            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-            val fileName = "VedInsta_${timestamp}_${downloadCount++}$fileExtension"
+            val timestamp = SimpleDateFormat("ddMMyyyyHHmmssSSS", Locale.US).format(Date())
+            val fileName = "${media.username}_175${timestamp}$fileExtension"
+
+            // Note the default subdirectories here
+            val imageSubDir = "VedInsta/"
+            val videoSubDir = "VedInsta/"
+
+            val subDirectory = if (media.type == "video") videoSubDir else imageSubDir
 
             val request = DownloadManager.Request(uri)
                 .setTitle(fileName)
@@ -139,13 +223,16 @@ class MainActivity : AppCompatActivity() {
                 .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                 .setDestinationInExternalPublicDir(
                     if (media.type == "video") Environment.DIRECTORY_MOVIES else Environment.DIRECTORY_PICTURES,
-                    fileName
+                    subDirectory + fileName
                 )
                 .setAllowedOverMetered(true)
                 .setAllowedOverRoaming(true)
 
             downloadManager.enqueue(request)
+            return true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return false
         }
-        Toast.makeText(this, "Started downloading ${filesToDownload.size} files.", Toast.LENGTH_SHORT).show()
     }
 }

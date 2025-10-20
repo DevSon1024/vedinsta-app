@@ -44,11 +44,13 @@ def is_likely_restricted_error(error_str):
     restricted_indicators = ["429", "rate limit", "403", "private", "login"]
     return any(indicator in error_str.lower() for indicator in restricted_indicators)
 
+# In app/src/main/python/insta_downloader.py
+
 # --- Main Function for Chaquopy ---
 def get_media_urls(post_url):
     """
     This function will be called from Kotlin.
-    It takes a post URL and returns a JSON string containing media URLs.
+    It takes a post URL and returns a JSON string containing media URLs and the username.
     """
     L = setup_instaloader()
     if not L:
@@ -63,6 +65,7 @@ def get_media_urls(post_url):
     for attempt in range(MAX_QUICK_RETRIES):
         try:
             post = instaloader.Post.from_shortcode(L.context, shortcode)
+            username = post.owner_username  # <-- Get the username
 
             # Handle carousel posts
             if post.typename == "GraphSidecar":
@@ -76,7 +79,8 @@ def get_media_urls(post_url):
                 media_type = "video" if post.is_video else "image"
                 media_items.append({"url": media_url, "type": media_type})
 
-            return json.dumps({"status": "success", "media": media_items})
+            # Return username along with media
+            return json.dumps({"status": "success", "username": username, "media": media_items})
 
         except Exception as e:
             error_str = str(e)

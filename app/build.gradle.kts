@@ -71,6 +71,7 @@ dependencies {
     implementation("androidx.cardview:cardview:1.0.0")
 
     implementation("io.coil-kt:coil:2.5.0")
+    implementation("androidx.documentfile:documentfile:1.0.1")
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
