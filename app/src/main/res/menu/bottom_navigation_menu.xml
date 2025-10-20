@@ -7,9 +7,9 @@
         android:title="Home" />
 
     <item
-        android:id="@+id/nav_search"
-        android:icon="@drawable/ic_search"
-        android:title="Search" />
+        android:id="@+id/nav_downloads"
+        android:icon="@drawable/ic_download"
+        android:title="Downloads" />
 
     <item
         android:id="@+id/nav_placeholder"
