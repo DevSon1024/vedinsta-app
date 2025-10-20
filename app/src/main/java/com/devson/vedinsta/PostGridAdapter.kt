@@ -7,19 +7,14 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import coil.load
+import com.devson.vedinsta.database.DownloadedPost
 import com.devson.vedinsta.databinding.ItemPostGridBinding
-
-data class PostItem(
-    val id: String,
-    val thumbnailUrl: String,
-    val isVideo: Boolean = false,
-    val hasMultipleItems: Boolean = false,
-    val downloadDate: Long = System.currentTimeMillis()
-)
+import java.io.File
 
 class PostsGridAdapter(
-    private val onPostClick: (PostItem) -> Unit
-) : ListAdapter<PostItem, PostsGridAdapter.PostViewHolder>(PostDiffCallback()) {
+    private val onPostClick: (DownloadedPost) -> Unit,
+    private val onPostLongClick: (DownloadedPost) -> Unit = {}
+) : ListAdapter<DownloadedPost, PostsGridAdapter.PostViewHolder>(PostDiffCallback()) {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PostViewHolder {
         val binding = ItemPostGridBinding.inflate(
@@ -36,34 +31,44 @@ class PostsGridAdapter(
         private val binding: ItemPostGridBinding
     ) : RecyclerView.ViewHolder(binding.root) {
 
-        fun bind(post: PostItem) {
-            // Load thumbnail image using Coil (which you already have)
-            binding.ivPostThumbnail.load(post.thumbnailUrl) {
-                placeholder(android.R.drawable.ic_menu_gallery) // Using system drawable as placeholder
-                error(android.R.drawable.ic_menu_gallery)
-                crossfade(true)
+        fun bind(post: DownloadedPost) {
+            // Load thumbnail image using Coil
+            val thumbnailFile = File(post.thumbnailPath)
+            if (thumbnailFile.exists()) {
+                binding.ivPostThumbnail.load(thumbnailFile) {
+                    placeholder(android.R.drawable.ic_menu_gallery)
+                    error(android.R.drawable.ic_menu_gallery)
+                    crossfade(true)
+                }
+            } else {
+                binding.ivPostThumbnail.load(android.R.drawable.ic_menu_gallery)
             }
 
             // Show play button for videos
-            binding.ivPlayButton.visibility = if (post.isVideo) View.VISIBLE else View.GONE
+            binding.ivPlayButton.visibility = if (post.hasVideo) View.VISIBLE else View.GONE
 
-            // Show multiple items indicator
-            binding.ivMultipleIndicator.visibility = if (post.hasMultipleItems) View.VISIBLE else View.GONE
+            // Show multiple items indicator if more than 1 image
+            binding.ivMultipleIndicator.visibility = if (post.totalImages > 1) View.VISIBLE else View.GONE
 
-            // Handle click
+            // Handle clicks
             binding.root.setOnClickListener {
                 onPostClick(post)
+            }
+
+            binding.root.setOnLongClickListener {
+                onPostLongClick(post)
+                true
             }
         }
     }
 }
 
-class PostDiffCallback : DiffUtil.ItemCallback<PostItem>() {
-    override fun areItemsTheSame(oldItem: PostItem, newItem: PostItem): Boolean {
-        return oldItem.id == newItem.id
+class PostDiffCallback : DiffUtil.ItemCallback<DownloadedPost>() {
+    override fun areItemsTheSame(oldItem: DownloadedPost, newItem: DownloadedPost): Boolean {
+        return oldItem.postId == newItem.postId
     }
 
-    override fun areContentsTheSame(oldItem: PostItem, newItem: PostItem): Boolean {
+    override fun areContentsTheSame(oldItem: DownloadedPost, newItem: DownloadedPost): Boolean {
         return oldItem == newItem
     }
 }
