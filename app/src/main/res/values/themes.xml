@@ -1,5 +1,6 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Base.Theme.Vedinsta" parent="Theme.Material3.DayNight.NoActionBar">
+    </style>
 
-    <style name="Theme.Vedinsta" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.Vedinsta" parent="Base.Theme.Vedinsta" />
 </resources>
