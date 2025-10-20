@@ -1,4 +1,3 @@
-// src/main/java/com/devson/vedinsta/MainActivity.kt
 package com.devson.vedinsta
 
 import android.content.ClipDescription
