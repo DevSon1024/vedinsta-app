@@ -1,4 +1,7 @@
 package com.devson.vedinsta
 
-class ImageCard {
-}
+data class ImageCard(
+    val url: String,
+    val type: String, // "image" or "video"
+    var isSelected: Boolean = false
+)
