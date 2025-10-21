@@ -23,6 +23,7 @@ import com.devson.vedinsta.viewmodel.MainViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import java.util.regex.Pattern
 
 class HomeFragment : Fragment() {
@@ -137,7 +138,7 @@ class HomeFragment : Fragment() {
 
     private fun extractPostIdFromUrl(url: String): String? {
         // Extract post ID from Instagram URL
-        val pattern = Pattern.compile("instagram\\.com/p/([^/?]+)")
+        val pattern = Pattern.compile("instagram\\.com/(?:p|reel|tv)/([^/?]+)")
         val matcher = pattern.matcher(url)
         return if (matcher.find()) matcher.group(1) else null
     }
@@ -167,13 +168,18 @@ class HomeFragment : Fragment() {
                     binding.progressBar.visibility = View.GONE
                     binding.fabDownload.show()
 
-                    // Navigate to selection page
-                    val intent = Intent(context, DownloadActivity::class.java).apply {
-                        putExtra("RESULT_JSON", resultJson)
-                        putExtra("POST_URL", url)
-                        putExtra("POST_ID", postId)
+                    // Check if single media - download directly
+                    if (shouldAutoDownload(resultJson)) {
+                        autoDownloadSingleMedia(resultJson, url, postId)
+                    } else {
+                        // Navigate to selection page for multiple media
+                        val intent = Intent(context, DownloadActivity::class.java).apply {
+                            putExtra("RESULT_JSON", resultJson)
+                            putExtra("POST_URL", url)
+                            putExtra("POST_ID", postId)
+                        }
+                        startActivity(intent)
                     }
-                    startActivity(intent)
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
@@ -185,14 +191,96 @@ class HomeFragment : Fragment() {
         }
     }
 
+    private fun shouldAutoDownload(jsonString: String): Boolean {
+        try {
+            val result = JSONObject(jsonString)
+            if (result.getString("status") == "success") {
+                val mediaArray = result.getJSONArray("media")
+                return mediaArray.length() == 1 // Only auto-download single media posts
+            }
+        } catch (e: Exception) {
+            // If parsing fails, go to selection page
+        }
+        return false
+    }
+
+    private fun autoDownloadSingleMedia(jsonString: String, postUrl: String, postId: String?) {
+        // Show immediate feedback
+        binding.progressBar.visibility = View.VISIBLE
+        binding.fabDownload.hide()
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val result = JSONObject(jsonString)
+                val username = result.getString("username")
+                val mediaArray = result.getJSONArray("media")
+                val mediaObject = mediaArray.getJSONObject(0)
+
+                val mediaUrl = mediaObject.getString("url")
+                val mediaType = mediaObject.getString("type")
+
+                // Download with notifications
+                val downloadedFiles = (requireActivity().application as com.devson.vedinsta.VedInstaApplication)
+                    .downloadSingleFile(requireContext(), mediaUrl, mediaType, username)
+
+                withContext(Dispatchers.Main) {
+                    binding.progressBar.visibility = View.GONE
+                    binding.fabDownload.show()
+
+                    if (downloadedFiles.isNotEmpty()) {
+                        // Save to database
+                        saveDownloadedPost(postId, postUrl, downloadedFiles, mediaType == "video")
+
+                        Toast.makeText(
+                            requireContext(),
+                            "✓ ${if (mediaType == "video") "Video" else "Image"} downloaded successfully!",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    } else {
+                        Toast.makeText(
+                            requireContext(),
+                            "✗ Failed to download ${if (mediaType == "video") "video" else "image"}",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    binding.progressBar.visibility = View.GONE
+                    binding.fabDownload.show()
+                    Toast.makeText(
+                        requireContext(),
+                        "✗ Download failed: ${e.message}",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }
+    }
+
+    private fun saveDownloadedPost(postId: String?, postUrl: String, downloadedFiles: List<String>, hasVideo: Boolean) {
+        if (postId != null && downloadedFiles.isNotEmpty()) {
+            val downloadedPost = DownloadedPost(
+                postId = postId,
+                postUrl = postUrl,
+                thumbnailPath = downloadedFiles.first(),
+                totalImages = downloadedFiles.size,
+                downloadDate = System.currentTimeMillis(),
+                hasVideo = hasVideo
+            )
+
+            viewModel.insertDownloadedPost(downloadedPost)
+        }
+    }
+
     private fun showPostOptionsDialog(post: DownloadedPost) {
         AlertDialog.Builder(requireContext())
             .setTitle("Post Options")
-            .setItems(arrayOf("View Images", "Delete from History")) { _, which ->
+            .setItems(arrayOf("View Media", "Delete from History")) { _, which ->
                 when (which) {
                     0 -> {
-                        // View images - you can implement this
-                        Toast.makeText(context, "View images feature coming soon", Toast.LENGTH_SHORT).show()
+                        // View media - you can implement this
+                        Toast.makeText(context, "View media feature coming soon", Toast.LENGTH_SHORT).show()
                     }
                     1 -> {
                         // Delete from database

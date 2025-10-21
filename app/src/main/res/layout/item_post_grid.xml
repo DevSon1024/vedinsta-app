@@ -5,32 +5,52 @@
     android:layout_height="120dp"
     android:layout_margin="2dp"
     app:cardCornerRadius="8dp"
-    app:cardElevation="0dp">
+    app:cardElevation="2dp">
 
-    <ImageView
-        android:id="@+id/iv_post_thumbnail"
+    <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:scaleType="centerCrop"
-        android:src="@drawable/placeholder_image" />
+        android:layout_height="match_parent">
 
-    <!-- Play button overlay for videos -->
-    <ImageView
-        android:id="@+id/iv_play_button"
-        android:layout_width="24dp"
-        android:layout_height="24dp"
-        android:layout_gravity="center"
-        android:src="@drawable/ic_play_circle"
-        android:visibility="gone" />
+        <!-- Main thumbnail image -->
+        <ImageView
+            android:id="@+id/iv_post_thumbnail"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="centerCrop"
+            android:contentDescription="Post thumbnail" />
 
-    <!-- Multiple items indicator -->
-    <ImageView
-        android:id="@+id/iv_multiple_indicator"
-        android:layout_width="16dp"
-        android:layout_height="16dp"
-        android:layout_gravity="top|end"
-        android:layout_margin="8dp"
-        android:src="@drawable/ic_multiple_images"
-        android:visibility="gone" />
+        <!-- Play button overlay for videos -->
+        <ImageView
+            android:id="@+id/iv_play_button"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_gravity="center"
+            android:src="@drawable/ic_play_circle"
+            android:contentDescription="Video play button"
+            android:visibility="gone"
+            app:tint="@android:color/white"
+            android:elevation="4dp" />
+
+        <!-- Multiple items indicator -->
+        <ImageView
+            android:id="@+id/iv_multiple_indicator"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_gravity="top|end"
+            android:layout_margin="8dp"
+            android:src="@drawable/ic_multiple_images"
+            android:contentDescription="Multiple images indicator"
+            android:visibility="gone"
+            app:tint="@android:color/white"
+            android:elevation="4dp" />
+
+        <!-- Semi-transparent overlay for better icon visibility -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@android:color/black"
+            android:alpha="0.1" />
+
+    </FrameLayout>
 
 </androidx.cardview.widget.CardView>

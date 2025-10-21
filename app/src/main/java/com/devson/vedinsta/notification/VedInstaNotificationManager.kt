@@ -102,20 +102,19 @@ class VedInstaNotificationManager private constructor(private val context: Conte
         return NOTIFICATION_ID_DOWNLOAD
     }
 
-    fun updateDownloadProgress(notificationId: Int, fileName: String, progress: Int, max: Int = 100) {
+    fun updateDownloadProgress(notificationId: Int, fileName: String, progress: Int) {
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setContentTitle("VedInsta Download")
             .setContentText("Downloading: $fileName ($progress%)")
             .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setProgress(max, progress, false)
+            .setProgress(100, progress, false)
             .setOngoing(true)
             .build()
-
         try {
             notificationManager.notify(notificationId, notification)
         } catch (e: SecurityException) {
-            // Handle permission denied silently
+// ignore
         }
     }
 
@@ -190,7 +189,11 @@ class VedInstaNotificationManager private constructor(private val context: Conte
     }
 
     fun cancelDownloadNotification(notificationId: Int) {
-        notificationManager.cancel(notificationId)
+        try {
+            notificationManager.cancel(notificationId)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     // Helper method to add custom notifications

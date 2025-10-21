@@ -1,4 +1,3 @@
-// src/main/java/com/devson/vedinsta/VedInstaApplication.kt
 package com.devson.vedinsta
 
 import android.app.Application
@@ -19,6 +18,9 @@ import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import android.media.MediaScannerConnection
+import com.devson.vedinsta.notification.VedInstaNotificationManager
+
 
 class VedInstaApplication : Application() {
 
@@ -216,6 +218,213 @@ class VedInstaApplication : Application() {
                 e.printStackTrace()
                 null
             }
+        }
+    }
+    // Single-file download used for auto-download of single posts
+    suspend fun downloadSingleFile(
+        context: Context,
+        mediaUrl: String,
+        mediaType: String,
+        username: String
+    ): List<String> {
+        return withContext(Dispatchers.IO) {
+            val downloadedFiles = mutableListOf<String>()
+            val notificationManager = VedInstaNotificationManager.getInstance(context)
+
+            try {
+                // Create filename
+                val timestamp = SimpleDateFormat("ddMMyyyyHHmmssSSS", Locale.US).format(Date())
+                val fileExtension = if (mediaType.lowercase() == "video") ".mp4" else ".jpg"
+                val fileName = "${username}_$timestamp$fileExtension"
+
+                // Show initial notification
+                val notificationId = notificationManager.showDownloadStarted(fileName)
+
+                // Determine save directory
+                val directoryUriString = if (mediaType.lowercase() == "video") {
+                    settingsManager.videoDirectoryUri
+                } else {
+                    settingsManager.imageDirectoryUri
+                }
+
+                // Download with progress tracking
+                val savedPath = if (directoryUriString != null) {
+                    downloadSingleFileWithSAF(context, mediaUrl, fileName, Uri.parse(directoryUriString), notificationManager, notificationId)
+                } else {
+                    downloadSingleFileWithDefault(context, mediaUrl, fileName, mediaType, notificationManager, notificationId)
+                }
+
+                if (savedPath != null) {
+                    downloadedFiles.add(savedPath)
+
+                    // Show completion notification
+                    notificationManager.cancelDownloadNotification(notificationId)
+                    notificationManager.showDownloadCompleted(fileName, 1)
+
+                    // Add to MediaStore for gallery visibility
+                    MediaScannerConnection.scanFile(
+                        context,
+                        arrayOf(savedPath),
+                        arrayOf(if (mediaType.lowercase() == "video") "video/mp4" else "image/jpeg"),
+                        null
+                    )
+                } else {
+                    // Show error notification
+                    notificationManager.showDownloadError(fileName, "Download failed")
+                }
+
+            } catch (e: Exception) {
+                // Show error notification
+                notificationManager.showDownloadError("Download", e.message ?: "Unknown error")
+                e.printStackTrace()
+            }
+
+            downloadedFiles
+        }
+    }
+    private suspend fun downloadSingleFileWithSAF(
+        context: Context,
+        mediaUrl: String,
+        fileName: String,
+        directoryUri: Uri,
+        notificationManager: VedInstaNotificationManager,
+        notificationId: Int
+    ): String? {
+        return withContext(Dispatchers.IO) {
+            try {
+                val directory = DocumentFile.fromTreeUri(context, directoryUri) ?: return@withContext null
+                val mimeType = if (fileName.endsWith(".mp4")) "video/mp4" else "image/jpeg"
+
+                val newFile = directory.createFile(mimeType, fileName)
+                newFile?.uri?.let { fileUri ->
+                    context.contentResolver.openOutputStream(fileUri)?.use { outputStream ->
+                        downloadWithProgress(mediaUrl, outputStream, notificationManager, notificationId, fileName)
+                    }
+                    return@withContext fileUri.toString()
+                }
+                null
+            } catch (e: Exception) {
+                e.printStackTrace()
+                null
+            }
+        }
+    }
+
+    private suspend fun downloadSingleFileWithDefault(
+        context: Context,
+        mediaUrl: String,
+        fileName: String,
+        mediaType: String,
+        notificationManager: VedInstaNotificationManager,
+        notificationId: Int
+    ): String? {
+        return withContext(Dispatchers.IO) {
+            try {
+                // Create VedInsta directory if it doesn't exist
+                val vedInstaDir = File(
+                    Environment.getExternalStoragePublicDirectory(
+                        if (mediaType.lowercase() == "video") Environment.DIRECTORY_MOVIES else Environment.DIRECTORY_PICTURES
+                    ),
+                    "VedInsta"
+                )
+                if (!vedInstaDir.exists()) {
+                    vedInstaDir.mkdirs()
+                }
+
+                val file = File(vedInstaDir, fileName)
+
+                // Download with progress tracking
+                FileOutputStream(file).use { outputStream ->
+                    downloadWithProgress(mediaUrl, outputStream, notificationManager, notificationId, fileName)
+                }
+
+                return@withContext file.absolutePath
+            } catch (e: Exception) {
+                e.printStackTrace()
+                null
+            }
+        }
+    }
+
+    private suspend fun downloadWithProgress(
+        url: String,
+        outputStream: java.io.OutputStream,
+        notificationManager: VedInstaNotificationManager,
+        notificationId: Int,
+        fileName: String
+    ) {
+        withContext(Dispatchers.IO) {
+            try {
+                val connection = URL(url).openConnection()
+                connection.connectTimeout = 15000
+                connection.readTimeout = 30000
+
+                val contentLength = connection.contentLength
+                val inputStream = connection.getInputStream()
+
+                val buffer = ByteArray(8192)
+                var totalBytesRead = 0L
+                var bytesRead: Int
+                var lastProgressUpdate = 0
+
+                while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                    outputStream.write(buffer, 0, bytesRead)
+                    totalBytesRead += bytesRead
+
+                    // Update progress every 5% or every 100KB to avoid too frequent updates
+                    val progress = if (contentLength > 0) {
+                        ((totalBytesRead * 100) / contentLength).toInt()
+                    } else {
+                        -1 // Indeterminate progress
+                    }
+
+                    if (progress != lastProgressUpdate && (progress - lastProgressUpdate >= 5 || totalBytesRead % 102400 == 0L)) {
+                        notificationManager.updateDownloadProgress(notificationId, fileName, progress)
+                        lastProgressUpdate = progress
+                    }
+                }
+
+                inputStream.close()
+            } catch (e: Exception) {
+                throw e
+            }
+        }
+    }
+
+    private fun downloadFileToDefault(
+        context: Context,
+        url: String,
+        fileName: String,
+        mediaType: String
+    ): String? {
+        return try {
+            val directory = if (mediaType == "video") "Movies/VedInsta" else "Pictures/VedInsta"
+            val file = File(Environment.getExternalStorageDirectory(), "$directory/$fileName")
+            file.parentFile?.mkdirs()
+
+            val connection = URL(url).openConnection()
+            connection.connectTimeout = 10000
+            connection.readTimeout = 30000
+
+            val inputStream = connection.getInputStream()
+            val outputStream = FileOutputStream(file)
+
+            inputStream.copyTo(outputStream)
+
+            inputStream.close()
+            outputStream.close()
+
+            // Add to MediaStore
+            MediaScannerConnection.scanFile(
+                context,
+                arrayOf(file.absolutePath),
+                arrayOf(if (mediaType == "video") "video/mp4" else "image/jpeg"),
+                null
+            )
+
+            file.absolutePath
+        } catch (e: Exception) {
+            null
         }
     }
 
