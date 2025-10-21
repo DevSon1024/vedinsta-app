@@ -32,6 +32,7 @@ class MainActivity : AppCompatActivity() {
         // Load the home fragment by default
         if (savedInstanceState == null) {
             loadFragment(HomeFragment())
+            updateToolbarForPage("Home")
         }
     }
 
@@ -40,18 +41,22 @@ class MainActivity : AppCompatActivity() {
             when (item.itemId) {
                 R.id.nav_home -> {
                     loadFragment(HomeFragment())
+                    updateToolbarForPage("Home")
                     true
                 }
                 R.id.nav_downloads -> {
                     loadFragment(DownloadsFragment())
+                    updateToolbarForPage("Downloads")
                     true
                 }
                 R.id.nav_favorites -> {
                     loadFragment(FavoritesFragment())
+                    updateToolbarForPage("Favorites")
                     true
                 }
                 R.id.nav_settings -> {
                     loadFragment(SettingsFragment())
+                    updateToolbarForPage("Settings")
                     true
                 }
                 else -> false
@@ -59,6 +64,23 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.bottomNavigation.selectedItemId = R.id.nav_home
+    }
+
+    private fun updateToolbarForPage(pageName: String) {
+        when (pageName) {
+            "Home" -> {
+                // Show full app bar with app name and notification for home
+                binding.toolbarTitle.text = "VedInsta"
+                binding.toolbarTitle.textSize = 24f
+                binding.notificationContainer.visibility = View.VISIBLE
+            }
+            else -> {
+                // Show simple page title for other pages
+                binding.toolbarTitle.text = pageName
+                binding.toolbarTitle.textSize = 20f
+                binding.notificationContainer.visibility = View.GONE
+            }
+        }
     }
 
     private fun setupNotificationIcon() {
@@ -72,9 +94,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Find the FrameLayout parent of iv_notification and set click listener
-        val notificationContainer = binding.ivNotification.parent as View
-        notificationContainer.setOnClickListener {
+        // Set click listener for notification
+        binding.notificationContainer.setOnClickListener {
             // Mark all as read when opening notifications
             notificationViewModel.markAllAsRead()
 

@@ -7,13 +7,14 @@
     android:background="@android:color/white"
     tools:context=".MainActivity">
 
-    <!-- Top Bar -->
+    <!-- Simplified Top Bar -->
     <androidx.appcompat.widget.Toolbar
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@android:color/white"
-        android:elevation="2dp"
+        android:background="?attr/colorPrimary"
+        android:elevation="4dp"
+        android:minHeight="?attr/actionBarSize"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
@@ -24,23 +25,27 @@
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
+            <!-- Page Title -->
             <TextView
+                android:id="@+id/toolbar_title"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="VedInsta"
-                android:textColor="@android:color/black"
+                android:textColor="@android:color/white"
                 android:textSize="24sp"
                 android:textStyle="bold" />
 
-            <!-- Notification Icon with Badge -->
+            <!-- Notification Icon with Badge (Only visible on Home) -->
             <FrameLayout
+                android:id="@+id/notification_container"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
-                android:layout_marginEnd="8dp"
+                android:layout_marginEnd="16dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:clickable="true"
-                android:focusable="true">
+                android:focusable="true"
+                android:visibility="visible">
 
                 <ImageView
                     android:id="@+id/iv_notification"
@@ -48,7 +53,8 @@
                     android:layout_height="24dp"
                     android:layout_gravity="center"
                     android:src="@drawable/ic_notifications"
-                    android:contentDescription="Notifications" />
+                    android:contentDescription="Notifications"
+                    app:tint="@android:color/white" />
 
                 <TextView
                     android:id="@+id/notification_badge"

@@ -4,21 +4,36 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.TextView
 import androidx.fragment.app.Fragment
+import com.devson.vedinsta.databinding.FragmentFavoritesBinding
 
 class FavoritesFragment : Fragment() {
+
+    private var _binding: FragmentFavoritesBinding? = null
+    private val binding get() = _binding!!
 
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
-        val textView = TextView(context).apply {
-            text = "Favorites feature coming soon!"
-            textSize = 18f
-            textAlignment = View.TEXT_ALIGNMENT_CENTER
-        }
-        return textView
+        _binding = FragmentFavoritesBinding.inflate(inflater, container, false)
+        return binding.root
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+
+        // Show empty state for now
+        setupEmptyState()
+    }
+
+    private fun setupEmptyState() {
+        binding.emptyState.visibility = View.VISIBLE
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        _binding = null
     }
 }
