@@ -1,13 +1,19 @@
 package com.devson.vedinsta
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.lifecycle.ViewModelProvider  // Add this import
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import com.devson.vedinsta.database.DownloadedPost
 import com.devson.vedinsta.databinding.ActivityDownloadBinding
+import com.devson.vedinsta.notification.VedInstaNotificationManager
 import com.devson.vedinsta.viewmodel.MainViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -17,12 +23,17 @@ class DownloadActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityDownloadBinding
     private lateinit var imageAdapter: ImageAdapter
-    private lateinit var viewModel: MainViewModel  // Add this
+    private lateinit var viewModel: MainViewModel
+    private lateinit var notificationManager: VedInstaNotificationManager
     private val mediaList = mutableListOf<ImageCard>()
 
     // Get data from intent
     private var postUrl: String? = null
     private var postId: String? = null
+
+    companion object {
+        private const val NOTIFICATION_PERMISSION_REQUEST_CODE = 1001
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -32,8 +43,12 @@ class DownloadActivity : AppCompatActivity() {
         setSupportActionBar(binding.toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
 
-        // Initialize ViewModel
+        // Initialize components
         viewModel = ViewModelProvider(this)[MainViewModel::class.java]
+        notificationManager = VedInstaNotificationManager.getInstance(this)
+
+        // Request notification permission for Android 13+
+        requestNotificationPermission()
 
         // Get data from intent
         postUrl = intent.getStringExtra("POST_URL")
@@ -53,14 +68,7 @@ class DownloadActivity : AppCompatActivity() {
         binding.btnDownloadSelected.setOnClickListener {
             val selected = imageAdapter.getSelectedItems()
             if (selected.isNotEmpty()) {
-                lifecycleScope.launch(Dispatchers.IO) {
-                    val downloadedFiles = (application as VedInstaApplication).downloadFiles(this@DownloadActivity, selected)
-
-                    // Save to database after successful download
-                    if (downloadedFiles.isNotEmpty()) {
-                        saveDownloadedPost(postId, postUrl ?: "", downloadedFiles)
-                    }
-                }
+                startDownloadWithNotification(selected)
             } else {
                 Toast.makeText(this, "No items selected", Toast.LENGTH_SHORT).show()
             }
@@ -68,17 +76,118 @@ class DownloadActivity : AppCompatActivity() {
 
         binding.btnDownloadAll.setOnClickListener {
             if (mediaList.isNotEmpty()) {
-                lifecycleScope.launch(Dispatchers.IO) {
-                    val downloadedFiles = (application as VedInstaApplication).downloadFiles(this@DownloadActivity, mediaList)
-
-                    // Save to database after successful download
-                    if (downloadedFiles.isNotEmpty()) {
-                        saveDownloadedPost(postId, postUrl ?: "", downloadedFiles)
-                    }
-                }
+                startDownloadWithNotification(mediaList)
             } else {
                 Toast.makeText(this, "No media to download", Toast.LENGTH_SHORT).show()
             }
+        }
+    }
+
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(
+                    this, Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                    NOTIFICATION_PERMISSION_REQUEST_CODE
+                )
+            }
+        }
+    }
+
+    private fun startDownloadWithNotification(items: List<ImageCard>) {
+        lifecycleScope.launch(Dispatchers.Main) {
+            // Show initial notification
+            val notificationId = notificationManager.showDownloadStarted(
+                if (items.size == 1) "${items.first().username}_media"
+                else "${items.size} files"
+            )
+
+            // Start download in background
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    // Get highest quality URLs
+                    val highQualityItems = items.map { item ->
+                        item.copy(url = getHighestQualityUrl(item.url))
+                    }
+
+                    val downloadedFiles = downloadFilesWithProgress(highQualityItems) { progress: Int, fileName: String ->
+                        // Update notification progress
+                        notificationManager.updateDownloadProgress(
+                            notificationId,
+                            fileName,
+                            progress
+                        )
+                    }
+
+                    if (downloadedFiles.isNotEmpty()) {
+                        // Save to database
+                        saveDownloadedPost(postId, postUrl ?: "", downloadedFiles)
+
+                        // Show completion notification
+                        notificationManager.cancelDownloadNotification(notificationId)
+                        notificationManager.showDownloadCompleted(
+                            "${items.first().username}_media",
+                            downloadedFiles.size
+                        )
+
+                        runOnUiThread {
+                            Toast.makeText(this@DownloadActivity,
+                                "Downloaded ${downloadedFiles.size} files successfully!",
+                                Toast.LENGTH_SHORT).show()
+                        }
+                    } else {
+                        notificationManager.showDownloadError(
+                            "${items.first().username}_media",
+                            "No files were downloaded"
+                        )
+                    }
+
+                } catch (e: Exception) {
+                    notificationManager.showDownloadError(
+                        "${items.first().username}_media",
+                        e.message ?: "Download failed"
+                    )
+                    runOnUiThread {
+                        Toast.makeText(this@DownloadActivity,
+                            "Download failed: ${e.message}",
+                            Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun downloadFilesWithProgress(
+        items: List<ImageCard>,
+        progressCallback: (progress: Int, fileName: String) -> Unit
+    ): List<String> {
+        return (application as VedInstaApplication).downloadFiles(this, items)
+    }
+
+    private fun getHighestQualityUrl(originalUrl: String): String {
+        // Instagram URL patterns for highest quality
+        return when {
+            originalUrl.contains("instagram.com") && originalUrl.contains("_n.jpg") -> {
+                // Replace _n.jpg with original quality
+                originalUrl.replace("_n.jpg", ".jpg")
+            }
+            originalUrl.contains("instagram.com") && originalUrl.contains("_n.mp4") -> {
+                // Replace _n.mp4 with original quality
+                originalUrl.replace("_n.mp4", ".mp4")
+            }
+            originalUrl.contains("scontent") -> {
+                // Add quality parameter for scontent URLs
+                if (originalUrl.contains("?")) {
+                    "$originalUrl&_nc_ohc=original"
+                } else {
+                    "$originalUrl?_nc_ohc=original"
+                }
+            }
+            else -> originalUrl
         }
     }
 
@@ -122,24 +231,35 @@ class DownloadActivity : AppCompatActivity() {
         }
     }
 
-    // Fixed method to save downloaded post to database
     private fun saveDownloadedPost(postId: String?, postUrl: String, downloadedFiles: List<String>) {
         if (postId != null && downloadedFiles.isNotEmpty()) {
             val downloadedPost = DownloadedPost(
                 postId = postId,
                 postUrl = postUrl,
-                thumbnailPath = downloadedFiles.first(), // First image as thumbnail
+                thumbnailPath = downloadedFiles.first(),
                 totalImages = downloadedFiles.size,
                 downloadDate = System.currentTimeMillis(),
                 hasVideo = downloadedFiles.any { it.endsWith(".mp4") }
             )
 
-            // Save to database via ViewModel
             viewModel.insertDownloadedPost(downloadedPost)
+        }
+    }
 
-            // Show success message on UI thread
-            runOnUiThread {
-                Toast.makeText(this, "Download completed and saved!", Toast.LENGTH_SHORT).show()
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+
+        when (requestCode) {
+            NOTIFICATION_PERMISSION_REQUEST_CODE -> {
+                if (grantResults.isNotEmpty() && grantResults[0] != PackageManager.PERMISSION_GRANTED) {
+                    Toast.makeText(this,
+                        "Notification permission denied. Download progress won't be shown.",
+                        Toast.LENGTH_LONG).show()
+                }
             }
         }
     }
