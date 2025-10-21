@@ -72,6 +72,9 @@ dependencies {
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     implementation("androidx.cardview:cardview:1.0.0")
 
+    // Add SwipeRefreshLayout dependency
+    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
+
     implementation("io.coil-kt:coil:2.7.0")
     implementation("androidx.documentfile:documentfile:1.0.1")
 

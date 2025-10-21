@@ -137,7 +137,6 @@ class HomeFragment : Fragment() {
 
     private fun extractPostIdFromUrl(url: String): String? {
         // Extract post ID from Instagram URL
-        // Patterns: https://www.instagram.com/p/POST_ID/ or https://instagram.com/p/POST_ID/
         val pattern = Pattern.compile("instagram\\.com/p/([^/?]+)")
         val matcher = pattern.matcher(url)
         return if (matcher.find()) matcher.group(1) else null

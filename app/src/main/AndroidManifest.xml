@@ -45,6 +45,10 @@
         <activity
             android:name=".DownloadActivity"
             android:exported="false" />
+        <activity
+            android:name=".NotificationActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity" />
 
         <!-- Download Service -->
         <service
