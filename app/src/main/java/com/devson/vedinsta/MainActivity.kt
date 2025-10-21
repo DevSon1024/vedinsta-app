@@ -81,13 +81,6 @@ class MainActivity : AppCompatActivity() {
             val intent = Intent(this, NotificationActivity::class.java)
             startActivity(intent)
         }
-
-        // Set click listener for menu icon
-        binding.ivMenu.setOnClickListener {
-            // Handle menu click
-            val intent = Intent(this, SettingsActivity::class.java)
-            startActivity(intent)
-        }
     }
 
     private fun loadFragment(fragment: Fragment) {

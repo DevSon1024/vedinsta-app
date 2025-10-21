@@ -85,7 +85,7 @@ class VedInstaApplication : Application() {
                 val mimeType = if (media.type == "video") "video/mp4" else "image/jpeg"
                 val fileExtension = if (media.type == "video") ".mp4" else ".jpg"
                 val timestamp = SimpleDateFormat("ddMMyyyyHHmmssSSS", Locale.US).format(Date())
-                val fileName = "${media.username}_${media.type}_$timestamp$fileExtension"
+                val fileName = "${media.username}_175$timestamp$fileExtension"
 
                 val newFile = directory.createFile(mimeType, fileName)
                 newFile?.uri?.let { fileUri ->
