@@ -241,9 +241,9 @@ class VedInstaApplication : Application() {
 
             try {
                 // Create filename
-                val timestamp = SimpleDateFormat("ddMMyyyyHHmmssSSS", Locale.US).format(Date())
+                val timestamp = SimpleDateFormat("ddyyyyHHmmSSS", Locale.US).format(Date())
                 val fileExtension = if (mediaType.lowercase() == "video") ".mp4" else ".jpg"
-                val fileName = "${username}_$timestamp$fileExtension"
+                val fileName = "${username}_175$timestamp$fileExtension"
 
                 // Show initial notification
                 val notificationId = notificationManager.showDownloadStarted(fileName)
