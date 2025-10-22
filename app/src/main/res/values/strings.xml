@@ -1,3 +1,8 @@
 <resources>
-    <string name="app_name">vedinsta</string>
+    <string name="app_name">VedInsta</string>
+    <string name="share">Share</string>
+    <string name="download">Download</string>
+    <string name="close">Close</string>
+    <string name="media_content">Media content</string>
+    <string name="play_video">Play video</string>
 </resources>

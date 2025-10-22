@@ -38,7 +38,12 @@
             </intent-filter>
         </activity>
 
-        <!-- Remove SettingsActivity - No longer needed -->
+        <!-- Post View Activity -->
+        <activity
+            android:name=".PostViewActivity"
+            android:exported="false"
+            android:screenOrientation="unspecified"
+            android:theme="@style/Theme.Vedinsta.Fullscreen" />
 
         <activity
             android:name=".AboutActivity"
@@ -70,5 +75,15 @@
                 android:name="com.devson.vedinsta.notification.NotificationInitializer"
                 android:value="androidx.startup" />
         </provider>
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
     </application>
 </manifest>

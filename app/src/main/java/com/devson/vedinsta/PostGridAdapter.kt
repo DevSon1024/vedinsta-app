@@ -1,8 +1,8 @@
 package com.devson.vedinsta
 
 import android.graphics.Bitmap
-import android.media.ThumbnailUtils
-import android.provider.MediaStore
+import android.media.MediaMetadataRetriever
+import android.os.Build
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -42,8 +42,8 @@ class PostsGridAdapter(
 
             if (thumbnailFile.exists()) {
                 if (post.hasVideo && post.thumbnailPath.endsWith(".mp4")) {
-                    // Load video thumbnail
-                    loadVideoThumbnail(thumbnailFile)
+                    // Load video thumbnail using modern approach
+                    loadVideoThumbnailModern(thumbnailFile)
                 } else {
                     // Load image normally
                     binding.ivPostThumbnail.load(thumbnailFile) {
@@ -65,9 +65,10 @@ class PostsGridAdapter(
             // Show multiple items indicator if more than 1 media item
             binding.ivMultipleIndicator.visibility = if (post.totalImages > 1) View.VISIBLE else View.GONE
 
-            // Handle clicks
+            // Handle clicks - Launch PostViewActivity
             binding.root.setOnClickListener {
-                onPostClick(post)
+                val intent = PostViewActivity.createIntent(binding.root.context, post)
+                binding.root.context.startActivity(intent)
             }
 
             binding.root.setOnLongClickListener {
@@ -76,16 +77,28 @@ class PostsGridAdapter(
             }
         }
 
-        private fun loadVideoThumbnail(videoFile: File) {
+        private fun loadVideoThumbnailModern(videoFile: File) {
             try {
-                // Generate video thumbnail
-                val thumbnail = ThumbnailUtils.createVideoThumbnail(
-                    videoFile.absolutePath,
-                    MediaStore.Images.Thumbnails.MICRO_KIND
-                )
+                // Use MediaMetadataRetriever instead of deprecated ThumbnailUtils
+                val retriever = MediaMetadataRetriever()
+                retriever.setDataSource(videoFile.absolutePath)
 
-                if (thumbnail != null) {
-                    binding.ivPostThumbnail.load(thumbnail) {
+                // Get frame at 1 second (1000000 microseconds)
+                val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                    retriever.getScaledFrameAtTime(
+                        1000000, // 1 second
+                        MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                        256, // width
+                        256  // height
+                    )
+                } else {
+                    retriever.getFrameAtTime(1000000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                }
+
+                retriever.release()
+
+                if (bitmap != null) {
+                    binding.ivPostThumbnail.load(bitmap) {
                         crossfade(300)
                         transformations(RoundedCornersTransformation(8f))
                     }
