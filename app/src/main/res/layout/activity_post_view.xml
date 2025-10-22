@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
@@ -7,30 +7,10 @@
     android:background="@android:color/white"
     tools:context=".PostViewActivity">
 
-    <!-- Top Toolbar -->
-    <com.google.android.material.appbar.AppBarLayout
-        android:id="@+id/app_bar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="@android:color/white"
-        app:elevation="1dp">
-
-        <androidx.appcompat.widget.Toolbar
-            android:id="@+id/toolbar"
-            android:layout_width="match_parent"
-            android:layout_height="?attr/actionBarSize"
-            android:background="@android:color/white"
-            app:navigationIcon="@drawable/ic_arrow_back_black"
-            app:title=""
-            app:titleTextColor="@android:color/black" />
-
-    </com.google.android.material.appbar.AppBarLayout>
-
-    <!-- Main Content -->
     <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_marginTop="?attr/actionBarSize"
+        android:layout_above="@+id/bottom_action_bar"
         android:fillViewport="true">
 
         <LinearLayout
@@ -38,13 +18,11 @@
             android:layout_height="wrap_content"
             android:orientation="vertical">
 
-            <!-- Media Container -->
             <RelativeLayout
                 android:layout_width="match_parent"
                 android:layout_height="400dp"
                 android:background="@android:color/black">
 
-                <!-- Media Carousel -->
                 <androidx.recyclerview.widget.RecyclerView
                     android:id="@+id/rv_media_carousel"
                     android:layout_width="match_parent"
@@ -52,7 +30,19 @@
                     android:clipToPadding="false"
                     android:orientation="horizontal" />
 
-                <!-- Page Indicators -->
+                <ImageButton
+                    android:id="@+id/btn_back"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:layout_alignParentStart="true"
+                    android:layout_alignParentTop="true"
+                    android:layout_margin="25dp"
+                    android:background="@drawable/bg_close_button"
+                    android:contentDescription="Back"
+                    android:elevation="4dp"
+                    android:padding="12dp"
+                    android:src="@drawable/ic_arrow_back_white" />
+
                 <LinearLayout
                     android:id="@+id/ll_page_indicators"
                     android:layout_width="wrap_content"
@@ -63,7 +53,6 @@
                     android:orientation="horizontal"
                     android:visibility="gone" />
 
-                <!-- Media Counter -->
                 <TextView
                     android:id="@+id/tv_media_counter"
                     android:layout_width="wrap_content"
@@ -81,21 +70,18 @@
 
             </RelativeLayout>
 
-            <!-- Post Info Section -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
                 android:padding="16dp">
 
-                <!-- User Info Row -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:gravity="center_vertical"
                     android:orientation="horizontal">
 
-                    <!-- Profile Picture Placeholder -->
                     <ImageView
                         android:id="@+id/iv_profile_picture"
                         android:layout_width="32dp"
@@ -105,7 +91,6 @@
                         android:padding="8dp"
                         android:src="@drawable/ic_person_outline" />
 
-                    <!-- Username -->
                     <TextView
                         android:id="@+id/tv_username"
                         android:layout_width="0dp"
@@ -116,7 +101,6 @@
                         android:textSize="14sp"
                         android:textStyle="bold" />
 
-                    <!-- Post Date -->
                     <TextView
                         android:id="@+id/tv_post_date"
                         android:layout_width="wrap_content"
@@ -127,7 +111,6 @@
 
                 </LinearLayout>
 
-                <!-- Post Caption -->
                 <TextView
                     android:id="@+id/tv_post_caption"
                     android:layout_width="match_parent"
@@ -138,7 +121,19 @@
                     android:textSize="14sp"
                     android:lineSpacingExtra="2dp" />
 
-                <!-- Post Stats -->
+                <ImageButton
+                    android:id="@+id/btn_copy_caption"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:layout_gravity="end"
+                    android:layout_marginTop="8dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="Copy caption"
+                    android:padding="6dp"
+                    android:src="@drawable/ic_copy"
+                    app:tint="#666666" />
+
+
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -166,7 +161,6 @@
 
             </LinearLayout>
 
-            <!-- Spacer to push bottom controls down -->
             <View
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
@@ -176,19 +170,17 @@
 
     </androidx.core.widget.NestedScrollView>
 
-    <!-- Bottom Action Bar -->
     <LinearLayout
         android:id="@+id/bottom_action_bar"
         android:layout_width="match_parent"
         android:layout_height="64dp"
-        android:layout_gravity="bottom"
+        android:layout_alignParentBottom="true"
         android:background="@android:color/white"
         android:elevation="8dp"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingHorizontal="16dp">
 
-        <!-- Delete Button -->
         <ImageButton
             android:id="@+id/btn_delete"
             android:layout_width="48dp"
@@ -198,13 +190,11 @@
             android:contentDescription="Delete"
             android:src="@drawable/ic_delete_white" />
 
-        <!-- Spacer -->
         <View
             android:layout_width="0dp"
             android:layout_height="1dp"
             android:layout_weight="1" />
 
-        <!-- Share Button -->
         <ImageButton
             android:id="@+id/btn_share"
             android:layout_width="48dp"
@@ -215,4 +205,4 @@
 
     </LinearLayout>
 
-</androidx.coordinatorlayout.widget.CoordinatorLayout>
+</RelativeLayout>

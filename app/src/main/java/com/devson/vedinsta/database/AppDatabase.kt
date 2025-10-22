@@ -9,7 +9,7 @@ import android.content.Context
 
 @Database(
     entities = [DownloadedPost::class, NotificationEntity::class],
-    version = 2, // Increment version
+    version = 3, // Increment version to 3
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -41,6 +41,14 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // Migration from version 2 to 3
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE downloaded_posts ADD COLUMN username TEXT NOT NULL DEFAULT 'unknown'")
+                database.execSQL("ALTER TABLE downloaded_posts ADD COLUMN caption TEXT")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -48,7 +56,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "vedinsta_database"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3) // Add new migration
                     .build()
                 INSTANCE = instance
                 instance

@@ -213,6 +213,7 @@ class HomeFragment : Fragment() {
             try {
                 val result = JSONObject(jsonString)
                 val username = result.getString("username")
+                val caption = result.getString("caption")
                 val mediaArray = result.getJSONArray("media")
                 val mediaObject = mediaArray.getJSONObject(0)
 
@@ -221,7 +222,7 @@ class HomeFragment : Fragment() {
 
                 // Download with notifications
                 val downloadedFiles = (requireActivity().application as com.devson.vedinsta.VedInstaApplication)
-                    .downloadSingleFile(requireContext(), mediaUrl, mediaType, username)
+                    .downloadSingleFile(requireContext(), mediaUrl, mediaType, username, postId)
 
                 withContext(Dispatchers.Main) {
                     binding.progressBar.visibility = View.GONE
@@ -229,7 +230,7 @@ class HomeFragment : Fragment() {
 
                     if (downloadedFiles.isNotEmpty()) {
                         // Save to database
-                        saveDownloadedPost(postId, postUrl, downloadedFiles, mediaType == "video")
+                        saveDownloadedPost(postId, postUrl, downloadedFiles, mediaType == "video", username, caption)
 
                         Toast.makeText(
                             requireContext(),
@@ -258,7 +259,14 @@ class HomeFragment : Fragment() {
         }
     }
 
-    private fun saveDownloadedPost(postId: String?, postUrl: String, downloadedFiles: List<String>, hasVideo: Boolean) {
+    private fun saveDownloadedPost(
+        postId: String?,
+        postUrl: String,
+        downloadedFiles: List<String>,
+        hasVideo: Boolean,
+        username: String,
+        caption: String?
+    ) {
         if (postId != null && downloadedFiles.isNotEmpty()) {
             val downloadedPost = DownloadedPost(
                 postId = postId,
@@ -266,7 +274,9 @@ class HomeFragment : Fragment() {
                 thumbnailPath = downloadedFiles.first(),
                 totalImages = downloadedFiles.size,
                 downloadDate = System.currentTimeMillis(),
-                hasVideo = hasVideo
+                hasVideo = hasVideo,
+                username = username,
+                caption = caption
             )
 
             viewModel.insertDownloadedPost(downloadedPost)

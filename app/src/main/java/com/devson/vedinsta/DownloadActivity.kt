@@ -30,6 +30,8 @@ class DownloadActivity : AppCompatActivity() {
     // Get data from intent
     private var postUrl: String? = null
     private var postId: String? = null
+    private var postCaption: String? = null
+    private var postUsername: String = "unknown"
 
     companion object {
         private const val NOTIFICATION_PERMISSION_REQUEST_CODE = 1001
@@ -102,19 +104,22 @@ class DownloadActivity : AppCompatActivity() {
         lifecycleScope.launch(Dispatchers.Main) {
             // Show initial notification
             val notificationId = notificationManager.showDownloadStarted(
-                if (items.size == 1) "${items.first().username}_media"
+                if (items.size == 1) "${postUsername}_media"
                 else "${items.size} files"
             )
 
             // Start download in background
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
-                    // Get highest quality URLs
+                    // Get highest quality URLs and ensure username is set
                     val highQualityItems = items.map { item ->
-                        item.copy(url = getHighestQualityUrl(item.url))
+                        item.copy(
+                            url = getHighestQualityUrl(item.url),
+                            username = if (item.username == "unknown") postUsername else item.username
+                        )
                     }
 
-                    val downloadedFiles = downloadFilesWithProgress(highQualityItems) { progress: Int, fileName: String ->
+                    val downloadedFiles = downloadFilesWithProgress(highQualityItems, postId) { progress: Int, fileName: String ->
                         // Update notification progress
                         notificationManager.updateDownloadProgress(
                             notificationId,
@@ -130,7 +135,7 @@ class DownloadActivity : AppCompatActivity() {
                         // Show completion notification
                         notificationManager.cancelDownloadNotification(notificationId)
                         notificationManager.showDownloadCompleted(
-                            "${items.first().username}_media",
+                            "${postUsername}_media",
                             downloadedFiles.size
                         )
 
@@ -141,14 +146,14 @@ class DownloadActivity : AppCompatActivity() {
                         }
                     } else {
                         notificationManager.showDownloadError(
-                            "${items.first().username}_media",
+                            "${postUsername}_media",
                             "No files were downloaded"
                         )
                     }
 
                 } catch (e: Exception) {
                     notificationManager.showDownloadError(
-                        "${items.first().username}_media",
+                        "${postUsername}_media",
                         e.message ?: "Download failed"
                     )
                     runOnUiThread {
@@ -163,9 +168,10 @@ class DownloadActivity : AppCompatActivity() {
 
     private suspend fun downloadFilesWithProgress(
         items: List<ImageCard>,
+        postId: String?,
         progressCallback: (progress: Int, fileName: String) -> Unit
     ): List<String> {
-        return (application as VedInstaApplication).downloadFiles(this, items)
+        return (application as VedInstaApplication).downloadFiles(this, items, postId)
     }
 
     private fun getHighestQualityUrl(originalUrl: String): String {
@@ -204,7 +210,8 @@ class DownloadActivity : AppCompatActivity() {
             val result = JSONObject(jsonString)
             when (result.getString("status")) {
                 "success" -> {
-                    val username = result.getString("username")
+                    postUsername = result.getString("username")
+                    postCaption = result.getString("caption")
                     val mediaArray = result.getJSONArray("media")
 
                     for (i in 0 until mediaArray.length()) {
@@ -213,7 +220,7 @@ class DownloadActivity : AppCompatActivity() {
                             ImageCard(
                                 url = mediaObject.getString("url"),
                                 type = mediaObject.getString("type"),
-                                username = username
+                                username = postUsername
                             )
                         )
                     }
@@ -239,7 +246,9 @@ class DownloadActivity : AppCompatActivity() {
                 thumbnailPath = downloadedFiles.first(),
                 totalImages = downloadedFiles.size,
                 downloadDate = System.currentTimeMillis(),
-                hasVideo = downloadedFiles.any { it.endsWith(".mp4") }
+                hasVideo = downloadedFiles.any { it.endsWith(".mp4") },
+                username = postUsername,
+                caption = postCaption
             )
 
             viewModel.insertDownloadedPost(downloadedPost)

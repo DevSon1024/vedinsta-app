@@ -45,6 +45,8 @@ class MediaCarouselAdapter(
         private var isPlaying = false
         private var videoDuration = 0
         private val updateHandler = Handler(Looper.getMainLooper())
+        private var currentVideoFile: File? = null // Store file for thumbnail restore
+
         private val updateRunnable = object : Runnable {
             override fun run() {
                 updateVideoProgress()
@@ -65,6 +67,7 @@ class MediaCarouselAdapter(
         }
 
         private fun setupVideoView(videoFile: File) {
+            this.currentVideoFile = videoFile // Store for later
             binding.ivMedia.visibility = View.GONE
             binding.rlVideoContainer.visibility = View.VISIBLE
             binding.ivPlayButton.visibility = View.VISIBLE
@@ -177,6 +180,7 @@ class MediaCarouselAdapter(
         }
 
         private fun startVideo() {
+            binding.videoView.background = null // <-- FIX: Clear thumbnail background
             binding.videoView.start()
             binding.ivPlayButton.visibility = View.GONE
             binding.llVideoControls.visibility = View.VISIBLE
@@ -194,6 +198,7 @@ class MediaCarouselAdapter(
                 stopProgressUpdate()
                 onVideoPlayPause(false)
             } else {
+                binding.videoView.background = null // <-- FIX: Clear thumbnail if paused at start
                 binding.videoView.start()
                 binding.btnPlayPause.setImageResource(R.drawable.ic_pause_white)
                 isPlaying = true
@@ -212,6 +217,8 @@ class MediaCarouselAdapter(
             isPlaying = false
             stopProgressUpdate()
             onVideoPlayPause(false)
+            // Restore thumbnail
+            currentVideoFile?.let { loadVideoThumbnailForPreview(it) }
         }
 
         private fun startProgressUpdate() {

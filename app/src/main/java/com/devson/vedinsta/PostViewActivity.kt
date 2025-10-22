@@ -1,9 +1,11 @@
 package com.devson.vedinsta
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
-import androidx.activity.OnBackPressedCallback
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.PagerSnapHelper
@@ -29,6 +31,8 @@ class PostViewActivity : AppCompatActivity() {
         const val EXTRA_TOTAL_IMAGES = "total_images"
         const val EXTRA_HAS_VIDEO = "has_video"
         const val EXTRA_DOWNLOAD_DATE = "download_date"
+        const val EXTRA_USERNAME = "username"
+        const val EXTRA_CAPTION = "caption"
 
         fun createIntent(context: Context, post: DownloadedPost): Intent {
             return Intent(context, PostViewActivity::class.java).apply {
@@ -38,6 +42,8 @@ class PostViewActivity : AppCompatActivity() {
                 putExtra(EXTRA_TOTAL_IMAGES, post.totalImages)
                 putExtra(EXTRA_HAS_VIDEO, post.hasVideo)
                 putExtra(EXTRA_DOWNLOAD_DATE, post.downloadDate)
+                putExtra(EXTRA_USERNAME, post.username)
+                putExtra(EXTRA_CAPTION, post.caption)
             }
         }
     }
@@ -47,28 +53,10 @@ class PostViewActivity : AppCompatActivity() {
         binding = ActivityPostViewBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        setupUI()
-        setupBackPressed()
         extractPostData()
         setupRecyclerView() // Set up RecyclerView before calling loadMediaFiles
         setupClickListeners()
         setupPostInfo()
-    }
-
-    private fun setupUI() {
-        // Setup toolbar
-        setSupportActionBar(binding.toolbar)
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        supportActionBar?.setDisplayShowHomeEnabled(true)
-        supportActionBar?.title = ""
-    }
-
-    private fun setupBackPressed() {
-        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                finish()
-            }
-        })
     }
 
     private fun extractPostData() {
@@ -78,6 +66,8 @@ class PostViewActivity : AppCompatActivity() {
         val totalImages = intent.getIntExtra(EXTRA_TOTAL_IMAGES, 1)
         val hasVideo = intent.getBooleanExtra(EXTRA_HAS_VIDEO, false)
         val downloadDate = intent.getLongExtra(EXTRA_DOWNLOAD_DATE, System.currentTimeMillis())
+        val username = intent.getStringExtra(EXTRA_USERNAME) ?: "unknown"
+        val caption = intent.getStringExtra(EXTRA_CAPTION)
 
         currentPost = DownloadedPost(
             postId = postId,
@@ -85,7 +75,9 @@ class PostViewActivity : AppCompatActivity() {
             thumbnailPath = thumbnailPath,
             totalImages = totalImages,
             downloadDate = downloadDate,
-            hasVideo = hasVideo
+            hasVideo = hasVideo,
+            username = username,
+            caption = caption
         )
 
         // Load media files but don't update counter yet (RecyclerView not set up)
@@ -139,7 +131,7 @@ class PostViewActivity : AppCompatActivity() {
     }
 
     private fun setupClickListeners() {
-        binding.toolbar.setNavigationOnClickListener {
+        binding.btnBack.setOnClickListener {
             finish()
         }
 
@@ -150,17 +142,32 @@ class PostViewActivity : AppCompatActivity() {
         binding.btnDelete.setOnClickListener {
             deletePost()
         }
+
+        binding.btnCopyCaption.setOnClickListener {
+            copyCaptionToClipboard()
+        }
+    }
+
+    private fun copyCaptionToClipboard() {
+        val caption = currentPost?.caption
+        if (!caption.isNullOrEmpty()) {
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = ClipData.newPlainText("caption", caption)
+            clipboard.setPrimaryClip(clip)
+            Toast.makeText(this, "Caption copied to clipboard", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, "No caption to copy", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun setupPostInfo() {
         val post = currentPost ?: return
 
-        // Extract username from URL or use default
-        val username = extractUsernameFromUrl(post.postUrl)
-        binding.tvUsername.text = "@$username"
+        // Set username
+        binding.tvUsername.text = "@${post.username}"
 
-        // Set sample caption (you can extract this from post metadata if available)
-        binding.tvPostCaption.text = "Wishing you a bright and joyful Diwali filled with love, light, and happiness ❤️ 🪔 🌸 ✨ 🌙"
+        // Set caption
+        binding.tvPostCaption.text = post.caption ?: ""
 
         // Format download date
         val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
@@ -172,16 +179,6 @@ class PostViewActivity : AppCompatActivity() {
 
         // Format post date (sample - you can calculate based on actual post date)
         binding.tvPostDate.text = "2 days ago"
-    }
-
-    private fun extractUsernameFromUrl(url: String): String {
-        return try {
-            // Extract username from Instagram URL
-            val regex = "instagram\\.com/([^/]+)".toRegex()
-            regex.find(url)?.groupValues?.get(1) ?: "user"
-        } catch (e: Exception) {
-            "user"
-        }
     }
 
     private fun calculateTotalFileSize() {
@@ -262,6 +259,9 @@ class PostViewActivity : AppCompatActivity() {
                         e.printStackTrace()
                     }
                 }
+                // Delete parent directory if empty
+                mediaFiles.firstOrNull()?.parentFile?.delete()
+
 
                 // Delete from database (you'll need to implement this)
                 // deletePostFromDatabase()

@@ -11,5 +11,7 @@ data class DownloadedPost(
     val thumbnailPath: String,    // Path to first downloaded image (thumbnail)
     val totalImages: Int,         // Total number of images in the post
     val downloadDate: Long,       // Timestamp when downloaded
-    val hasVideo: Boolean = false // Whether post contains video
+    val hasVideo: Boolean = false, // Whether post contains video
+    val username: String,         // <-- ADDED
+    val caption: String?          // <-- ADDED
 )

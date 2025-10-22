@@ -38,9 +38,10 @@ class VedInstaApplication : Application() {
      * Downloads files and returns list of successfully downloaded file paths
      * This is used to save completed downloads to the database
      */
-    suspend fun downloadFiles(context: Context, filesToDownload: List<ImageCard>): List<String> {
+    suspend fun downloadFiles(context: Context, filesToDownload: List<ImageCard>, postId: String?): List<String> {
         val downloadedFiles = mutableListOf<String>()
         var downloadedCount = 0
+        val dirName = postId ?: System.currentTimeMillis().toString() // Use postId as directory name
 
         for (media in filesToDownload) {
             try {
@@ -51,9 +52,9 @@ class VedInstaApplication : Application() {
                 }
 
                 val filePath = if (directoryUriString != null) {
-                    downloadWithSAF(context, media, Uri.parse(directoryUriString))
+                    downloadWithSAF(context, media, Uri.parse(directoryUriString), dirName)
                 } else {
-                    downloadWithDownloadManager(context, media)
+                    downloadWithDownloadManager(context, media, dirName)
                 }
 
                 if (filePath != null) {
@@ -80,16 +81,19 @@ class VedInstaApplication : Application() {
     /**
      * Download using Storage Access Framework (SAF) and return file path
      */
-    private suspend fun downloadWithSAF(context: Context, media: ImageCard, directoryUri: Uri): String? {
+    private suspend fun downloadWithSAF(context: Context, media: ImageCard, directoryUri: Uri, postDirName: String): String? {
         return withContext(Dispatchers.IO) {
             try {
                 val directory = DocumentFile.fromTreeUri(context, directoryUri) ?: return@withContext null
+                // Create post-specific subdirectory
+                val postDir = directory.findFile(postDirName) ?: directory.createDirectory(postDirName) ?: return@withContext null
+
                 val mimeType = if (media.type == "video") "video/mp4" else "image/jpeg"
                 val fileExtension = if (media.type == "video") ".mp4" else ".jpg"
                 val timestamp = SimpleDateFormat("ddMMyyyyHHmmssSSS", Locale.US).format(Date())
                 val fileName = "${media.username}_175$timestamp$fileExtension"
 
-                val newFile = directory.createFile(mimeType, fileName)
+                val newFile = postDir.createFile(mimeType, fileName)
                 newFile?.uri?.let { fileUri ->
                     context.contentResolver.openOutputStream(fileUri)?.use { outputStream ->
                         URL(media.url).openStream().use { inputStream ->
@@ -110,7 +114,7 @@ class VedInstaApplication : Application() {
     /**
      * Download using DownloadManager and return file path
      */
-    private suspend fun downloadWithDownloadManager(context: Context, media: ImageCard): String? {
+    private suspend fun downloadWithDownloadManager(context: Context, media: ImageCard, postDirName: String): String? {
         return withContext(Dispatchers.IO) {
             try {
                 val fileExtension = if (media.type == "video") ".mp4" else ".jpg"
@@ -124,11 +128,13 @@ class VedInstaApplication : Application() {
                     ),
                     "VedInsta"
                 )
-                if (!vedInstaDir.exists()) {
-                    vedInstaDir.mkdirs()
+                // Create post-specific subdirectory
+                val postDir = File(vedInstaDir, postDirName)
+                if (!postDir.exists()) {
+                    postDir.mkdirs()
                 }
 
-                val file = File(vedInstaDir, fileName)
+                val file = File(postDir, fileName)
 
                 // Download file directly instead of using DownloadManager for better control
                 URL(media.url).openStream().use { inputStream ->
@@ -163,7 +169,7 @@ class VedInstaApplication : Application() {
             val uri = Uri.parse(media.url)
             val fileExtension = if (media.type == "video") ".mp4" else ".jpg"
             val timestamp = SimpleDateFormat("ddMMyyyyHHmmssSSS", Locale.US).format(Date())
-            val fileName = "${media.username}_${media.type}_$timestamp$fileExtension"
+            val fileName = "${media.username}_175$timestamp$fileExtension"
             val subDirectory = "VedInsta/"
 
             val request = DownloadManager.Request(uri)
@@ -225,11 +231,13 @@ class VedInstaApplication : Application() {
         context: Context,
         mediaUrl: String,
         mediaType: String,
-        username: String
+        username: String,
+        postId: String?
     ): List<String> {
         return withContext(Dispatchers.IO) {
             val downloadedFiles = mutableListOf<String>()
             val notificationManager = VedInstaNotificationManager.getInstance(context)
+            val dirName = postId ?: System.currentTimeMillis().toString() // Use postId as directory name
 
             try {
                 // Create filename
@@ -249,9 +257,9 @@ class VedInstaApplication : Application() {
 
                 // Download with progress tracking
                 val savedPath = if (directoryUriString != null) {
-                    downloadSingleFileWithSAF(context, mediaUrl, fileName, Uri.parse(directoryUriString), notificationManager, notificationId)
+                    downloadSingleFileWithSAF(context, mediaUrl, fileName, Uri.parse(directoryUriString), notificationManager, notificationId, dirName)
                 } else {
-                    downloadSingleFileWithDefault(context, mediaUrl, fileName, mediaType, notificationManager, notificationId)
+                    downloadSingleFileWithDefault(context, mediaUrl, fileName, mediaType, notificationManager, notificationId, dirName)
                 }
 
                 if (savedPath != null) {
@@ -288,14 +296,18 @@ class VedInstaApplication : Application() {
         fileName: String,
         directoryUri: Uri,
         notificationManager: VedInstaNotificationManager,
-        notificationId: Int
+        notificationId: Int,
+        postDirName: String
     ): String? {
         return withContext(Dispatchers.IO) {
             try {
                 val directory = DocumentFile.fromTreeUri(context, directoryUri) ?: return@withContext null
+                // Create post-specific subdirectory
+                val postDir = directory.findFile(postDirName) ?: directory.createDirectory(postDirName) ?: return@withContext null
+
                 val mimeType = if (fileName.endsWith(".mp4")) "video/mp4" else "image/jpeg"
 
-                val newFile = directory.createFile(mimeType, fileName)
+                val newFile = postDir.createFile(mimeType, fileName)
                 newFile?.uri?.let { fileUri ->
                     context.contentResolver.openOutputStream(fileUri)?.use { outputStream ->
                         downloadWithProgress(mediaUrl, outputStream, notificationManager, notificationId, fileName)
@@ -316,7 +328,8 @@ class VedInstaApplication : Application() {
         fileName: String,
         mediaType: String,
         notificationManager: VedInstaNotificationManager,
-        notificationId: Int
+        notificationId: Int,
+        postDirName: String
     ): String? {
         return withContext(Dispatchers.IO) {
             try {
@@ -327,11 +340,13 @@ class VedInstaApplication : Application() {
                     ),
                     "VedInsta"
                 )
-                if (!vedInstaDir.exists()) {
-                    vedInstaDir.mkdirs()
+                // Create post-specific subdirectory
+                val postDir = File(vedInstaDir, postDirName)
+                if (!postDir.exists()) {
+                    postDir.mkdirs()
                 }
 
-                val file = File(vedInstaDir, fileName)
+                val file = File(postDir, fileName)
 
                 // Download with progress tracking
                 FileOutputStream(file).use { outputStream ->

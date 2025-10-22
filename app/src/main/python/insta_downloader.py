@@ -185,8 +185,7 @@ def get_media_urls(post_url):
             "status": "success",
             "username": username,
             "media": media_items,
-            "caption": (post.caption[:100] + "..." if post.caption and len(post.caption) > 100
-                       else post.caption or ""),
+            "caption": post.caption or "", # <-- UPDATED: Removed truncation
             "post_date": post.date_utc.isoformat() if hasattr(post, 'date_utc') else None,
             "likes": getattr(post, 'likes', 0),
             "comments": getattr(post, 'comments', 0)
