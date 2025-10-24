@@ -180,7 +180,6 @@ class PostViewActivity : AppCompatActivity() {
         val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
         val formattedDate = dateFormat.format(Date(post.downloadDate))
         binding.tvDownloadDate.text = "Downloaded on $formattedDate"
-        binding.tvPostDate.text = "2 days ago"
     }
 
     private fun loadMediaFilesFromDatabase() {

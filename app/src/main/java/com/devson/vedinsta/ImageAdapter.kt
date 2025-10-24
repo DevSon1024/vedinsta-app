@@ -1,54 +1,84 @@
-// src/main/java/com/devson/vedinsta/ImageAdapter.kt
 package com.devson.vedinsta
 
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
 import androidx.recyclerview.widget.RecyclerView
 import coil.load
-import com.devson.vedinsta.databinding.ItemImageCardBinding
+import coil.size.Size
 
-class ImageAdapter(private val mediaList: MutableList<ImageCard>) :
-    RecyclerView.Adapter<ImageAdapter.ImageViewHolder>() {
-
-    inner class ImageViewHolder(val binding: ItemImageCardBinding) :
-        RecyclerView.ViewHolder(binding.root)
+class ImageAdapter(
+    private val mediaList: List<ImageCard>,
+    private val selectedItems: MutableSet<Int> = mutableSetOf(),
+    private val onSelectionChanged: ((position: Int, isSelected: Boolean) -> Unit)? = null
+) : RecyclerView.Adapter<ImageAdapter.ImageViewHolder>() {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ImageViewHolder {
-        val binding =
-            ItemImageCardBinding.inflate(LayoutInflater.from(parent.context), parent, false)
-        return ImageViewHolder(binding)
+        val view = LayoutInflater.from(parent.context)
+            .inflate(R.layout.item_image_selection, parent, false)
+        return ImageViewHolder(view)
     }
 
     override fun onBindViewHolder(holder: ImageViewHolder, position: Int) {
-        val currentItem = mediaList[position]
-        holder.binding.apply {
-            // Load the image using Coil
-            ivMedia.load(currentItem.url) {
-                crossfade(true)
-                placeholder(android.R.drawable.ic_menu_gallery)
-                error(android.R.drawable.ic_dialog_alert)
-            }
-
-            // Show play icon for videos
-            ivPlayIcon.visibility = if (currentItem.type == "video") View.VISIBLE else View.GONE
-
-            // Handle checkbox state
-            checkboxSelect.isChecked = currentItem.isSelected
-            checkboxSelect.setOnCheckedChangeListener { _, isChecked ->
-                currentItem.isSelected = isChecked
-            }
-        }
+        holder.bind(mediaList[position], position)
     }
 
-    override fun getItemCount() = mediaList.size
+    override fun getItemCount(): Int = mediaList.size
 
     fun getSelectedItems(): List<ImageCard> {
-        return mediaList.filter { it.isSelected }
+        return selectedItems.map { mediaList[it] }
     }
 
-    fun selectAll(select: Boolean) {
-        mediaList.forEach { it.isSelected = select }
-        notifyDataSetChanged()
+    inner class ImageViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        private val ivMedia: ImageView = itemView.findViewById(R.id.ivMedia)
+        private val ivVideoIcon: ImageView = itemView.findViewById(R.id.ivVideoIcon)
+        private val ivSelectionIcon: ImageView = itemView.findViewById(R.id.ivSelectionIcon)
+        private val overlayView: View = itemView.findViewById(R.id.overlayView)
+
+        fun bind(media: ImageCard, position: Int) {
+            val isSelected = selectedItems.contains(position)
+
+            // Load image/video thumbnail
+            if (media.type == "video") {
+                ivMedia.load(media.url) {
+                    placeholder(R.drawable.placeholder_image)
+                    error(R.drawable.placeholder_image)
+                    crossfade(300)
+                    size(Size.ORIGINAL)
+                }
+                ivVideoIcon.visibility = View.VISIBLE
+            } else {
+                ivMedia.load(media.url) {
+                    placeholder(R.drawable.placeholder_image)
+                    error(R.drawable.placeholder_image)
+                    crossfade(300)
+                    size(Size.ORIGINAL)
+                }
+                ivVideoIcon.visibility = View.GONE
+            }
+
+            // Update selection state
+            ivSelectionIcon.setImageResource(
+                if (isSelected) R.drawable.ic_check_circle_filled
+                else R.drawable.ic_check_circle_outline
+            )
+
+            // Add selection overlay
+            overlayView.alpha = if (isSelected) 0.3f else 0.0f
+
+            // Click listeners
+            itemView.setOnClickListener {
+                val newSelectionState = !isSelected
+                onSelectionChanged?.invoke(position, newSelectionState)
+                notifyItemChanged(position)
+            }
+
+            ivSelectionIcon.setOnClickListener {
+                val newSelectionState = !isSelected
+                onSelectionChanged?.invoke(position, newSelectionState)
+                notifyItemChanged(position)
+            }
+        }
     }
 }

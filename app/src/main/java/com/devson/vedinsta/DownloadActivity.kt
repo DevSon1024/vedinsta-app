@@ -5,21 +5,22 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.GridLayoutManager
-import com.devson.vedinsta.database.AppDatabase
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.PagerSnapHelper
+import androidx.recyclerview.widget.RecyclerView
 import com.devson.vedinsta.database.DownloadedPost
 import com.devson.vedinsta.databinding.ActivityDownloadBinding
 import com.devson.vedinsta.notification.VedInstaNotificationManager
 import com.devson.vedinsta.viewmodel.MainViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 class DownloadActivity : AppCompatActivity() {
@@ -29,6 +30,8 @@ class DownloadActivity : AppCompatActivity() {
     private lateinit var viewModel: MainViewModel
     private lateinit var notificationManager: VedInstaNotificationManager
     private val mediaList = mutableListOf<ImageCard>()
+    private val selectedItems = mutableSetOf<Int>()
+    private var currentPosition = 0
 
     // Get data from intent
     private var postUrl: String? = null
@@ -46,9 +49,6 @@ class DownloadActivity : AppCompatActivity() {
         binding = ActivityDownloadBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        setSupportActionBar(binding.toolbar)
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
-
         // Initialize components
         viewModel = ViewModelProvider(this)[MainViewModel::class.java]
         notificationManager = VedInstaNotificationManager.getInstance(this)
@@ -60,11 +60,10 @@ class DownloadActivity : AppCompatActivity() {
         postUrl = intent.getStringExtra("POST_URL")
         postId = intent.getStringExtra("POST_ID")
 
-        Log.d(TAG, "=== DownloadActivity onCreate ===")
-        Log.d(TAG, "PostId: $postId")
-        Log.d(TAG, "PostUrl: $postUrl")
+        Log.d(TAG, "DownloadActivity started for postId: $postId")
 
         setupRecyclerView()
+        setupClickListeners()
 
         val resultJson = intent.getStringExtra("RESULT_JSON")
         if (resultJson != null) {
@@ -72,24 +71,6 @@ class DownloadActivity : AppCompatActivity() {
         } else {
             Toast.makeText(this, "Error: No data received", Toast.LENGTH_SHORT).show()
             finish()
-        }
-
-        // Download button logic
-        binding.btnDownloadSelected.setOnClickListener {
-            val selected = imageAdapter.getSelectedItems()
-            if (selected.isNotEmpty()) {
-                startDownloadWithNotification(selected)
-            } else {
-                Toast.makeText(this, "No items selected", Toast.LENGTH_SHORT).show()
-            }
-        }
-
-        binding.btnDownloadAll.setOnClickListener {
-            if (mediaList.isNotEmpty()) {
-                startDownloadWithNotification(mediaList)
-            } else {
-                Toast.makeText(this, "No media to download", Toast.LENGTH_SHORT).show()
-            }
         }
     }
 
@@ -108,103 +89,161 @@ class DownloadActivity : AppCompatActivity() {
         }
     }
 
-    private fun startDownloadWithNotification(items: List<ImageCard>) {
-        Log.d(TAG, "=== Starting Download Process ===")
-        Log.d(TAG, "Items to download: ${items.size}")
-        Log.d(TAG, "PostId: $postId")
-
-        lifecycleScope.launch(Dispatchers.Main) {
-            // Show initial notification
-            val notificationId = notificationManager.showDownloadStarted(
-                if (items.size == 1) "${postUsername}_media"
-                else "${items.size} files"
-            )
-
-            // Start download in background
-            lifecycleScope.launch(Dispatchers.IO) {
-                try {
-                    // Get highest quality URLs and ensure username is set
-                    val highQualityItems = items.map { item ->
-                        item.copy(
-                            url = getHighestQualityUrl(item.url),
-                            username = if (item.username == "unknown") postUsername else item.username
-                        )
-                    }
-
-                    Log.d(TAG, "=== Calling downloadFiles ===")
-                    val downloadedFiles = (application as VedInstaApplication).downloadFiles(this@DownloadActivity, highQualityItems, postId)
-
-                    Log.d(TAG, "=== Download Result ===")
-                    Log.d(TAG, "Downloaded files: $downloadedFiles")
-                    Log.d(TAG, "Downloaded files count: ${downloadedFiles.size}")
-                    downloadedFiles.forEachIndexed { index, path ->
-                        Log.d(TAG, "File $index: $path")
-                    }
-
-                    if (downloadedFiles.isNotEmpty()) {
-                        // Save to database with CORRECT media paths
-                        saveDownloadedPostWithVerification(postId, postUrl ?: "", downloadedFiles)
-
-                        // Show completion notification
-                        notificationManager.cancelDownloadNotification(notificationId)
-                        notificationManager.showDownloadCompleted(
-                            "${postUsername}_media",
-                            downloadedFiles.size
-                        )
-
-                        runOnUiThread {
-                            Toast.makeText(this@DownloadActivity,
-                                "Downloaded ${downloadedFiles.size} files successfully!",
-                                Toast.LENGTH_SHORT).show()
-                        }
-                    } else {
-                        Log.w(TAG, "No files were downloaded")
-                        notificationManager.showDownloadError(
-                            "${postUsername}_media",
-                            "No files were downloaded"
-                        )
-                    }
-
-                } catch (e: Exception) {
-                    Log.e(TAG, "Download failed", e)
-                    notificationManager.showDownloadError(
-                        "${postUsername}_media",
-                        e.message ?: "Download failed"
-                    )
-                    runOnUiThread {
-                        Toast.makeText(this@DownloadActivity,
-                            "Download failed: ${e.message}",
-                            Toast.LENGTH_SHORT).show()
-                    }
-                }
-            }
-        }
-    }
-
-    private fun getHighestQualityUrl(originalUrl: String): String {
-        return when {
-            originalUrl.contains("instagram.com") && originalUrl.contains("_n.jpg") -> {
-                originalUrl.replace("_n.jpg", ".jpg")
-            }
-            originalUrl.contains("instagram.com") && originalUrl.contains("_n.mp4") -> {
-                originalUrl.replace("_n.mp4", ".mp4")
-            }
-            originalUrl.contains("scontent") -> {
-                if (originalUrl.contains("?")) {
-                    "$originalUrl&_nc_ohc=original"
-                } else {
-                    "$originalUrl?_nc_ohc=original"
-                }
-            }
-            else -> originalUrl
-        }
-    }
-
     private fun setupRecyclerView() {
-        imageAdapter = ImageAdapter(mediaList)
+        imageAdapter = ImageAdapter(
+            mediaList = mediaList,
+            selectedItems = selectedItems,
+            onSelectionChanged = { position, isSelected ->
+                if (isSelected) {
+                    selectedItems.add(position)
+                } else {
+                    selectedItems.remove(position)
+                }
+                updateDownloadButton()
+                updateSelectAllButton()
+            }
+        )
+
         binding.recyclerViewImages.apply {
             adapter = imageAdapter
-            layoutManager = GridLayoutManager(this@DownloadActivity, 2)
+            layoutManager = LinearLayoutManager(this@DownloadActivity, LinearLayoutManager.HORIZONTAL, false)
+
+            val snapHelper = PagerSnapHelper()
+            snapHelper.attachToRecyclerView(this)
+
+            addOnScrollListener(object : RecyclerView.OnScrollListener() {
+                override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
+                    super.onScrollStateChanged(recyclerView, newState)
+                    if (newState == RecyclerView.SCROLL_STATE_IDLE) {
+                        updateCurrentPosition()
+                    }
+                }
+            })
+        }
+    }
+
+    private fun setupClickListeners() {
+        // Select All button
+        binding.btnSelectAll.setOnClickListener {
+            toggleSelectAll()
+        }
+
+        // Download button
+        binding.btnDownload.setOnClickListener {
+            startSelectedDownload()
+        }
+    }
+
+    private fun toggleSelectAll() {
+        if (selectedItems.size == mediaList.size) {
+            // Deselect all
+            selectedItems.clear()
+        } else {
+            // Select all
+            selectedItems.clear()
+            selectedItems.addAll(0 until mediaList.size)
+        }
+        imageAdapter.notifyDataSetChanged()
+        updateDownloadButton()
+        updateSelectAllButton()
+    }
+
+    private fun updateSelectAllButton() {
+        if (selectedItems.size == mediaList.size) {
+            binding.btnSelectAll.setImageResource(R.drawable.ic_check_circle_filled)
+        } else {
+            binding.btnSelectAll.setImageResource(R.drawable.ic_check_circle_outline)
+        }
+    }
+
+    private fun updateCurrentPosition() {
+        val layoutManager = binding.recyclerViewImages.layoutManager as? LinearLayoutManager
+        val newPosition = layoutManager?.findFirstCompletelyVisibleItemPosition() ?: 0
+
+        if (newPosition != RecyclerView.NO_POSITION && newPosition != currentPosition) {
+            currentPosition = newPosition
+            binding.dotsIndicator.setSelectedPosition(currentPosition, true)
+        }
+    }
+
+    private fun updateDownloadButton() {
+        val selectedCount = selectedItems.size
+        val totalCount = mediaList.size
+
+        if (selectedCount > 0) {
+            binding.btnDownload.text = "DOWNLOAD ($selectedCount/$totalCount)"
+            binding.btnDownload.isEnabled = true
+            binding.btnDownload.alpha = 1.0f
+        } else {
+            binding.btnDownload.text = "DOWNLOAD (0/$totalCount)"
+            binding.btnDownload.isEnabled = false
+            binding.btnDownload.alpha = 0.6f
+        }
+    }
+
+    private fun startSelectedDownload() {
+        val selectedMediaList = selectedItems.map { mediaList[it] }
+
+        if (selectedMediaList.isNotEmpty()) {
+            Log.d(TAG, "Starting download for ${selectedMediaList.size} selected items")
+
+            lifecycleScope.launch(Dispatchers.Main) {
+                // Show initial notification
+                val notificationId = notificationManager.showDownloadStarted(
+                    if (selectedMediaList.size == 1) "${postUsername}_media"
+                    else "${selectedMediaList.size} files"
+                )
+
+                // Start download in background
+                lifecycleScope.launch(Dispatchers.IO) {
+                    try {
+                        val downloadedFiles = (application as VedInstaApplication).downloadFiles(
+                            this@DownloadActivity,
+                            selectedMediaList,
+                            postId
+                        )
+
+                        if (downloadedFiles.isNotEmpty()) {
+                            // Save to database
+                            saveDownloadedPost(postId, postUrl ?: "", downloadedFiles)
+
+                            // Show completion notification
+                            notificationManager.cancelDownloadNotification(notificationId)
+                            notificationManager.showDownloadCompleted(
+                                "${postUsername}_media",
+                                downloadedFiles.size
+                            )
+
+                            runOnUiThread {
+                                Toast.makeText(this@DownloadActivity,
+                                    "Downloaded ${downloadedFiles.size} files successfully!",
+                                    Toast.LENGTH_SHORT).show()
+
+                                // Exit the activity after successful download
+                                finish()
+                            }
+                        } else {
+                            notificationManager.showDownloadError(
+                                "${postUsername}_media",
+                                "No files were downloaded"
+                            )
+                        }
+
+                    } catch (e: Exception) {
+                        notificationManager.showDownloadError(
+                            "${postUsername}_media",
+                            e.message ?: "Download failed"
+                        )
+                        runOnUiThread {
+                            Toast.makeText(this@DownloadActivity,
+                                "Download failed: ${e.message}",
+                                Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            }
+        } else {
+            Toast.makeText(this, "Please select at least one item to download", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -217,27 +256,31 @@ class DownloadActivity : AppCompatActivity() {
                     postCaption = result.getString("caption")
                     val mediaArray = result.getJSONArray("media")
 
-                    Log.d(TAG, "=== Python Result Processing ===")
-                    Log.d(TAG, "Username: $postUsername")
-                    Log.d(TAG, "Caption: $postCaption")
-                    Log.d(TAG, "Media count: ${mediaArray.length()}")
+                    Log.d(TAG, "Processing ${mediaArray.length()} media items")
+                    binding.tvUsername.text = "@$postUsername"
 
+                    mediaList.clear()
                     for (i in 0 until mediaArray.length()) {
                         val mediaObject = mediaArray.getJSONObject(i)
-                        val url = mediaObject.getString("url")
-                        val type = mediaObject.getString("type")
-
-                        Log.d(TAG, "Media $i - URL: $url, Type: $type")
-
                         mediaList.add(
                             ImageCard(
-                                url = url,
-                                type = type,
+                                url = mediaObject.getString("url"),
+                                type = mediaObject.getString("type"),
                                 username = postUsername
                             )
                         )
                     }
+
+                    // Setup dots indicator
+                    binding.dotsIndicator.setDotCount(mediaList.size)
+                    binding.dotsIndicator.setSelectedPosition(0, false)
+
+                    // Show dots only if multiple media
+                    binding.dotsIndicator.visibility = if (mediaList.size > 1) View.VISIBLE else View.GONE
+
                     imageAdapter.notifyDataSetChanged()
+                    updateDownloadButton()
+                    updateSelectAllButton()
                 }
                 else -> {
                     val message = result.getString("message")
@@ -252,61 +295,27 @@ class DownloadActivity : AppCompatActivity() {
         }
     }
 
-    private fun saveDownloadedPostWithVerification(postId: String?, postUrl: String, downloadedFiles: List<String>) {
-        if (postId == null || downloadedFiles.isEmpty()) {
-            Log.w(TAG, "Cannot save post - postId: $postId, files count: ${downloadedFiles.size}")
-            return
-        }
+    private fun saveDownloadedPost(postId: String?, postUrl: String, downloadedFiles: List<String>) {
+        if (postId != null && downloadedFiles.isNotEmpty()) {
+            Log.d(TAG, "Saving post to database:")
+            Log.d(TAG, "  PostId: $postId")
+            Log.d(TAG, "  Downloaded files: $downloadedFiles")
+            Log.d(TAG, "  Files count: ${downloadedFiles.size}")
 
-        Log.d(TAG, "=== Saving Post to Database ===")
-        Log.d(TAG, "PostId: $postId")
-        Log.d(TAG, "PostUrl: $postUrl")
-        Log.d(TAG, "Username: $postUsername")
-        Log.d(TAG, "Caption: $postCaption")
-        Log.d(TAG, "Downloaded files count: ${downloadedFiles.size}")
+            val downloadedPost = DownloadedPost(
+                postId = postId,
+                postUrl = postUrl,
+                thumbnailPath = downloadedFiles.first(),
+                totalImages = downloadedFiles.size,
+                downloadDate = System.currentTimeMillis(),
+                hasVideo = downloadedFiles.any { it.endsWith(".mp4") },
+                username = postUsername,
+                caption = postCaption,
+                mediaPaths = downloadedFiles
+            )
 
-        downloadedFiles.forEachIndexed { index, path ->
-            Log.d(TAG, "MediaPath $index: $path")
-        }
-
-        val downloadedPost = DownloadedPost(
-            postId = postId,
-            postUrl = postUrl,
-            thumbnailPath = downloadedFiles.first(),
-            totalImages = downloadedFiles.size,
-            downloadDate = System.currentTimeMillis(),
-            hasVideo = downloadedFiles.any { it.endsWith(".mp4") },
-            username = postUsername,
-            caption = postCaption,
-            mediaPaths = downloadedFiles // CRITICAL: Store the actual file paths
-        )
-
-        Log.d(TAG, "DownloadedPost object created: $downloadedPost")
-
-        // Save and verify
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                // Save using ViewModel
-                viewModel.insertDownloadedPost(downloadedPost)
-                Log.d(TAG, "Post saved via ViewModel")
-
-                // Verify by reading back from database
-                val db = AppDatabase.getDatabase(applicationContext)
-                val savedPost = db.downloadedPostDao().getPostById(postId)
-
-                Log.d(TAG, "=== Verification - Post Read Back ===")
-                Log.d(TAG, "Saved post: $savedPost")
-
-                if (savedPost != null) {
-                    Log.d(TAG, "Verification - MediaPaths: ${savedPost.mediaPaths}")
-                    Log.d(TAG, "Verification - MediaPaths count: ${savedPost.mediaPaths.size}")
-                } else {
-                    Log.e(TAG, "Verification FAILED - Post not found in database!")
-                }
-
-            } catch (e: Exception) {
-                Log.e(TAG, "Error saving or verifying post", e)
-            }
+            viewModel.insertDownloadedPost(downloadedPost)
+            Log.d(TAG, "Post saved to database successfully")
         }
     }
 
@@ -326,10 +335,5 @@ class DownloadActivity : AppCompatActivity() {
                 }
             }
         }
-    }
-
-    override fun onSupportNavigateUp(): Boolean {
-        onBackPressedDispatcher.onBackPressed()
-        return true
     }
 }
