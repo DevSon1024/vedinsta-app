@@ -13,10 +13,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
+import java.net.HttpURLConnection
 import java.net.URL
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import okhttp3.*
+import java.util.concurrent.TimeUnit
 import android.media.MediaScannerConnection
 import com.devson.vedinsta.notification.VedInstaNotificationManager
 import com.devson.vedinsta.database.PostMediaManager
@@ -351,14 +352,73 @@ class VedInstaApplication : Application() {
                 val newFile = directory.createFile(mimeType, fileName)
                 newFile?.uri?.let { fileUri ->
                     context.contentResolver.openOutputStream(fileUri)?.use { outputStream ->
-                        downloadWithProgress(mediaUrl, outputStream, notificationManager, notificationId, fileName)
+                        // Use the enhanced download method
+                        downloadWithSimpleHeaders(mediaUrl, outputStream, notificationManager, notificationId, fileName)
                     }
                     return@withContext fileUri.toString()
                 }
                 null
             } catch (e: Exception) {
-                Log.e(TAG, "SAF single file error", e)
+                Log.e(TAG, "SAF download error", e)
                 null
+            }
+        }
+    }
+    private suspend fun downloadWithSimpleHeaders(
+        url: String,
+        outputStream: java.io.OutputStream,
+        notificationManager: VedInstaNotificationManager,
+        notificationId: Int,
+        fileName: String
+    ) {
+        withContext(Dispatchers.IO) {
+            val urlConnection = URL(url).openConnection() as HttpURLConnection
+
+            try {
+                urlConnection.apply {
+                    requestMethod = "GET"
+                    connectTimeout = 30000
+                    readTimeout = 120000
+
+                    // Essential headers
+                    setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 12; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36")
+                    setRequestProperty("Referer", "https://www.instagram.com/")
+                    setRequestProperty("Accept", "*/*")
+                }
+
+                urlConnection.connect()
+
+                if (urlConnection.responseCode == HttpURLConnection.HTTP_OK) {
+                    val contentLength = urlConnection.contentLength.toLong()
+
+                    urlConnection.inputStream.use { inputStream ->
+                        val buffer = ByteArray(8192)
+                        var totalBytesRead = 0L
+                        var bytesRead: Int
+                        var lastProgressUpdate = 0
+
+                        while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                            outputStream.write(buffer, 0, bytesRead)
+                            totalBytesRead += bytesRead
+
+                            val progress = if (contentLength > 0) {
+                                ((totalBytesRead * 100) / contentLength).toInt()
+                            } else {
+                                -1
+                            }
+
+                            if (progress != lastProgressUpdate && (progress - lastProgressUpdate >= 5 || totalBytesRead % 102400 == 0L)) {
+                                notificationManager.updateDownloadProgress(notificationId, fileName, progress)
+                                lastProgressUpdate = progress
+                            }
+                        }
+                    }
+                } else {
+                    throw IOException("HTTP ${urlConnection.responseCode}: ${urlConnection.responseMessage}")
+                }
+
+            } finally {
+                urlConnection.disconnect()
             }
         }
     }
@@ -373,6 +433,10 @@ class VedInstaApplication : Application() {
     ): String? {
         return withContext(Dispatchers.IO) {
             try {
+                Log.d(TAG, "Enhanced Instagram download starting")
+                Log.d(TAG, "URL: $mediaUrl")
+                Log.d(TAG, "File: $fileName")
+
                 val targetDirectory = if (mediaType.lowercase() == "video") {
                     PostMediaManager.getVideoDirectory()
                 } else {
@@ -380,113 +444,229 @@ class VedInstaApplication : Application() {
                 }
 
                 val file = File(targetDirectory, fileName)
+                Log.d(TAG, "Target file path: ${file.absolutePath}")
 
-                // Download with progress tracking
-                FileOutputStream(file).use { outputStream ->
-                    downloadWithProgress(mediaUrl, outputStream, notificationManager, notificationId, fileName)
+                // Try multiple download strategies
+                var success = false
+
+                // Strategy 1: Enhanced headers with referrer context
+                if (!success) {
+                    success = downloadWithInstagramContext(mediaUrl, file, notificationManager, notificationId, fileName)
                 }
 
-                return@withContext file.absolutePath
+                // Strategy 2: Range request (partial content)
+                if (!success) {
+                    Log.d(TAG, "Trying range request strategy")
+                    success = downloadWithRangeRequest(mediaUrl, file, notificationManager, notificationId, fileName)
+                }
+
+                // Strategy 3: Simple request with minimal headers
+                if (!success) {
+                    Log.d(TAG, "Trying minimal headers strategy")
+                    success = downloadWithMinimalHeaders(mediaUrl, file, notificationManager, notificationId, fileName)
+                }
+
+                if (success && file.exists() && file.length() > 0) {
+                    Log.d(TAG, "File downloaded successfully. Size: ${file.length()} bytes")
+                    return@withContext file.absolutePath
+                } else {
+                    Log.e(TAG, "All download strategies failed")
+                    return@withContext null
+                }
+
             } catch (e: Exception) {
-                Log.e(TAG, "Default single file error", e)
-                null
+                Log.e(TAG, "Enhanced Instagram download error", e)
+                return@withContext null
             }
         }
     }
 
-    private suspend fun downloadWithProgress(
+    private suspend fun downloadWithInstagramContext(
         url: String,
-        outputStream: java.io.OutputStream,
+        file: File,
+        notificationManager: VedInstaNotificationManager,
+        notificationId: Int,
+        fileName: String
+    ): Boolean {
+        return try {
+            val urlConnection = URL(url).openConnection() as HttpURLConnection
+
+            urlConnection.apply {
+                requestMethod = "GET"
+                connectTimeout = 30000
+                readTimeout = 120000
+                doInput = true
+
+                // Instagram-specific headers with mobile context
+                setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 12; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36 Instagram 308.0.0.34.113 Android")
+                setRequestProperty("Accept", "video/webm,video/ogg,video/*;q=0.9,application/ogg;q=0.7,audio/*;q=0.6,*/*;q=0.5")
+                setRequestProperty("Accept-Language", "en-US,en;q=0.9")
+                setRequestProperty("Accept-Encoding", "identity")
+                setRequestProperty("Cache-Control", "no-cache")
+                setRequestProperty("Connection", "keep-alive")
+                setRequestProperty("Referer", "https://www.instagram.com/")
+                setRequestProperty("Origin", "https://www.instagram.com")
+                setRequestProperty("sec-ch-ua", "\"Google Chrome\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\"")
+                setRequestProperty("sec-ch-ua-mobile", "?1")
+                setRequestProperty("sec-ch-ua-platform", "\"Android\"")
+                setRequestProperty("Sec-Fetch-Dest", "video")
+                setRequestProperty("Sec-Fetch-Mode", "cors")
+                setRequestProperty("Sec-Fetch-Site", "cross-site")
+            }
+
+            urlConnection.connect()
+            val responseCode = urlConnection.responseCode
+            Log.d(TAG, "Instagram context download - Response: $responseCode")
+
+            if (responseCode == HttpURLConnection.HTTP_OK) {
+                downloadFileContent(urlConnection, file, notificationManager, notificationId, fileName)
+                true
+            } else {
+                Log.w(TAG, "Instagram context download failed: $responseCode")
+                urlConnection.disconnect()
+                false
+            }
+
+        } catch (e: Exception) {
+            Log.w(TAG, "Instagram context download error", e)
+            false
+        }
+    }
+
+    /**
+     * Download with Range request (partial content strategy)
+     */
+    private suspend fun downloadWithRangeRequest(
+        url: String,
+        file: File,
+        notificationManager: VedInstaNotificationManager,
+        notificationId: Int,
+        fileName: String
+    ): Boolean {
+        return try {
+            val urlConnection = URL(url).openConnection() as HttpURLConnection
+
+            urlConnection.apply {
+                requestMethod = "GET"
+                connectTimeout = 30000
+                readTimeout = 120000
+                doInput = true
+
+                // Range request headers
+                setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 12; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36")
+                setRequestProperty("Accept", "*/*")
+                setRequestProperty("Accept-Language", "en-US,en;q=0.9")
+                setRequestProperty("Accept-Encoding", "identity")
+                setRequestProperty("Referer", "https://www.instagram.com/")
+                setRequestProperty("Origin", "https://www.instagram.com")
+                setRequestProperty("Range", "bytes=0-") // Request all content starting from byte 0
+                setRequestProperty("Connection", "keep-alive")
+            }
+
+            urlConnection.connect()
+            val responseCode = urlConnection.responseCode
+            Log.d(TAG, "Range request download - Response: $responseCode")
+
+            if (responseCode == HttpURLConnection.HTTP_OK || responseCode == HttpURLConnection.HTTP_PARTIAL) {
+                downloadFileContent(urlConnection, file, notificationManager, notificationId, fileName)
+                true
+            } else {
+                Log.w(TAG, "Range request download failed: $responseCode")
+                urlConnection.disconnect()
+                false
+            }
+
+        } catch (e: Exception) {
+            Log.w(TAG, "Range request download error", e)
+            false
+        }
+    }
+
+    /**
+     * Download with minimal headers as fallback
+     */
+    private suspend fun downloadWithMinimalHeaders(
+        url: String,
+        file: File,
+        notificationManager: VedInstaNotificationManager,
+        notificationId: Int,
+        fileName: String
+    ): Boolean {
+        return try {
+            val urlConnection = URL(url).openConnection() as HttpURLConnection
+
+            urlConnection.apply {
+                requestMethod = "GET"
+                connectTimeout = 45000  // Longer timeout as fallback
+                readTimeout = 180000    // 3 minutes
+                doInput = true
+
+                // Minimal headers
+                setRequestProperty("User-Agent", "Instagram 308.0.0.34.113 Android (31/12; 450dpi; 1080x2392; samsung; SM-G991B; o1s; exynos2100; en_US; 458229237)")
+                setRequestProperty("Accept", "*/*")
+            }
+
+            urlConnection.connect()
+            val responseCode = urlConnection.responseCode
+            Log.d(TAG, "Minimal headers download - Response: $responseCode")
+
+            if (responseCode == HttpURLConnection.HTTP_OK) {
+                downloadFileContent(urlConnection, file, notificationManager, notificationId, fileName)
+                true
+            } else {
+                Log.w(TAG, "Minimal headers download failed: $responseCode")
+                urlConnection.disconnect()
+                false
+            }
+
+        } catch (e: Exception) {
+            Log.w(TAG, "Minimal headers download error", e)
+            false
+        }
+    }
+
+    /**
+     * Common method to download file content from connection
+     */
+    private suspend fun downloadFileContent(
+        connection: HttpURLConnection,
+        file: File,
         notificationManager: VedInstaNotificationManager,
         notificationId: Int,
         fileName: String
     ) {
-        withContext(Dispatchers.IO) {
-            try {
-                val connection = URL(url).openConnection()
-                connection.connectTimeout = 15000
-                connection.readTimeout = 30000
-
-                val contentLength = connection.contentLength
-                val inputStream = connection.getInputStream()
-
-                val buffer = ByteArray(8192)
-                var totalBytesRead = 0L
-                var bytesRead: Int
-                var lastProgressUpdate = 0
-
-                while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                    outputStream.write(buffer, 0, bytesRead)
-                    totalBytesRead += bytesRead
-
-                    val progress = if (contentLength > 0) {
-                        ((totalBytesRead * 100) / contentLength).toInt()
-                    } else {
-                        -1
-                    }
-
-                    if (progress != lastProgressUpdate && (progress - lastProgressUpdate >= 5 || totalBytesRead % 102400 == 0L)) {
-                        notificationManager.updateDownloadProgress(notificationId, fileName, progress)
-                        lastProgressUpdate = progress
-                    }
-                }
-
-                inputStream.close()
-            } catch (e: Exception) {
-                throw e
-            }
-        }
-    }
-
-    /**
-     * Get app's private directory for caching thumbnails
-     */
-    fun getThumbnailCacheDir(context: Context): File {
-        val thumbnailDir = File(context.cacheDir, "thumbnails")
-        if (!thumbnailDir.exists()) {
-            thumbnailDir.mkdirs()
-        }
-        return thumbnailDir
-    }
-
-    /**
-     * Save thumbnail for quick access in the home screen
-     */
-    suspend fun saveThumbnail(context: Context, imageUrl: String, postId: String): String? {
-        return withContext(Dispatchers.IO) {
-            try {
-                val thumbnailDir = getThumbnailCacheDir(context)
-                val thumbnailFile = File(thumbnailDir, "$postId.jpg")
-
-                URL(imageUrl).openStream().use { inputStream ->
-                    FileOutputStream(thumbnailFile).use { outputStream ->
-                        inputStream.copyTo(outputStream)
-                    }
-                }
-
-                thumbnailFile.absolutePath
-            } catch (e: Exception) {
-                Log.e(TAG, "Thumbnail save error", e)
-                null
-            }
-        }
-    }
-
-    /**
-     * Clean up old thumbnail cache files
-     */
-    fun cleanThumbnailCache(context: Context, maxAgeMillis: Long = 7 * 24 * 60 * 60 * 1000L) {
         try {
-            val thumbnailDir = getThumbnailCacheDir(context)
-            val currentTime = System.currentTimeMillis()
+            val contentLength = connection.contentLength.toLong()
+            Log.d(TAG, "Content length: $contentLength bytes")
 
-            thumbnailDir.listFiles()?.forEach { file ->
-                if (currentTime - file.lastModified() > maxAgeMillis) {
-                    file.delete()
+            FileOutputStream(file).use { outputStream ->
+                connection.inputStream.use { inputStream ->
+                    val buffer = ByteArray(8192)
+                    var totalBytesRead = 0L
+                    var bytesRead: Int
+                    var lastProgressUpdate = 0
+
+                    while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                        outputStream.write(buffer, 0, bytesRead)
+                        totalBytesRead += bytesRead
+
+                        val progress = if (contentLength > 0) {
+                            ((totalBytesRead * 100) / contentLength).toInt()
+                        } else {
+                            (totalBytesRead / 1024).toInt()
+                        }
+
+                        if (progress != lastProgressUpdate && (progress - lastProgressUpdate >= 5 || totalBytesRead % 102400 == 0L)) {
+                            notificationManager.updateDownloadProgress(notificationId, fileName, progress)
+                            lastProgressUpdate = progress
+                        }
+                    }
                 }
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Thumbnail cleanup error", e)
+
+            Log.d(TAG, "File content downloaded successfully")
+        } finally {
+            connection.disconnect()
         }
     }
 }

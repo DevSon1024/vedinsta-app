@@ -48,8 +48,14 @@ android {
 
 chaquopy {
     defaultConfig {
-        version = "3.10"
+        version = "3.11"
         buildPython("C:\\Users\\DEVENDRA\\AppData\\Local\\Programs\\Python\\Python313\\python.exe")
+
+        pyc {
+            src = false
+            pip = false
+            stdlib = false
+        }
 
         // Add Python packages here
         pip {
@@ -96,8 +102,9 @@ dependencies {
     implementation("androidx.startup:startup-runtime:1.2.0")
 
     // Download and HTTP
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)

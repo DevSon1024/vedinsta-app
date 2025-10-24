@@ -2,10 +2,14 @@ import instaloader
 import json
 import sys
 import re
+import time
+import random
 from datetime import datetime
+import urllib.request
+import urllib.parse
 
 def setup_instaloader():
-    """Setup and configure Instaloader instance"""
+    """Setup Instaloader with session management"""
     try:
         L = instaloader.Instaloader(
             download_video_thumbnails=False,
@@ -13,71 +17,130 @@ def setup_instaloader():
             download_comments=False,
             save_metadata=False,
             compress_json=False,
-            request_timeout=20,
+            request_timeout=45,
             max_connection_attempts=3,
-            sleep=False,
-            quiet=True
+            sleep=True,
+            quiet=True,
+            user_agent='Mozilla/5.0 (Linux; Android 12; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36 Instagram 308.0.0.34.113 Android (31/12; 450dpi; 1080x2392; samsung; SM-G991B; o1s; exynos2100; en_US; 458229237)'
         )
+
+        # Configure session with Instagram-specific headers
+        if hasattr(L, '_session') and L._session:
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Linux; Android 12; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36 Instagram 308.0.0.34.113 Android (31/12; 450dpi; 1080x2392; samsung; SM-G991B; o1s; exynos2100; en_US; 458229237)',
+                'Accept': '*/*',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache',
+                'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+                'sec-ch-ua-mobile': '?1',
+                'sec-ch-ua-platform': '"Android"',
+                'sec-fetch-dest': 'empty',
+                'sec-fetch-mode': 'cors',
+                'sec-fetch-site': 'cross-site',
+                'X-Instagram-AJAX': '1010645805',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+            L._session.headers.update(headers)
+
         return L
     except Exception as e:
         print(f"ERROR: Failed to setup Instaloader: {e}")
         return None
 
-def extract_shortcode_from_url(url):
-    """Extract Instagram post shortcode from URL"""
-    # Support various Instagram URL formats
-    patterns = [
-        r'/p/([A-Za-z0-9_-]+)',      # Post URLs
-        r'/reel/([A-Za-z0-9_-]+)',   # Reel URLs
-        r'/tv/([A-Za-z0-9_-]+)',     # IGTV URLs
-    ]
-
-    for pattern in patterns:
-        match = re.search(pattern, url)
-        if match:
-            return match.group(1)
-    return None
-
-def get_highest_quality_url(url):
-    """Convert Instagram media URL to highest quality version"""
-    if not url:
-        return url
-
+def create_media_request(url, post_url):
+    """Create a proper request for Instagram media with referrer context"""
     try:
-        # Remove quality reducing parameters
-        if 'instagram.com' in url or 'cdninstagram.com' in url:
-            # Remove quality modifiers for images
-            url = url.replace('_n.jpg', '.jpg')
-            url = url.replace('_a.jpg', '.jpg')
-            url = url.replace('_t.jpg', '.jpg')
+        # Parse the original Instagram post URL to get the referrer
+        if '/p/' in post_url:
+            referrer = post_url
+        elif '/reel/' in post_url:
+            referrer = post_url
+        else:
+            referrer = "https://www.instagram.com/"
 
-            # Remove quality modifiers for videos
-            url = url.replace('_n.mp4', '.mp4')
-            url = url.replace('_a.mp4', '.mp4')
-            url = url.replace('_t.mp4', '.mp4')
+        # Create request with proper context
+        req = urllib.request.Request(url)
 
-            # Add parameters for original quality
-            separator = '&' if '?' in url else '?'
-            url += f'{separator}_nc_ohc=original&_nc_ht=original'
+        # Essential headers for Instagram media access
+        req.add_header('User-Agent', 'Mozilla/5.0 (Linux; Android 12; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36 Instagram 308.0.0.34.113 Android')
+        req.add_header('Referer', referrer)
+        req.add_header('Origin', 'https://www.instagram.com')
+        req.add_header('Accept', 'video/webm,video/ogg,video/*;q=0.9,application/ogg;q=0.7,audio/*;q=0.6,*/*;q=0.5')
+        req.add_header('Accept-Language', 'en-US,en;q=0.9')
+        req.add_header('Accept-Encoding', 'identity')  # Important: no compression for media
+        req.add_header('Cache-Control', 'no-cache')
+        req.add_header('Connection', 'keep-alive')
+        req.add_header('sec-ch-ua', '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"')
+        req.add_header('sec-ch-ua-mobile', '?1')
+        req.add_header('sec-ch-ua-platform', '"Android"')
+        req.add_header('Sec-Fetch-Dest', 'video')
+        req.add_header('Sec-Fetch-Mode', 'cors')
+        req.add_header('Sec-Fetch-Site', 'cross-site')
+        # Critical for Instagram CDN access
+        req.add_header('Range', 'bytes=0-')
 
-        return url
-    except Exception:
-        return url
+        return req
+    except Exception as e:
+        print(f"Error creating media request: {e}")
+        return None
 
-def is_restricted_error(error_message):
-    """Check if error indicates private/restricted content"""
-    restricted_keywords = [
-        '429', 'rate limit', '403', 'forbidden',
-        'private', 'login', 'challenge', 'checkpoint',
-        'not found', '404'
-    ]
-    error_lower = str(error_message).lower()
-    return any(keyword in error_lower for keyword in restricted_keywords)
+def verify_media_access(url, post_url):
+    """Verify that the media URL is accessible with proper headers"""
+    try:
+        req = create_media_request(url, post_url)
+        if not req:
+            return False
+
+        # Test the connection
+        with urllib.request.urlopen(req, timeout=30) as response:
+            # Check if we get a successful response
+            return response.getcode() == 200 or response.getcode() == 206  # 206 for partial content (Range request)
+
+    except Exception as e:
+        print(f"Media access verification failed: {e}")
+        return False
+
+def get_enhanced_media_url(original_url, post_url):
+    """Get media URL with enhanced context and verification"""
+    try:
+        # Clean the URL first
+        if not original_url:
+            return None
+
+        # Remove problematic parameters but keep essential ones
+        if '?' in original_url:
+            base_url, params = original_url.split('?', 1)
+            essential_params = []
+
+            # Keep only critical Instagram CDN parameters
+            for param in params.split('&'):
+                if any(keep in param.lower() for keep in ['_nc_', 'oh=', 'oe=', 'ccb=', '_nc_rid', 'efg']):
+                    essential_params.append(param)
+
+            if essential_params:
+                enhanced_url = f"{base_url}?{'&'.join(essential_params)}"
+            else:
+                enhanced_url = base_url
+        else:
+            enhanced_url = original_url
+
+        # Verify the URL is accessible
+        if verify_media_access(enhanced_url, post_url):
+            return enhanced_url
+        else:
+            # If verification fails, return the original URL and let the download attempt it
+            print(f"Media URL verification failed, returning original URL")
+            return original_url
+
+    except Exception as e:
+        print(f"Error enhancing media URL: {e}")
+        return original_url
 
 def get_media_urls(post_url):
     """
-    Main function called from Kotlin/Android app.
-    Returns JSON string with media URLs and metadata.
+    Enhanced main function with proper Instagram context handling
     """
     try:
         # Validate input
@@ -87,7 +150,6 @@ def get_media_urls(post_url):
                 "message": "Invalid URL provided"
             })
 
-        # Clean and validate URL
         post_url = post_url.strip()
         if 'instagram.com' not in post_url:
             return json.dumps({
@@ -95,7 +157,7 @@ def get_media_urls(post_url):
                 "message": "Not a valid Instagram URL"
             })
 
-        # Setup Instaloader
+        # Setup enhanced Instaloader
         L = setup_instaloader()
         if not L:
             return json.dumps({
@@ -103,7 +165,7 @@ def get_media_urls(post_url):
                 "message": "Failed to initialize Instagram loader"
             })
 
-        # Extract shortcode from URL
+        # Extract shortcode
         shortcode = extract_shortcode_from_url(post_url)
         if not shortcode:
             return json.dumps({
@@ -111,60 +173,76 @@ def get_media_urls(post_url):
                 "message": "Could not extract post ID from URL"
             })
 
-        # Fetch post with retries
+        # Add delay to avoid detection
+        time.sleep(random.uniform(2, 4))
+
+        # Fetch post with retry logic
         max_retries = 2
         for attempt in range(max_retries):
             try:
                 post = instaloader.Post.from_shortcode(L.context, shortcode)
                 break
             except Exception as e:
-                if attempt == max_retries - 1:  # Last attempt
-                    error_msg = str(e)
-                    if is_restricted_error(error_msg):
+                error_msg = str(e).lower()
+                if attempt == max_retries - 1:
+                    if any(keyword in error_msg for keyword in ['403', 'forbidden', 'rate limit', '429']):
+                        return json.dumps({
+                            "status": "rate_limited",
+                            "message": "Instagram is temporarily blocking requests. Please try again in a few minutes."
+                        })
+                    elif any(keyword in error_msg for keyword in ['private', 'login']):
                         return json.dumps({
                             "status": "private",
-                            "message": "Post is private, deleted, or requires login"
+                            "message": "Post is private or requires login"
                         })
-                    return json.dumps({
-                        "status": "error",
-                        "message": f"Failed to fetch post: {error_msg[:100]}"
-                    })
+                    else:
+                        return json.dumps({
+                            "status": "error",
+                            "message": f"Failed to fetch post: {str(e)[:100]}"
+                        })
+                time.sleep(random.uniform(5, 8))
                 continue
 
-        # Extract media information
+        # Extract media with enhanced URL processing
         media_items = []
         username = post.owner_username or "unknown_user"
 
         try:
-            # Handle different post types
             if post.typename == "GraphSidecar":
-                # Carousel post (multiple images/videos)
                 sidecar_nodes = list(post.get_sidecar_nodes())
-                for node in sidecar_nodes:
+                for i, node in enumerate(sidecar_nodes):
                     if node.is_video:
-                        media_url = get_highest_quality_url(node.video_url)
+                        original_url = node.video_url
                         media_type = "video"
                     else:
-                        media_url = get_highest_quality_url(node.display_url)
+                        original_url = node.display_url
                         media_type = "image"
 
-                    media_items.append({
-                        "url": media_url,
-                        "type": media_type
-                    })
+                    # Enhanced URL with proper context
+                    enhanced_url = get_enhanced_media_url(original_url, post_url)
 
+                    media_items.append({
+                        "url": enhanced_url,
+                        "type": media_type,
+                        "index": i + 1,
+                        "post_context": post_url  # Include original post URL for context
+                    })
             else:
-                # Single post (image or video)
                 if post.is_video:
-                    media_url = get_highest_quality_url(post.video_url)
+                    original_url = post.video_url
                     media_type = "video"
                 else:
-                    media_url = get_highest_quality_url(post.url)
+                    original_url = post.url
                     media_type = "image"
 
+                # Enhanced URL with proper context
+                enhanced_url = get_enhanced_media_url(original_url, post_url)
+
                 media_items.append({
-                    "url": media_url,
-                    "type": media_type
+                    "url": enhanced_url,
+                    "type": media_type,
+                    "index": 1,
+                    "post_context": post_url  # Include original post URL for context
                 })
 
         except Exception as e:
@@ -173,50 +251,58 @@ def get_media_urls(post_url):
                 "message": f"Failed to extract media: {str(e)[:100]}"
             })
 
-        # Validate we have media
         if not media_items:
             return json.dumps({
                 "status": "error",
                 "message": "No media found in this post"
             })
 
-        # Return successful result
         return json.dumps({
             "status": "success",
             "username": username,
             "media": media_items,
-            "caption": post.caption or "", # <-- UPDATED: Removed truncation
+            "media_count": len(media_items),
+            "caption": post.caption or "",
             "post_date": post.date_utc.isoformat() if hasattr(post, 'date_utc') else None,
             "likes": getattr(post, 'likes', 0),
-            "comments": getattr(post, 'comments', 0)
+            "comments": getattr(post, 'comments', 0),
+            "shortcode": shortcode,
+            "extracted_at": datetime.utcnow().isoformat(),
+            "post_url": post_url  # Include original post URL for download context
         }, ensure_ascii=False)
 
     except Exception as e:
-        # Catch-all error handler
         return json.dumps({
             "status": "error",
             "message": f"Unexpected error: {str(e)[:100]}"
         }, ensure_ascii=False)
 
+def extract_shortcode_from_url(url):
+    """Extract shortcode from Instagram URL"""
+    patterns = [
+        r'/p/([A-Za-z0-9_-]+)',
+        r'/reel/([A-Za-z0-9_-]+)',
+        r'/reels/([A-Za-z0-9_-]+)',
+        r'/tv/([A-Za-z0-9_-]+)',
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+    return None
+
 def get_meida_urls(post_url):
-    """
-    Backup function name with typo for compatibility.
-    This handles the error you're seeing.
-    """
+    """Backup function with typo for compatibility"""
     return get_media_urls(post_url)
 
-# For direct Python execution (testing)
 def main():
-    """For testing the script directly"""
     if len(sys.argv) > 1:
         url = sys.argv[1]
         result = get_media_urls(url)
         print(result)
     else:
-        # Test with a sample URL (replace with actual Instagram URL for testing)
-        test_url = "https://www.instagram.com/p/SAMPLE_POST_ID/"
-        print("Please provide an Instagram URL as argument")
-        print(f"Usage: python insta_downloader.py {test_url}")
+        print("Usage: python insta_downloader.py <instagram_url>")
 
 if __name__ == "__main__":
     main()
