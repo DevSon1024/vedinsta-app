@@ -20,7 +20,7 @@ import java.util.Date
 import java.util.Locale
 import android.media.MediaScannerConnection
 import com.devson.vedinsta.notification.VedInstaNotificationManager
-
+import com.devson.vedinsta.database.PostMediaManager
 
 class VedInstaApplication : Application() {
 
@@ -35,13 +35,11 @@ class VedInstaApplication : Application() {
     }
 
     /**
-     * Downloads files and returns list of successfully downloaded file paths
-     * This is used to save completed downloads to the database
+     * Downloads files to centralized folders and returns list of successfully downloaded file paths
      */
     suspend fun downloadFiles(context: Context, filesToDownload: List<ImageCard>, postId: String?): List<String> {
         val downloadedFiles = mutableListOf<String>()
         var downloadedCount = 0
-        val dirName = postId ?: System.currentTimeMillis().toString() // Use postId as directory name
 
         for (media in filesToDownload) {
             try {
@@ -52,9 +50,9 @@ class VedInstaApplication : Application() {
                 }
 
                 val filePath = if (directoryUriString != null) {
-                    downloadWithSAF(context, media, Uri.parse(directoryUriString), dirName)
+                    downloadWithSAFCentralized(context, media, Uri.parse(directoryUriString))
                 } else {
-                    downloadWithDownloadManager(context, media, dirName)
+                    downloadWithDownloadManagerCentralized(context, media)
                 }
 
                 if (filePath != null) {
@@ -62,7 +60,6 @@ class VedInstaApplication : Application() {
                     downloadedCount++
                 }
             } catch (e: Exception) {
-                // Log error but continue with other downloads
                 e.printStackTrace()
             }
         }
@@ -79,28 +76,23 @@ class VedInstaApplication : Application() {
     }
 
     /**
-     * Download using Storage Access Framework (SAF) and return file path
+     * Download using Storage Access Framework (SAF) to centralized folders
      */
-    private suspend fun downloadWithSAF(context: Context, media: ImageCard, directoryUri: Uri, postDirName: String): String? {
+    private suspend fun downloadWithSAFCentralized(context: Context, media: ImageCard, directoryUri: Uri): String? {
         return withContext(Dispatchers.IO) {
             try {
                 val directory = DocumentFile.fromTreeUri(context, directoryUri) ?: return@withContext null
-                // Create post-specific subdirectory
-                val postDir = directory.findFile(postDirName) ?: directory.createDirectory(postDirName) ?: return@withContext null
 
                 val mimeType = if (media.type == "video") "video/mp4" else "image/jpeg"
-                val fileExtension = if (media.type == "video") ".mp4" else ".jpg"
-                val timestamp = SimpleDateFormat("ddMMyyyyHHmmssSSS", Locale.US).format(Date())
-                val fileName = "${media.username}_175$timestamp$fileExtension"
+                val fileName = PostMediaManager.generateUniqueFileName(media.username, media.type)
 
-                val newFile = postDir.createFile(mimeType, fileName)
+                val newFile = directory.createFile(mimeType, fileName)
                 newFile?.uri?.let { fileUri ->
                     context.contentResolver.openOutputStream(fileUri)?.use { outputStream ->
                         URL(media.url).openStream().use { inputStream ->
                             inputStream.copyTo(outputStream)
                         }
                     }
-                    // Return the file URI as string path for database storage
                     return@withContext fileUri.toString()
                 }
                 null
@@ -112,44 +104,35 @@ class VedInstaApplication : Application() {
     }
 
     /**
-     * Download using DownloadManager and return file path
+     * Download using DownloadManager to centralized folders
      */
-    private suspend fun downloadWithDownloadManager(context: Context, media: ImageCard, postDirName: String): String? {
+    private suspend fun downloadWithDownloadManagerCentralized(context: Context, media: ImageCard): String? {
         return withContext(Dispatchers.IO) {
             try {
-                val fileExtension = if (media.type == "video") ".mp4" else ".jpg"
-                val timestamp = SimpleDateFormat("ddMMyyyyHHmmssSSS", Locale.US).format(Date())
-                val fileName = "${media.username}_${media.type}_$timestamp$fileExtension"
+                val fileName = PostMediaManager.generateUniqueFileName(media.username, media.type)
 
-                // Create VedInsta directory if it doesn't exist
-                val vedInstaDir = File(
-                    Environment.getExternalStoragePublicDirectory(
-                        if (media.type == "video") Environment.DIRECTORY_MOVIES else Environment.DIRECTORY_PICTURES
-                    ),
-                    "VedInsta"
-                )
-                // Create post-specific subdirectory
-                val postDir = File(vedInstaDir, postDirName)
-                if (!postDir.exists()) {
-                    postDir.mkdirs()
+                val targetDirectory = if (media.type == "video") {
+                    PostMediaManager.getVideoDirectory()
+                } else {
+                    PostMediaManager.getImageDirectory()
                 }
 
-                val file = File(postDir, fileName)
+                val file = File(targetDirectory, fileName)
 
-                // Download file directly instead of using DownloadManager for better control
+                // Download file directly
                 URL(media.url).openStream().use { inputStream ->
                     FileOutputStream(file).use { outputStream ->
                         inputStream.copyTo(outputStream)
                     }
                 }
 
-                // Notify DownloadManager about the downloaded file (optional, for gallery visibility)
-                try {
-                    val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-                    // You can add the file to DownloadManager's database if needed
-                } catch (e: Exception) {
-                    // Ignore DownloadManager errors, file is already downloaded
-                }
+                // Add to MediaStore for gallery visibility
+                MediaScannerConnection.scanFile(
+                    context,
+                    arrayOf(file.absolutePath),
+                    arrayOf(if (media.type == "video") "video/mp4" else "image/jpeg"),
+                    null
+                )
 
                 return@withContext file.absolutePath
             } catch (e: Exception) {
@@ -160,73 +143,8 @@ class VedInstaApplication : Application() {
     }
 
     /**
-     * Alternative method using DownloadManager for background downloads
-     * Returns estimated file path (may not be immediately available)
+     * Single-file download used for auto-download of single posts
      */
-    private fun downloadWithDownloadManagerBackground(context: Context, media: ImageCard): String? {
-        return try {
-            val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-            val uri = Uri.parse(media.url)
-            val fileExtension = if (media.type == "video") ".mp4" else ".jpg"
-            val timestamp = SimpleDateFormat("ddMMyyyyHHmmssSSS", Locale.US).format(Date())
-            val fileName = "${media.username}_175$timestamp$fileExtension"
-            val subDirectory = "VedInsta/"
-
-            val request = DownloadManager.Request(uri)
-                .setTitle(fileName)
-                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                .setDestinationInExternalPublicDir(
-                    if (media.type == "video") Environment.DIRECTORY_MOVIES else Environment.DIRECTORY_PICTURES,
-                    subDirectory + fileName
-                )
-
-            val downloadId = downloadManager.enqueue(request)
-
-            // Return estimated file path
-            val baseDir = Environment.getExternalStoragePublicDirectory(
-                if (media.type == "video") Environment.DIRECTORY_MOVIES else Environment.DIRECTORY_PICTURES
-            )
-            File(baseDir, subDirectory + fileName).absolutePath
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
-        }
-    }
-
-    /**
-     * Get app's private directory for caching thumbnails
-     */
-    fun getThumbnailCacheDir(context: Context): File {
-        val thumbnailDir = File(context.cacheDir, "thumbnails")
-        if (!thumbnailDir.exists()) {
-            thumbnailDir.mkdirs()
-        }
-        return thumbnailDir
-    }
-
-    /**
-     * Save thumbnail for quick access in the home screen
-     */
-    suspend fun saveThumbnail(context: Context, imageUrl: String, postId: String): String? {
-        return withContext(Dispatchers.IO) {
-            try {
-                val thumbnailDir = getThumbnailCacheDir(context)
-                val thumbnailFile = File(thumbnailDir, "$postId.jpg")
-
-                URL(imageUrl).openStream().use { inputStream ->
-                    FileOutputStream(thumbnailFile).use { outputStream ->
-                        inputStream.copyTo(outputStream)
-                    }
-                }
-
-                thumbnailFile.absolutePath
-            } catch (e: Exception) {
-                e.printStackTrace()
-                null
-            }
-        }
-    }
-    // Single-file download used for auto-download of single posts
     suspend fun downloadSingleFile(
         context: Context,
         mediaUrl: String,
@@ -237,13 +155,9 @@ class VedInstaApplication : Application() {
         return withContext(Dispatchers.IO) {
             val downloadedFiles = mutableListOf<String>()
             val notificationManager = VedInstaNotificationManager.getInstance(context)
-            val dirName = postId ?: System.currentTimeMillis().toString() // Use postId as directory name
 
             try {
-                // Create filename
-                val timestamp = SimpleDateFormat("ddyyyyHHmmSSS", Locale.US).format(Date())
-                val fileExtension = if (mediaType.lowercase() == "video") ".mp4" else ".jpg"
-                val fileName = "${username}_175$timestamp$fileExtension"
+                val fileName = PostMediaManager.generateUniqueFileName(username, mediaType)
 
                 // Show initial notification
                 val notificationId = notificationManager.showDownloadStarted(fileName)
@@ -257,9 +171,9 @@ class VedInstaApplication : Application() {
 
                 // Download with progress tracking
                 val savedPath = if (directoryUriString != null) {
-                    downloadSingleFileWithSAF(context, mediaUrl, fileName, Uri.parse(directoryUriString), notificationManager, notificationId, dirName)
+                    downloadSingleFileWithSAFCentralized(context, mediaUrl, fileName, Uri.parse(directoryUriString), notificationManager, notificationId)
                 } else {
-                    downloadSingleFileWithDefault(context, mediaUrl, fileName, mediaType, notificationManager, notificationId, dirName)
+                    downloadSingleFileWithDefaultCentralized(context, mediaUrl, fileName, mediaType, notificationManager, notificationId)
                 }
 
                 if (savedPath != null) {
@@ -277,12 +191,10 @@ class VedInstaApplication : Application() {
                         null
                     )
                 } else {
-                    // Show error notification
                     notificationManager.showDownloadError(fileName, "Download failed")
                 }
 
             } catch (e: Exception) {
-                // Show error notification
                 notificationManager.showDownloadError("Download", e.message ?: "Unknown error")
                 e.printStackTrace()
             }
@@ -290,24 +202,21 @@ class VedInstaApplication : Application() {
             downloadedFiles
         }
     }
-    private suspend fun downloadSingleFileWithSAF(
+
+    private suspend fun downloadSingleFileWithSAFCentralized(
         context: Context,
         mediaUrl: String,
         fileName: String,
         directoryUri: Uri,
         notificationManager: VedInstaNotificationManager,
-        notificationId: Int,
-        postDirName: String
+        notificationId: Int
     ): String? {
         return withContext(Dispatchers.IO) {
             try {
                 val directory = DocumentFile.fromTreeUri(context, directoryUri) ?: return@withContext null
-                // Create post-specific subdirectory
-                val postDir = directory.findFile(postDirName) ?: directory.createDirectory(postDirName) ?: return@withContext null
-
                 val mimeType = if (fileName.endsWith(".mp4")) "video/mp4" else "image/jpeg"
 
-                val newFile = postDir.createFile(mimeType, fileName)
+                val newFile = directory.createFile(mimeType, fileName)
                 newFile?.uri?.let { fileUri ->
                     context.contentResolver.openOutputStream(fileUri)?.use { outputStream ->
                         downloadWithProgress(mediaUrl, outputStream, notificationManager, notificationId, fileName)
@@ -322,31 +231,23 @@ class VedInstaApplication : Application() {
         }
     }
 
-    private suspend fun downloadSingleFileWithDefault(
+    private suspend fun downloadSingleFileWithDefaultCentralized(
         context: Context,
         mediaUrl: String,
         fileName: String,
         mediaType: String,
         notificationManager: VedInstaNotificationManager,
-        notificationId: Int,
-        postDirName: String
+        notificationId: Int
     ): String? {
         return withContext(Dispatchers.IO) {
             try {
-                // Create VedInsta directory if it doesn't exist
-                val vedInstaDir = File(
-                    Environment.getExternalStoragePublicDirectory(
-                        if (mediaType.lowercase() == "video") Environment.DIRECTORY_MOVIES else Environment.DIRECTORY_PICTURES
-                    ),
-                    "VedInsta"
-                )
-                // Create post-specific subdirectory
-                val postDir = File(vedInstaDir, postDirName)
-                if (!postDir.exists()) {
-                    postDir.mkdirs()
+                val targetDirectory = if (mediaType.lowercase() == "video") {
+                    PostMediaManager.getVideoDirectory()
+                } else {
+                    PostMediaManager.getImageDirectory()
                 }
 
-                val file = File(postDir, fileName)
+                val file = File(targetDirectory, fileName)
 
                 // Download with progress tracking
                 FileOutputStream(file).use { outputStream ->
@@ -386,11 +287,10 @@ class VedInstaApplication : Application() {
                     outputStream.write(buffer, 0, bytesRead)
                     totalBytesRead += bytesRead
 
-                    // Update progress every 5% or every 100KB to avoid too frequent updates
                     val progress = if (contentLength > 0) {
                         ((totalBytesRead * 100) / contentLength).toInt()
                     } else {
-                        -1 // Indeterminate progress
+                        -1
                     }
 
                     if (progress != lastProgressUpdate && (progress - lastProgressUpdate >= 5 || totalBytesRead % 102400 == 0L)) {
@@ -406,45 +306,42 @@ class VedInstaApplication : Application() {
         }
     }
 
-    private fun downloadFileToDefault(
-        context: Context,
-        url: String,
-        fileName: String,
-        mediaType: String
-    ): String? {
-        return try {
-            val directory = if (mediaType == "video") "Movies/VedInsta" else "Pictures/VedInsta"
-            val file = File(Environment.getExternalStorageDirectory(), "$directory/$fileName")
-            file.parentFile?.mkdirs()
+    /**
+     * Get app's private directory for caching thumbnails
+     */
+    fun getThumbnailCacheDir(context: Context): File {
+        val thumbnailDir = File(context.cacheDir, "thumbnails")
+        if (!thumbnailDir.exists()) {
+            thumbnailDir.mkdirs()
+        }
+        return thumbnailDir
+    }
 
-            val connection = URL(url).openConnection()
-            connection.connectTimeout = 10000
-            connection.readTimeout = 30000
+    /**
+     * Save thumbnail for quick access in the home screen
+     */
+    suspend fun saveThumbnail(context: Context, imageUrl: String, postId: String): String? {
+        return withContext(Dispatchers.IO) {
+            try {
+                val thumbnailDir = getThumbnailCacheDir(context)
+                val thumbnailFile = File(thumbnailDir, "$postId.jpg")
 
-            val inputStream = connection.getInputStream()
-            val outputStream = FileOutputStream(file)
+                URL(imageUrl).openStream().use { inputStream ->
+                    FileOutputStream(thumbnailFile).use { outputStream ->
+                        inputStream.copyTo(outputStream)
+                    }
+                }
 
-            inputStream.copyTo(outputStream)
-
-            inputStream.close()
-            outputStream.close()
-
-            // Add to MediaStore
-            MediaScannerConnection.scanFile(
-                context,
-                arrayOf(file.absolutePath),
-                arrayOf(if (mediaType == "video") "video/mp4" else "image/jpeg"),
+                thumbnailFile.absolutePath
+            } catch (e: Exception) {
+                e.printStackTrace()
                 null
-            )
-
-            file.absolutePath
-        } catch (e: Exception) {
-            null
+            }
         }
     }
 
     /**
-     * Clean up old thumbnail cache files (optional - call periodically)
+     * Clean up old thumbnail cache files
      */
     fun cleanThumbnailCache(context: Context, maxAgeMillis: Long = 7 * 24 * 60 * 60 * 1000L) {
         try {

@@ -3,15 +3,17 @@ package com.devson.vedinsta.database
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import android.content.Context
 
 @Database(
     entities = [DownloadedPost::class, NotificationEntity::class],
-    version = 3, // Increment version to 3
+    version = 2, // Increment version for schema change
     exportSchema = false
 )
+@TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun downloadedPostDao(): DownloadedPostDao
     abstract fun notificationDao(): NotificationDao
@@ -20,32 +22,10 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
-        // Migration from version 1 to 2
-        private val MIGRATION_1_2 = object : Migration(1, 2) {
+        // Migration from version 1 to 2 to add mediaPaths column
+        val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL("""
-                    CREATE TABLE IF NOT EXISTS notifications (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-                        title TEXT NOT NULL,
-                        message TEXT NOT NULL,
-                        type TEXT NOT NULL,
-                        timestamp INTEGER NOT NULL,
-                        isRead INTEGER NOT NULL DEFAULT 0,
-                        postId TEXT,
-                        postUrl TEXT,
-                        filePaths TEXT,
-                        thumbnailPath TEXT,
-                        priority TEXT NOT NULL DEFAULT 'NORMAL'
-                    )
-                """)
-            }
-        }
-
-        // Migration from version 2 to 3
-        private val MIGRATION_2_3 = object : Migration(2, 3) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL("ALTER TABLE downloaded_posts ADD COLUMN username TEXT NOT NULL DEFAULT 'unknown'")
-                database.execSQL("ALTER TABLE downloaded_posts ADD COLUMN caption TEXT")
+                database.execSQL("ALTER TABLE downloaded_posts ADD COLUMN mediaPaths TEXT NOT NULL DEFAULT '[]'")
             }
         }
 
@@ -54,9 +34,9 @@ abstract class AppDatabase : RoomDatabase() {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
-                    "vedinsta_database"
+                    "vedInsta_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3) // Add new migration
+                    .addMigrations(MIGRATION_1_2)
                     .build()
                 INSTANCE = instance
                 instance

@@ -129,7 +129,7 @@ class DownloadActivity : AppCompatActivity() {
                     }
 
                     if (downloadedFiles.isNotEmpty()) {
-                        // Save to database
+                        // Save to database with media paths
                         saveDownloadedPost(postId, postUrl ?: "", downloadedFiles)
 
                         // Show completion notification
@@ -178,15 +178,12 @@ class DownloadActivity : AppCompatActivity() {
         // Instagram URL patterns for highest quality
         return when {
             originalUrl.contains("instagram.com") && originalUrl.contains("_n.jpg") -> {
-                // Replace _n.jpg with original quality
                 originalUrl.replace("_n.jpg", ".jpg")
             }
             originalUrl.contains("instagram.com") && originalUrl.contains("_n.mp4") -> {
-                // Replace _n.mp4 with original quality
                 originalUrl.replace("_n.mp4", ".mp4")
             }
             originalUrl.contains("scontent") -> {
-                // Add quality parameter for scontent URLs
                 if (originalUrl.contains("?")) {
                     "$originalUrl&_nc_ohc=original"
                 } else {
@@ -248,7 +245,8 @@ class DownloadActivity : AppCompatActivity() {
                 downloadDate = System.currentTimeMillis(),
                 hasVideo = downloadedFiles.any { it.endsWith(".mp4") },
                 username = postUsername,
-                caption = postCaption
+                caption = postCaption,
+                mediaPaths = downloadedFiles // Store all downloaded file paths
             )
 
             viewModel.insertDownloadedPost(downloadedPost)

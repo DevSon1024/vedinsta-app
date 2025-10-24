@@ -49,7 +49,7 @@ android {
 chaquopy {
     defaultConfig {
         version = "3.10"
-        buildPython("C:\\Users\\DEVENDRA\\AppData\\Local\\Programs\\Python\\Python310\\python.exe")
+        buildPython("C:\\Users\\DEVENDRA\\AppData\\Local\\Programs\\Python\\Python313\\python.exe")
 
         // Add Python packages here
         pip {
@@ -88,6 +88,9 @@ dependencies {
 
     // WorkManager for background downloads
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+
+    implementation("com.google.code.gson:gson:2.11.0")
+
 
     // Notification and Startup
     implementation("androidx.startup:startup-runtime:1.2.0")

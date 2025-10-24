@@ -7,12 +7,17 @@ import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.PagerSnapHelper
 import androidx.recyclerview.widget.RecyclerView
 import com.devson.vedinsta.adapters.MediaCarouselAdapter
+import com.devson.vedinsta.database.AppDatabase
 import com.devson.vedinsta.database.DownloadedPost
 import com.devson.vedinsta.databinding.ActivityPostViewBinding
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -54,9 +59,11 @@ class PostViewActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         extractPostData()
-        setupRecyclerView() // Set up RecyclerView before calling loadMediaFiles
+        setupRecyclerView()
         setupClickListeners()
         setupPostInfo()
+        // Load the canonical media list for this post from Room
+        loadMediaFilesFromDatabase()
     }
 
     private fun extractPostData() {
@@ -77,45 +84,23 @@ class PostViewActivity : AppCompatActivity() {
             downloadDate = downloadDate,
             hasVideo = hasVideo,
             username = username,
-            caption = caption
+            caption = caption,
+            mediaPaths = currentPost?.mediaPaths ?: emptyList()
         )
-
-        // Load media files but don't update counter yet (RecyclerView not set up)
-        loadMediaFilesOnly()
-    }
-
-    private fun loadMediaFilesOnly() {
-        val post = currentPost ?: return
-        val thumbnailFile = File(post.thumbnailPath)
-        val parentDir = thumbnailFile.parentFile ?: return
-
-        mediaFiles = parentDir.listFiles { file ->
-            val name = file.name.lowercase()
-            name.endsWith(".jpg") || name.endsWith(".jpeg") ||
-                    name.endsWith(".png") || name.endsWith(".mp4")
-        }?.sortedBy { it.name } ?: emptyList()
-
-        // Don't update counter here - RecyclerView not ready yet
     }
 
     private fun setupRecyclerView() {
         mediaAdapter = MediaCarouselAdapter(
             mediaFiles = mediaFiles,
-            onMediaClick = { /* No action needed - removed fullscreen */ },
-            onVideoPlayPause = { isPlaying ->
-                // Handle video play/pause if needed
-            }
+            onMediaClick = { /* optional */ },
+            onVideoPlayPause = { _ -> }
         )
 
         binding.rvMediaCarousel.apply {
             adapter = mediaAdapter
             layoutManager = LinearLayoutManager(this@PostViewActivity, LinearLayoutManager.HORIZONTAL, false)
-
-            // Add snap helper for smooth paging
             val snapHelper = PagerSnapHelper()
             snapHelper.attachToRecyclerView(this)
-
-            // Add scroll listener to update counter
             addOnScrollListener(object : RecyclerView.OnScrollListener() {
                 override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
                     super.onScrollStateChanged(recyclerView, newState)
@@ -125,27 +110,14 @@ class PostViewActivity : AppCompatActivity() {
                 }
             })
         }
-
-        // Now that RecyclerView is set up, update the counter
         updateMediaCounter()
     }
 
     private fun setupClickListeners() {
-        binding.btnBack.setOnClickListener {
-            finish()
-        }
-
-        binding.btnShare.setOnClickListener {
-            shareCurrentMedia()
-        }
-
-        binding.btnDelete.setOnClickListener {
-            deletePost()
-        }
-
-        binding.btnCopyCaption.setOnClickListener {
-            copyCaptionToClipboard()
-        }
+        binding.btnBack.setOnClickListener { finish() }
+        binding.btnShare.setOnClickListener { shareCurrentMedia() }
+        binding.btnDelete.setOnClickListener { deletePost() }
+        binding.btnCopyCaption.setOnClickListener { copyCaptionToClipboard() }
     }
 
     private fun copyCaptionToClipboard() {
@@ -162,37 +134,47 @@ class PostViewActivity : AppCompatActivity() {
 
     private fun setupPostInfo() {
         val post = currentPost ?: return
-
-        // Set username
         binding.tvUsername.text = "@${post.username}"
-
-        // Set caption
         binding.tvPostCaption.text = post.caption ?: ""
-
-        // Format download date
         val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
         val formattedDate = dateFormat.format(Date(post.downloadDate))
         binding.tvDownloadDate.text = "Downloaded on $formattedDate"
-
-        // Calculate and show file size
         calculateTotalFileSize()
-
-        // Format post date (sample - you can calculate based on actual post date)
         binding.tvPostDate.text = "2 days ago"
+    }
+
+    private fun loadMediaFilesFromDatabase() {
+        val postId = currentPost?.postId ?: return
+        lifecycleScope.launch(Dispatchers.IO) {
+            val db = AppDatabase.getDatabase(applicationContext)
+            val post = db.downloadedPostDao().getPostById(postId)
+            val paths = post?.mediaPaths ?: emptyList()
+            val files = paths.mapNotNull { p -> runCatching { File(p) }.getOrNull() }.filter { it.exists() }
+
+            withContext(Dispatchers.Main) {
+                currentPost = post ?: currentPost
+                mediaFiles = files
+                mediaAdapter = MediaCarouselAdapter(
+                    mediaFiles = mediaFiles,
+                    onMediaClick = { /* optional */ },
+                    onVideoPlayPause = { _ -> }
+                )
+                binding.rvMediaCarousel.adapter = mediaAdapter
+
+                updateMediaCounter()
+                calculateTotalFileSize()
+            }
+        }
     }
 
     private fun calculateTotalFileSize() {
         var totalSize = 0L
-        mediaFiles.forEach { file ->
-            totalSize += file.length()
-        }
-
+        mediaFiles.forEach { file -> totalSize += file.length() }
         val sizeInMB = (totalSize / (1024.0 * 1024.0))
         binding.tvFileSize.text = String.format("%.1f MB", sizeInMB)
     }
 
     private fun updateMediaCounter() {
-        // Add null check to prevent crashes
         val layoutManager = binding.rvMediaCarousel.layoutManager as? LinearLayoutManager
         if (layoutManager != null) {
             val currentPosition = layoutManager.findFirstCompletelyVisibleItemPosition()
@@ -200,33 +182,23 @@ class PostViewActivity : AppCompatActivity() {
                 val position = currentPosition + 1
                 binding.tvMediaCounter.text = "$position / ${mediaFiles.size}"
             } else {
-                // Default to showing first item
                 binding.tvMediaCounter.text = "1 / ${mediaFiles.size}"
             }
         } else {
-            // Fallback if layout manager is not ready
             binding.tvMediaCounter.text = "1 / ${mediaFiles.size}"
         }
     }
 
     private fun shareCurrentMedia() {
         if (mediaFiles.isEmpty()) return
-
         val layoutManager = binding.rvMediaCarousel.layoutManager as? LinearLayoutManager
         val currentPosition = layoutManager?.findFirstCompletelyVisibleItemPosition() ?: 0
-
         if (currentPosition != RecyclerView.NO_POSITION && currentPosition < mediaFiles.size) {
             val currentFile = mediaFiles[currentPosition]
-
             try {
-                // Create share intent
                 val shareIntent = Intent().apply {
                     action = Intent.ACTION_SEND
-                    type = if (currentFile.extension.lowercase() in listOf("mp4", "mov", "avi")) {
-                        "video/*"
-                    } else {
-                        "image/*"
-                    }
+                    type = if (currentFile.extension.lowercase() in listOf("mp4", "mov", "avi")) "video/*" else "image/*"
                     putExtra(Intent.EXTRA_STREAM, androidx.core.content.FileProvider.getUriForFile(
                         this@PostViewActivity,
                         "${applicationContext.packageName}.fileprovider",
@@ -234,40 +206,31 @@ class PostViewActivity : AppCompatActivity() {
                     ))
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
-
                 startActivity(Intent.createChooser(shareIntent, "Share media"))
             } catch (e: Exception) {
                 e.printStackTrace()
-                // Handle sharing error - maybe show a Toast
             }
         }
     }
 
     private fun deletePost() {
         if (mediaFiles.isEmpty()) return
-
-        // Show confirmation dialog
         androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle("Delete Post")
             .setMessage("Are you sure you want to delete this post? This action cannot be undone.")
             .setPositiveButton("Delete") { _, _ ->
-                // Delete files and close activity
-                mediaFiles.forEach { file ->
-                    try {
-                        file.delete()
-                    } catch (e: Exception) {
-                        e.printStackTrace()
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val db = AppDatabase.getDatabase(applicationContext)
+                    val post = currentPost ?: return@launch
+                    // Delete files from disk
+                    mediaFiles.forEach { runCatching { it.delete() } }
+                    // Remove DB row
+                    db.downloadedPostDao().deleteByPostId(post.postId)
+                    withContext(Dispatchers.Main) {
+                        setResult(RESULT_OK)
+                        finish()
                     }
                 }
-                // Delete parent directory if empty
-                mediaFiles.firstOrNull()?.parentFile?.delete()
-
-
-                // Delete from database (you'll need to implement this)
-                // deletePostFromDatabase()
-
-                setResult(RESULT_OK)
-                finish()
             }
             .setNegativeButton("Cancel", null)
             .show()
