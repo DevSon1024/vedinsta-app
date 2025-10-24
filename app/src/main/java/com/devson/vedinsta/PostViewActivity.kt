@@ -31,9 +31,8 @@ class PostViewActivity : AppCompatActivity() {
     private var currentPost: DownloadedPost? = null
     private var mediaFiles: MutableList<File> = mutableListOf()
 
-    private val TAG = "PostViewActivity"
-
     companion object {
+        private const val TAG = "PostViewActivity"
         const val EXTRA_POST_ID = "post_id"
         const val EXTRA_POST_URL = "post_url"
         const val EXTRA_THUMBNAIL_PATH = "thumbnail_path"
@@ -62,35 +61,34 @@ class PostViewActivity : AppCompatActivity() {
         binding = ActivityPostViewBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        Log.d(TAG, "onCreate started")
+        Log.d(TAG, "PostViewActivity onCreate started")
 
         extractPostData()
         setupRecyclerView()
         setupClickListeners()
         setupPostInfo()
-
-        // Load media files - try both database and fallback methods
-        loadMediaFiles()
+        loadMediaFilesFromDatabase()
     }
 
     private fun extractPostData() {
         val postId = intent.getStringExtra(EXTRA_POST_ID)
+        Log.d(TAG, "Extracting post data for postId: $postId")
+
+        if (postId == null) {
+            Log.e(TAG, "PostId is null, finishing activity")
+            finish()
+            return
+        }
+
         val postUrl = intent.getStringExtra(EXTRA_POST_URL) ?: ""
-        val thumbnailPath = intent.getStringExtra(EXTRA_THUMBNAIL_PATH)
+        val thumbnailPath = intent.getStringExtra(EXTRA_THUMBNAIL_PATH) ?: ""
         val totalImages = intent.getIntExtra(EXTRA_TOTAL_IMAGES, 1)
         val hasVideo = intent.getBooleanExtra(EXTRA_HAS_VIDEO, false)
         val downloadDate = intent.getLongExtra(EXTRA_DOWNLOAD_DATE, System.currentTimeMillis())
         val username = intent.getStringExtra(EXTRA_USERNAME) ?: "unknown"
         val caption = intent.getStringExtra(EXTRA_CAPTION)
 
-        Log.d(TAG, "Extracted data - PostId: $postId, ThumbnailPath: $thumbnailPath, Username: $username")
-
-        if (postId == null || thumbnailPath == null) {
-            Log.e(TAG, "Missing required data - PostId: $postId, ThumbnailPath: $thumbnailPath")
-            Toast.makeText(this, "Error: Missing post data", Toast.LENGTH_SHORT).show()
-            finish()
-            return
-        }
+        Log.d(TAG, "Post data - ID: $postId, Username: $username, TotalImages: $totalImages, HasVideo: $hasVideo")
 
         currentPost = DownloadedPost(
             postId = postId,
@@ -106,10 +104,16 @@ class PostViewActivity : AppCompatActivity() {
     }
 
     private fun setupRecyclerView() {
+        Log.d(TAG, "Setting up RecyclerView")
+
         mediaAdapter = MediaCarouselAdapter(
             mediaFiles = mediaFiles,
-            onMediaClick = { },
-            onVideoPlayPause = { }
+            onMediaClick = {
+                Log.d(TAG, "Media clicked")
+            },
+            onVideoPlayPause = { isPlaying ->
+                Log.d(TAG, "Video play/pause: $isPlaying")
+            }
         )
 
         binding.rvMediaCarousel.apply {
@@ -128,13 +132,28 @@ class PostViewActivity : AppCompatActivity() {
                 }
             })
         }
+
+        updateMediaCounter()
+        Log.d(TAG, "RecyclerView setup complete")
     }
 
     private fun setupClickListeners() {
-        binding.btnBack.setOnClickListener { finish() }
-        binding.btnShare.setOnClickListener { shareCurrentMedia() }
-        binding.btnDelete.setOnClickListener { deletePost() }
-        binding.btnCopyCaption.setOnClickListener { copyCaptionToClipboard() }
+        binding.btnBack.setOnClickListener {
+            Log.d(TAG, "Back button clicked")
+            finish()
+        }
+        binding.btnShare.setOnClickListener {
+            Log.d(TAG, "Share button clicked")
+            shareCurrentMedia()
+        }
+        binding.btnDelete.setOnClickListener {
+            Log.d(TAG, "Delete button clicked")
+            deletePost()
+        }
+        binding.btnCopyCaption.setOnClickListener {
+            Log.d(TAG, "Copy caption clicked")
+            copyCaptionToClipboard()
+        }
     }
 
     private fun copyCaptionToClipboard() {
@@ -151,143 +170,123 @@ class PostViewActivity : AppCompatActivity() {
 
     private fun setupPostInfo() {
         val post = currentPost ?: return
+        Log.d(TAG, "Setting up post info for: ${post.username}")
+
         binding.tvUsername.text = "@${post.username}"
         binding.tvPostCaption.text = post.caption ?: ""
+
         val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
         val formattedDate = dateFormat.format(Date(post.downloadDate))
         binding.tvDownloadDate.text = "Downloaded on $formattedDate"
-        binding.tvPostDate.text = "2 days ago"
     }
 
-    private fun loadMediaFiles() {
-        val postId = currentPost?.postId ?: return
-        Log.d(TAG, "Loading media files for post: $postId")
+    private fun loadMediaFilesFromDatabase() {
+        val postId = currentPost?.postId
+        if (postId == null) {
+            Log.e(TAG, "PostId is null, cannot load media")
+            return
+        }
+
+        Log.d(TAG, "Loading media files ONLY from database for postId: $postId")
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                // First, try to load from database
-                val dbFiles = loadFromDatabase(postId)
+                val db = AppDatabase.getDatabase(applicationContext)
+                val post = db.downloadedPostDao().getPostById(postId)
 
-                if (dbFiles.isNotEmpty()) {
-                    Log.d(TAG, "Loaded ${dbFiles.size} files from database")
-                    updateUI(dbFiles)
-                } else {
-                    Log.w(TAG, "No files found in database, trying fallback method")
-                    // Fallback: try to load from the old folder structure or thumbnail directory
-                    val fallbackFiles = loadFromFallback()
-                    updateUI(fallbackFiles)
+                Log.d(TAG, "Post retrieved from DB: $post")
+
+                if (post == null) {
+                    Log.w(TAG, "No post found in database for ID: $postId")
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@PostViewActivity, "Post not found in database", Toast.LENGTH_SHORT).show()
+                        finish()
+                    }
+                    return@launch
+                }
+
+                val paths = post.mediaPaths
+                Log.d(TAG, "STRICT - Media paths from DB for postId $postId: $paths")
+                Log.d(TAG, "STRICT - Number of media paths: ${paths.size}")
+
+                if (paths.isEmpty()) {
+                    Log.w(TAG, "STRICT - No media paths found for post $postId")
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@PostViewActivity, "No media files stored for this post", Toast.LENGTH_LONG).show()
+                        mediaFiles.clear()
+                        updateUIWithFiles()
+                    }
+                    return@launch
+                }
+
+                val validFiles = mutableListOf<File>()
+
+                for (path in paths) {
+                    Log.d(TAG, "STRICT - Processing path for postId $postId: $path")
+
+                    try {
+                        if (path.startsWith("content://")) {
+                            Log.d(TAG, "STRICT - Skipping content URI for postId $postId: $path")
+                            continue
+                        }
+
+                        val file = File(path)
+                        Log.d(TAG, "STRICT - File for postId $postId: ${file.absolutePath}")
+                        Log.d(TAG, "STRICT - File exists: ${file.exists()}, canRead: ${file.canRead()}, size: ${file.length()}")
+
+                        if (file.exists() && file.canRead() && file.length() > 0) {
+                            validFiles.add(file)
+                            Log.d(TAG, "STRICT - Added valid file for postId $postId: ${file.name}")
+                        } else {
+                            Log.w(TAG, "STRICT - Invalid file for postId $postId: ${file.absolutePath}")
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "STRICT - Error processing path for postId $postId: $path", e)
+                    }
+                }
+
+                withContext(Dispatchers.Main) {
+                    Log.d(TAG, "STRICT - Final: Updating UI for postId $postId with ${validFiles.size} valid files")
+
+                    currentPost = post
+                    mediaFiles.clear()
+                    mediaFiles.addAll(validFiles)
+
+                    updateUIWithFiles()
                 }
 
             } catch (e: Exception) {
-                Log.e(TAG, "Error loading media files", e)
+                Log.e(TAG, "STRICT - Error loading media from database for postId $postId", e)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@PostViewActivity, "Error loading media files: ${e.message}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@PostViewActivity, "Error loading media files: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
         }
     }
 
-    private suspend fun loadFromDatabase(postId: String): List<File> {
-        return try {
-            val db = AppDatabase.getDatabase(applicationContext)
-            val post = db.downloadedPostDao().getPostById(postId)
+    private fun updateUIWithFiles() {
+        Log.d(TAG, "Updating UI with ${mediaFiles.size} files")
 
-            Log.d(TAG, "Database post found: ${post != null}")
-            Log.d(TAG, "Media paths from DB: ${post?.mediaPaths}")
-
-            val paths = post?.mediaPaths ?: emptyList()
-            val validFiles = mutableListOf<File>()
-
-            for (path in paths) {
-                Log.d(TAG, "Processing path: $path")
-
-                val file = when {
-                    path.startsWith("content://") -> {
-                        Log.d(TAG, "Skipping content URI: $path")
-                        continue // Skip content URIs for now
-                    }
-                    else -> File(path)
-                }
-
-                if (file.exists() && file.canRead()) {
-                    validFiles.add(file)
-                    Log.d(TAG, "Added valid file: ${file.absolutePath}")
-                } else {
-                    Log.w(TAG, "File not accessible: $path (exists: ${file.exists()}, canRead: ${file.canRead()})")
-                }
+        // Recreate adapter with new data
+        mediaAdapter = MediaCarouselAdapter(
+            mediaFiles = mediaFiles,
+            onMediaClick = {
+                Log.d(TAG, "Media clicked in updated adapter")
+            },
+            onVideoPlayPause = { isPlaying ->
+                Log.d(TAG, "Video play/pause in updated adapter: $isPlaying")
             }
+        )
 
-            validFiles
-        } catch (e: Exception) {
-            Log.e(TAG, "Database loading failed", e)
-            emptyList()
-        }
-    }
+        binding.rvMediaCarousel.adapter = mediaAdapter
+        updateMediaCounter()
+        calculateTotalFileSize()
 
-    private suspend fun loadFromFallback(): List<File> {
-        return try {
-            val post = currentPost ?: return emptyList()
-            val thumbnailFile = File(post.thumbnailPath)
-
-            Log.d(TAG, "Fallback: Using thumbnail path: ${post.thumbnailPath}")
-            Log.d(TAG, "Thumbnail file exists: ${thumbnailFile.exists()}")
-
-            val parentDir = thumbnailFile.parentFile
-            Log.d(TAG, "Parent directory: ${parentDir?.absolutePath}")
-            Log.d(TAG, "Parent directory exists: ${parentDir?.exists()}")
-
-            if (parentDir?.exists() == true) {
-                val files = parentDir.listFiles { file ->
-                    val name = file.name.lowercase()
-                    name.endsWith(".jpg") || name.endsWith(".jpeg") ||
-                            name.endsWith(".png") || name.endsWith(".mp4")
-                }?.sortedBy { it.name } ?: emptyList()
-
-                Log.d(TAG, "Fallback found ${files.size} files in directory")
-                files.forEach { Log.d(TAG, "Fallback file: ${it.absolutePath}") }
-
-                files
-            } else {
-                Log.w(TAG, "Fallback: Parent directory not accessible")
-                // Last resort: try to find the thumbnail file itself
-                if (thumbnailFile.exists()) {
-                    Log.d(TAG, "Using thumbnail file only")
-                    listOf(thumbnailFile)
-                } else {
-                    Log.e(TAG, "Even thumbnail file is not accessible")
-                    emptyList()
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Fallback loading failed", e)
-            emptyList()
-        }
-    }
-
-    private suspend fun updateUI(files: List<File>) {
-        withContext(Dispatchers.Main) {
-            Log.d(TAG, "Updating UI with ${files.size} files")
-
-            mediaFiles.clear()
-            mediaFiles.addAll(files)
-
-            // Recreate adapter
-            mediaAdapter = MediaCarouselAdapter(
-                mediaFiles = mediaFiles,
-                onMediaClick = { },
-                onVideoPlayPause = { }
-            )
-
-            binding.rvMediaCarousel.adapter = mediaAdapter
-            updateMediaCounter()
-            calculateTotalFileSize()
-
-            if (mediaFiles.isEmpty()) {
-                Toast.makeText(this@PostViewActivity, "No media files found for this post", Toast.LENGTH_SHORT).show()
-                Log.w(TAG, "No media files to display")
-            } else {
-                Log.d(TAG, "Successfully loaded ${mediaFiles.size} media files")
-            }
+        if (mediaFiles.isEmpty()) {
+            Log.w(TAG, "No valid media files found")
+            Toast.makeText(this, "No media files found for this post", Toast.LENGTH_LONG).show()
+        } else {
+            Log.d(TAG, "Successfully loaded ${mediaFiles.size} media files")
         }
     }
 
@@ -302,6 +301,7 @@ class PostViewActivity : AppCompatActivity() {
         }
         val sizeInMB = (totalSize / (1024.0 * 1024.0))
         binding.tvFileSize.text = String.format("%.1f MB", sizeInMB)
+        Log.d(TAG, "Total file size calculated: %.1f MB".format(sizeInMB))
     }
 
     private fun updateMediaCounter() {
@@ -376,11 +376,14 @@ class PostViewActivity : AppCompatActivity() {
                         val db = AppDatabase.getDatabase(applicationContext)
                         val post = currentPost ?: return@launch
 
+                        Log.d(TAG, "Deleting post: ${post.postId}")
+
                         // Delete files from disk
+                        var deletedCount = 0
                         mediaFiles.forEach { file ->
                             try {
-                                if (file.exists()) {
-                                    file.delete()
+                                if (file.exists() && file.delete()) {
+                                    deletedCount++
                                     Log.d(TAG, "Deleted file: ${file.absolutePath}")
                                 }
                             } catch (e: Exception) {
@@ -390,16 +393,17 @@ class PostViewActivity : AppCompatActivity() {
 
                         // Remove DB row
                         db.downloadedPostDao().deleteByPostId(post.postId)
+                        Log.d(TAG, "Deleted post from database: ${post.postId}")
 
                         withContext(Dispatchers.Main) {
-                            Toast.makeText(this@PostViewActivity, "Post deleted successfully", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this@PostViewActivity, "Post deleted successfully ($deletedCount files)", Toast.LENGTH_SHORT).show()
                             setResult(RESULT_OK)
                             finish()
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "Error deleting post", e)
                         withContext(Dispatchers.Main) {
-                            Toast.makeText(this@PostViewActivity, "Error deleting post", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this@PostViewActivity, "Error deleting post: ${e.message}", Toast.LENGTH_SHORT).show()
                         }
                     }
                 }
