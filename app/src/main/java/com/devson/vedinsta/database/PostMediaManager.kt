@@ -9,19 +9,17 @@ class PostMediaManager {
 
     companion object {
         private const val VEDINSTA_FOLDER = "VedInsta"
-        private const val IMAGES_FOLDER = "Images"
-        private const val VIDEOS_FOLDER = "Videos"
 
         fun getImageDirectory(): File {
             val picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
-            return File(picturesDir, "$VEDINSTA_FOLDER/$IMAGES_FOLDER").apply {
+            return File(picturesDir, "$VEDINSTA_FOLDER").apply {
                 if (!exists()) mkdirs()
             }
         }
 
         fun getVideoDirectory(): File {
             val moviesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
-            return File(moviesDir, "$VEDINSTA_FOLDER/$VIDEOS_FOLDER").apply {
+            return File(moviesDir, "$VEDINSTA_FOLDER").apply {
                 if (!exists()) mkdirs()
             }
         }
