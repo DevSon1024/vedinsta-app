@@ -6,10 +6,16 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.TextPaint
+import android.text.method.LinkMovementMethod
+import android.text.style.ClickableSpan
 import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.PagerSnapHelper
@@ -32,6 +38,10 @@ class PostViewActivity : AppCompatActivity() {
     private var currentPost: DownloadedPost? = null
     private var mediaFiles: MutableList<File> = mutableListOf()
     private var currentMediaPosition = 0
+
+    // Caption expansion state
+    private var isCaptionExpanded = false
+    private val maxCaptionLength = 100 // Maximum characters to show when collapsed
 
     companion object {
         private const val TAG = "PostViewActivity"
@@ -111,7 +121,9 @@ class PostViewActivity : AppCompatActivity() {
         mediaAdapter = MediaCarouselAdapter(
             mediaFiles = mediaFiles,
             onMediaClick = {
-                Log.d(TAG, "Media clicked")
+                Log.d(TAG, "Media clicked - toggling full screen")
+                // Toggle between fit modes when image is clicked
+                toggleImageScaleMode()
             },
             onVideoPlayPause = { isPlaying ->
                 Log.d(TAG, "Video play/pause: $isPlaying")
@@ -137,6 +149,11 @@ class PostViewActivity : AppCompatActivity() {
 
         updateMediaCounter()
         Log.d(TAG, "RecyclerView setup complete")
+    }
+
+    // New method to toggle between different image scale modes
+    private fun toggleImageScaleMode() {
+        mediaAdapter.toggleImageScaleMode()
     }
 
     private fun setupClickListeners() {
@@ -175,11 +192,73 @@ class PostViewActivity : AppCompatActivity() {
         Log.d(TAG, "Setting up post info for: ${post.username}")
 
         binding.tvUsername.text = "@${post.username}"
-        binding.tvPostCaption.text = post.caption ?: ""
+
+        // Setup expandable caption
+        setupExpandableCaption(post.caption)
 
         val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
         val formattedDate = dateFormat.format(Date(post.downloadDate))
         binding.tvDownloadDate.text = "Downloaded on $formattedDate"
+    }
+
+    private fun setupExpandableCaption(caption: String?) {
+        if (caption.isNullOrEmpty()) {
+            binding.tvPostCaption.text = ""
+            binding.tvPostCaption.visibility = View.GONE
+            return
+        }
+
+        binding.tvPostCaption.visibility = View.VISIBLE
+
+        if (caption.length <= maxCaptionLength) {
+            // Caption is short enough, show it fully
+            binding.tvPostCaption.text = caption
+            binding.tvPostCaption.movementMethod = null
+        } else {
+            // Caption is long, show truncated version with "... more"
+            updateCaptionDisplay(caption)
+        }
+    }
+
+    private fun updateCaptionDisplay(fullCaption: String) {
+        val captionToShow = if (isCaptionExpanded) {
+            // Show full caption with "... less" option
+            createClickableCaption(fullCaption, " ... less", false)
+        } else {
+            // Show truncated caption with "... more" option
+            val truncatedCaption = fullCaption.take(maxCaptionLength)
+            createClickableCaption(truncatedCaption, " ... more", true)
+        }
+
+        binding.tvPostCaption.text = captionToShow
+        binding.tvPostCaption.movementMethod = LinkMovementMethod.getInstance()
+    }
+
+    private fun createClickableCaption(text: String, clickableText: String, isExpanding: Boolean): SpannableString {
+        val fullText = text + clickableText
+        val spannableString = SpannableString(fullText)
+
+        val clickableSpan = object : ClickableSpan() {
+            override fun onClick(widget: View) {
+                isCaptionExpanded = isExpanding
+                currentPost?.caption?.let { updateCaptionDisplay(it) }
+
+                // Notify media adapter about caption state change to adjust image size
+                mediaAdapter.setCaptionExpanded(isCaptionExpanded)
+            }
+
+            override fun updateDrawState(ds: TextPaint) {
+                super.updateDrawState(ds)
+                ds.color = ContextCompat.getColor(this@PostViewActivity, android.R.color.holo_blue_light)
+                ds.isUnderlineText = false
+            }
+        }
+
+        val startIndex = text.length
+        val endIndex = fullText.length
+        spannableString.setSpan(clickableSpan, startIndex, endIndex, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+
+        return spannableString
     }
 
     private fun loadMediaFilesFromDatabase() {
@@ -273,12 +352,16 @@ class PostViewActivity : AppCompatActivity() {
         mediaAdapter = MediaCarouselAdapter(
             mediaFiles = mediaFiles,
             onMediaClick = {
-                Log.d(TAG, "Media clicked in updated adapter")
+                Log.d(TAG, "Media clicked in updated adapter - toggling scale mode")
+                toggleImageScaleMode()
             },
             onVideoPlayPause = { isPlaying ->
                 Log.d(TAG, "Video play/pause in updated adapter: $isPlaying")
             }
         )
+
+        // Set initial caption state
+        mediaAdapter.setCaptionExpanded(isCaptionExpanded)
 
         binding.rvMediaCarousel.adapter = mediaAdapter
 

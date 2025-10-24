@@ -9,6 +9,7 @@ import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
 import android.widget.SeekBar
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
@@ -25,6 +26,10 @@ class MediaCarouselAdapter(
     private val onVideoPlayPause: (Boolean) -> Unit
 ) : RecyclerView.Adapter<MediaCarouselAdapter.MediaViewHolder>() {
 
+    // Track current scale mode for images
+    private var isFullSizeMode = true // Start with full size mode to show complete image
+    private var isCaptionExpanded = false // Track caption expansion state
+
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MediaViewHolder {
         val binding = ItemMediaCarouselBinding.inflate(
             LayoutInflater.from(parent.context), parent, false
@@ -37,6 +42,20 @@ class MediaCarouselAdapter(
     }
 
     override fun getItemCount(): Int = mediaFiles.size
+
+    // Method to toggle image scale mode
+    fun toggleImageScaleMode() {
+        isFullSizeMode = !isFullSizeMode
+        notifyDataSetChanged() // Refresh all visible items
+    }
+
+    // Method to set caption expansion state
+    fun setCaptionExpanded(expanded: Boolean) {
+        if (isCaptionExpanded != expanded) {
+            isCaptionExpanded = expanded
+            notifyDataSetChanged() // Refresh to adjust image sizes
+        }
+    }
 
     inner class MediaViewHolder(
         private val binding: ItemMediaCarouselBinding
@@ -129,6 +148,9 @@ class MediaCarouselAdapter(
             binding.rlVideoContainer.visibility = View.GONE
             binding.ivMedia.visibility = View.VISIBLE
 
+            // Apply scale type based on current mode and caption state
+            binding.ivMedia.scaleType = getOptimalScaleType()
+
             binding.ivMedia.load(imageFile) {
                 placeholder(R.drawable.placeholder_image)
                 error(R.drawable.placeholder_image)
@@ -138,6 +160,19 @@ class MediaCarouselAdapter(
 
             binding.ivMedia.setOnClickListener {
                 onMediaClick()
+            }
+        }
+
+        private fun getOptimalScaleType(): ImageView.ScaleType {
+            return when {
+                // If caption is collapsed (more space for image) and full size mode
+                !isCaptionExpanded && isFullSizeMode -> ImageView.ScaleType.FIT_CENTER
+                // If caption is expanded (less space for image) - always crop to fit
+                isCaptionExpanded -> ImageView.ScaleType.CENTER_CROP
+                // If caption is collapsed but user prefers crop mode
+                !isCaptionExpanded && !isFullSizeMode -> ImageView.ScaleType.CENTER_CROP
+                // Default case - show full image
+                else -> ImageView.ScaleType.FIT_CENTER
             }
         }
 
