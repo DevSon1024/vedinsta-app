@@ -10,6 +10,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.view.doOnNextLayout
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -22,6 +23,8 @@ import com.devson.vedinsta.viewmodel.MainViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 class DownloadActivity : AppCompatActivity() {
 
@@ -31,7 +34,11 @@ class DownloadActivity : AppCompatActivity() {
     private lateinit var notificationManager: VedInstaNotificationManager
     private val mediaList = mutableListOf<ImageCard>()
     private val selectedItems = mutableSetOf<Int>()
+
+    // Position tracking for real-time updates
     private var currentPosition = 0
+    private var lastReportedPage = -1
+    private var isUserFlinging = false
 
     // Get data from intent
     private var postUrl: String? = null
@@ -90,6 +97,8 @@ class DownloadActivity : AppCompatActivity() {
     }
 
     private fun setupRecyclerView() {
+        Log.d(TAG, "Setting up RecyclerView with real-time dots indicator")
+
         imageAdapter = ImageAdapter(
             mediaList = mediaList,
             selectedItems = selectedItems,
@@ -104,21 +113,110 @@ class DownloadActivity : AppCompatActivity() {
             }
         )
 
+        val layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+
         binding.recyclerViewImages.apply {
             adapter = imageAdapter
-            layoutManager = LinearLayoutManager(this@DownloadActivity, LinearLayoutManager.HORIZONTAL, false)
+            this.layoutManager = layoutManager
+            itemAnimator = null // Remove default item animation for snappier updates
+        }
 
-            val snapHelper = PagerSnapHelper()
-            snapHelper.attachToRecyclerView(this)
+        val snapHelper = PagerSnapHelper()
+        snapHelper.attachToRecyclerView(binding.recyclerViewImages)
 
-            addOnScrollListener(object : RecyclerView.OnScrollListener() {
-                override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
-                    super.onScrollStateChanged(recyclerView, newState)
-                    if (newState == RecyclerView.SCROLL_STATE_IDLE) {
-                        updateCurrentPosition()
-                    }
+        // Ensure dots prepare once sizes are laid out
+        binding.recyclerViewImages.doOnNextLayout {
+            setupDotsIndicator()
+        }
+
+        // High-frequency, real-time updates using onScrolled
+        binding.recyclerViewImages.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
+                isUserFlinging = newState == RecyclerView.SCROLL_STATE_SETTLING
+
+                if (newState == RecyclerView.SCROLL_STATE_IDLE) {
+                    // Snap settled, finalize the selected page instantly without animation
+                    val page = findCurrentPageFast(layoutManager)
+                    setSelectedPage(page, animate = false)
                 }
-            })
+            }
+
+            override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                if (mediaList.isEmpty()) return
+
+                // Compute fractional page based on the first visible child offset
+                val fractionalPosition = computeFractionalPosition(layoutManager)
+
+                // Drive the dots smoothly with fractional position
+                binding.dotsIndicator.updatePositionSmooth(fractionalPosition)
+
+                // Update current position when integer page changes
+                val currentPage = fractionalPosition.roundToInt().coerceIn(0, mediaList.lastIndex)
+                if (currentPage != lastReportedPage) {
+                    lastReportedPage = currentPage
+                    currentPosition = currentPage
+                }
+
+                // If the user is flinging fast, also preemptively set selected without animation
+                if (isUserFlinging) {
+                    binding.dotsIndicator.setSelectedPosition(currentPage, animate = false)
+                }
+            }
+        })
+
+        Log.d(TAG, "RecyclerView setup complete")
+    }
+
+    private fun computeFractionalPosition(layoutManager: LinearLayoutManager): Float {
+        val firstPos = layoutManager.findFirstVisibleItemPosition()
+        if (firstPos == RecyclerView.NO_POSITION) return currentPosition.toFloat()
+
+        val firstView = layoutManager.findViewByPosition(firstPos) ?: return firstPos.toFloat()
+
+        val recyclerViewWidth = binding.recyclerViewImages.width.takeIf { it > 0 } ?: return firstPos.toFloat()
+        val childWidth = firstView.width.takeIf { it > 0 } ?: recyclerViewWidth
+
+        // In a horizontal list, view.left goes negative as we scroll left -> right
+        val offsetPx = -firstView.left.toFloat()
+        val fraction = (offsetPx / childWidth).coerceIn(0f, 1f)
+
+        return (firstPos + fraction).coerceIn(0f, (mediaList.size - 1).toFloat())
+    }
+
+    private fun findCurrentPageFast(layoutManager: LinearLayoutManager): Int {
+        // Prefer completely visible if available, else center-most visible
+        val completelyVisible = layoutManager.findFirstCompletelyVisibleItemPosition()
+        if (completelyVisible != RecyclerView.NO_POSITION) return completelyVisible
+
+        val first = layoutManager.findFirstVisibleItemPosition()
+        val last = layoutManager.findLastVisibleItemPosition()
+        if (first == RecyclerView.NO_POSITION || last == RecyclerView.NO_POSITION) {
+            return currentPosition
+        }
+
+        // Pick the view whose center is closest to RecyclerView center
+        val recyclerViewCenter = binding.recyclerViewImages.width / 2
+        var bestPosition = first
+        var bestDistance = Int.MAX_VALUE
+
+        for (position in first..last) {
+            val view = layoutManager.findViewByPosition(position) ?: continue
+            val viewCenter = (view.left + view.right) / 2
+            val distance = abs(viewCenter - recyclerViewCenter)
+            if (distance < bestDistance) {
+                bestDistance = distance
+                bestPosition = position
+            }
+        }
+        return bestPosition
+    }
+
+    private fun setSelectedPage(page: Int, animate: Boolean) {
+        val clampedPage = page.coerceIn(0, mediaList.lastIndex)
+        currentPosition = clampedPage
+        binding.dotsIndicator.setSelectedPosition(clampedPage, animate)
+        if (lastReportedPage != clampedPage) {
+            lastReportedPage = clampedPage
         }
     }
 
@@ -156,14 +254,19 @@ class DownloadActivity : AppCompatActivity() {
         }
     }
 
-    private fun updateCurrentPosition() {
-        val layoutManager = binding.recyclerViewImages.layoutManager as? LinearLayoutManager
-        val newPosition = layoutManager?.findFirstCompletelyVisibleItemPosition() ?: 0
+    private fun setupDotsIndicator() {
+        val mediaCount = mediaList.size
 
-        if (newPosition != RecyclerView.NO_POSITION && newPosition != currentPosition) {
-            currentPosition = newPosition
-            binding.dotsIndicator.setSelectedPosition(currentPosition, true)
+        if (mediaCount <= 1) {
+            binding.dotsIndicator.visibility = View.GONE
+        } else {
+            binding.dotsIndicator.visibility = View.VISIBLE
+            binding.dotsIndicator.setDotCount(mediaCount)
+            // Initialize immediately at current position with no animation
+            binding.dotsIndicator.setSelectedPosition(currentPosition, animate = false)
         }
+
+        Log.d(TAG, "Dots indicator setup complete for $mediaCount items")
     }
 
     private fun updateDownloadButton() {
@@ -230,6 +333,7 @@ class DownloadActivity : AppCompatActivity() {
                         }
 
                     } catch (e: Exception) {
+                        Log.e(TAG, "Download failed", e)
                         notificationManager.showDownloadError(
                             "${postUsername}_media",
                             e.message ?: "Download failed"
@@ -271,16 +375,14 @@ class DownloadActivity : AppCompatActivity() {
                         )
                     }
 
-                    // Setup dots indicator
-                    binding.dotsIndicator.setDotCount(mediaList.size)
-                    binding.dotsIndicator.setSelectedPosition(0, false)
-
-                    // Show dots only if multiple media
-                    binding.dotsIndicator.visibility = if (mediaList.size > 1) View.VISIBLE else View.GONE
+                    // Setup dots indicator with real-time functionality
+                    setupDotsIndicator()
 
                     imageAdapter.notifyDataSetChanged()
                     updateDownloadButton()
                     updateSelectAllButton()
+
+                    Log.d(TAG, "Successfully processed ${mediaList.size} media items with real-time dots")
                 }
                 else -> {
                     val message = result.getString("message")

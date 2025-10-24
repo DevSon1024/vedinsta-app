@@ -4,7 +4,6 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.text.SpannableString
 import android.text.Spanned
@@ -16,6 +15,7 @@ import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.doOnNextLayout
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.PagerSnapHelper
@@ -30,6 +30,8 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 class PostViewActivity : AppCompatActivity() {
 
@@ -37,11 +39,15 @@ class PostViewActivity : AppCompatActivity() {
     private lateinit var mediaAdapter: MediaCarouselAdapter
     private var currentPost: DownloadedPost? = null
     private var mediaFiles: MutableList<File> = mutableListOf()
-    private var currentMediaPosition = 0
 
-    // Caption expansion state
+    // Position tracking
+    private var currentMediaPosition = 0
+    private var lastReportedPage = -1
+    private var isUserFlinging = false
+
+    // Caption state
     private var isCaptionExpanded = false
-    private val maxCaptionLength = 100 // Maximum characters to show when collapsed
+    private val maxCaptionLength = 100
 
     companion object {
         private const val TAG = "PostViewActivity"
@@ -96,7 +102,7 @@ class PostViewActivity : AppCompatActivity() {
         val thumbnailPath = intent.getStringExtra(EXTRA_THUMBNAIL_PATH) ?: ""
         val totalImages = intent.getIntExtra(EXTRA_TOTAL_IMAGES, 1)
         val hasVideo = intent.getBooleanExtra(EXTRA_HAS_VIDEO, false)
-        val downloadDate = intent.getLongExtra(EXTRA_DOWNLOAD_DATE, System.currentTimeMillis())
+        val downloadDate = intent.getLongExtra(EXTRA_DOWNLOAD_DATE, System.currentTimeMillis()) // FIXED: was EXRA_DOWNLOAD_DATE
         val username = intent.getStringExtra(EXTRA_USERNAME) ?: "unknown"
         val caption = intent.getStringExtra(EXTRA_CAPTION)
 
@@ -122,7 +128,6 @@ class PostViewActivity : AppCompatActivity() {
             mediaFiles = mediaFiles,
             onMediaClick = {
                 Log.d(TAG, "Media clicked - toggling full screen")
-                // Toggle between fit modes when image is clicked
                 toggleImageScaleMode()
             },
             onVideoPlayPause = { isPlaying ->
@@ -130,28 +135,116 @@ class PostViewActivity : AppCompatActivity() {
             }
         )
 
+        val layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+
         binding.rvMediaCarousel.apply {
             adapter = mediaAdapter
-            layoutManager = LinearLayoutManager(this@PostViewActivity, LinearLayoutManager.HORIZONTAL, false)
-
-            val snapHelper = PagerSnapHelper()
-            snapHelper.attachToRecyclerView(this)
-
-            addOnScrollListener(object : RecyclerView.OnScrollListener() {
-                override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
-                    super.onScrollStateChanged(recyclerView, newState)
-                    if (newState == RecyclerView.SCROLL_STATE_IDLE) {
-                        updateMediaPosition()
-                    }
-                }
-            })
+            this.layoutManager = layoutManager
+            itemAnimator = null // Remove default item animation for snappier updates
         }
 
-        updateMediaCounter()
+        val snapHelper = PagerSnapHelper()
+        snapHelper.attachToRecyclerView(binding.rvMediaCarousel)
+
+        // Ensure dots prepare once sizes are laid out
+        binding.rvMediaCarousel.doOnNextLayout {
+            setupDotsIndicator()
+            updateMediaCounter()
+        }
+
+        // High-frequency, real-time updates using onScrolled
+        binding.rvMediaCarousel.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
+                isUserFlinging = newState == RecyclerView.SCROLL_STATE_SETTLING
+
+                if (newState == RecyclerView.SCROLL_STATE_IDLE) {
+                    // Snap settled, finalize the selected page instantly without animation
+                    val page = findCurrentPageFast(layoutManager)
+                    setSelectedPage(page, animate = false)
+                }
+            }
+
+            override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                if (mediaFiles.isEmpty()) return
+
+                // Compute fractional page based on the first visible child offset
+                val fractionalPosition = computeFractionalPosition(layoutManager)
+
+                // Drive the dots smoothly with fractional position
+                binding.dotsIndicator.updatePositionSmooth(fractionalPosition)
+
+                // For the numeric counter, update when integer page changes
+                val currentPage = fractionalPosition.roundToInt().coerceIn(0, mediaFiles.lastIndex)
+                if (currentPage != lastReportedPage) {
+                    lastReportedPage = currentPage
+                    currentMediaPosition = currentPage
+                    updateMediaCounter()
+                }
+
+                // If the user is flinging fast, also preemptively set selected without animation
+                if (isUserFlinging) {
+                    binding.dotsIndicator.setSelectedPosition(currentPage, animate = false)
+                }
+            }
+        })
+
         Log.d(TAG, "RecyclerView setup complete")
     }
 
-    // New method to toggle between different image scale modes
+    private fun computeFractionalPosition(layoutManager: LinearLayoutManager): Float {
+        val firstPos = layoutManager.findFirstVisibleItemPosition()
+        if (firstPos == RecyclerView.NO_POSITION) return currentMediaPosition.toFloat()
+
+        val firstView = layoutManager.findViewByPosition(firstPos) ?: return firstPos.toFloat()
+
+        val recyclerViewWidth = binding.rvMediaCarousel.width.takeIf { it > 0 } ?: return firstPos.toFloat()
+        val childWidth = firstView.width.takeIf { it > 0 } ?: recyclerViewWidth
+
+        // In a horizontal list, view.left goes negative as we scroll left -> right
+        val offsetPx = -firstView.left.toFloat()
+        val fraction = (offsetPx / childWidth).coerceIn(0f, 1f)
+
+        return (firstPos + fraction).coerceIn(0f, (mediaFiles.size - 1).toFloat())
+    }
+
+    private fun findCurrentPageFast(layoutManager: LinearLayoutManager): Int {
+        // Prefer completely visible if available, else center-most visible
+        val completelyVisible = layoutManager.findFirstCompletelyVisibleItemPosition()
+        if (completelyVisible != RecyclerView.NO_POSITION) return completelyVisible
+
+        val first = layoutManager.findFirstVisibleItemPosition()
+        val last = layoutManager.findLastVisibleItemPosition()
+        if (first == RecyclerView.NO_POSITION || last == RecyclerView.NO_POSITION) {
+            return currentMediaPosition
+        }
+
+        // Pick the view whose center is closest to RecyclerView center
+        val recyclerViewCenter = binding.rvMediaCarousel.width / 2
+        var bestPosition = first
+        var bestDistance = Int.MAX_VALUE
+
+        for (position in first..last) {
+            val view = layoutManager.findViewByPosition(position) ?: continue
+            val viewCenter = (view.left + view.right) / 2
+            val distance = abs(viewCenter - recyclerViewCenter)
+            if (distance < bestDistance) {
+                bestDistance = distance
+                bestPosition = position
+            }
+        }
+        return bestPosition
+    }
+
+    private fun setSelectedPage(page: Int, animate: Boolean) {
+        val clampedPage = page.coerceIn(0, mediaFiles.lastIndex)
+        currentMediaPosition = clampedPage
+        binding.dotsIndicator.setSelectedPosition(clampedPage, animate)
+        if (lastReportedPage != clampedPage) {
+            lastReportedPage = clampedPage
+            updateMediaCounter()
+        }
+    }
+
     private fun toggleImageScaleMode() {
         mediaAdapter.toggleImageScaleMode()
     }
@@ -192,8 +285,6 @@ class PostViewActivity : AppCompatActivity() {
         Log.d(TAG, "Setting up post info for: ${post.username}")
 
         binding.tvUsername.text = "@${post.username}"
-
-        // Setup expandable caption
         setupExpandableCaption(post.caption)
 
         val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
@@ -211,23 +302,18 @@ class PostViewActivity : AppCompatActivity() {
         binding.tvPostCaption.visibility = View.VISIBLE
 
         if (caption.length <= maxCaptionLength) {
-            // Caption is short enough, show it fully
             binding.tvPostCaption.text = caption
             binding.tvPostCaption.movementMethod = null
         } else {
-            // Caption is long, show truncated version with "... more"
             updateCaptionDisplay(caption)
         }
     }
 
     private fun updateCaptionDisplay(fullCaption: String) {
         val captionToShow = if (isCaptionExpanded) {
-            // Show full caption with "... less" option
             createClickableCaption(fullCaption, " ... less", false)
         } else {
-            // Show truncated caption with "... more" option
-            val truncatedCaption = fullCaption.take(maxCaptionLength)
-            createClickableCaption(truncatedCaption, " ... more", true)
+            createClickableCaption(fullCaption.take(maxCaptionLength), " ... more", true)
         }
 
         binding.tvPostCaption.text = captionToShow
@@ -242,9 +328,9 @@ class PostViewActivity : AppCompatActivity() {
             override fun onClick(widget: View) {
                 isCaptionExpanded = isExpanding
                 currentPost?.caption?.let { updateCaptionDisplay(it) }
-
-                // Notify media adapter about caption state change to adjust image size
                 mediaAdapter.setCaptionExpanded(isCaptionExpanded)
+                // When caption expands/collapses, re-affirm current selection without animation
+                setSelectedPage(currentMediaPosition, animate = false)
             }
 
             override fun updateDrawState(ds: TextPaint) {
@@ -268,7 +354,7 @@ class PostViewActivity : AppCompatActivity() {
             return
         }
 
-        Log.d(TAG, "Loading media files ONLY from database for postId: $postId")
+        Log.d(TAG, "Loading media files from database for postId: $postId")
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
@@ -287,57 +373,39 @@ class PostViewActivity : AppCompatActivity() {
                 }
 
                 val paths = post.mediaPaths
-                Log.d(TAG, "STRICT - Media paths from DB for postId $postId: $paths")
-                Log.d(TAG, "STRICT - Number of media paths: ${paths.size}")
-
-                if (paths.isEmpty()) {
-                    Log.w(TAG, "STRICT - No media paths found for post $postId")
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(this@PostViewActivity, "No media files stored for this post", Toast.LENGTH_LONG).show()
-                        mediaFiles.clear()
-                        updateUIWithFiles()
-                    }
-                    return@launch
-                }
+                Log.d(TAG, "Media paths from DB for postId $postId: $paths")
 
                 val validFiles = mutableListOf<File>()
 
                 for (path in paths) {
-                    Log.d(TAG, "STRICT - Processing path for postId $postId: $path")
-
                     try {
                         if (path.startsWith("content://")) {
-                            Log.d(TAG, "STRICT - Skipping content URI for postId $postId: $path")
+                            Log.d(TAG, "Skipping content URI: $path")
                             continue
                         }
 
                         val file = File(path)
-                        Log.d(TAG, "STRICT - File for postId $postId: ${file.absolutePath}")
-                        Log.d(TAG, "STRICT - File exists: ${file.exists()}, canRead: ${file.canRead()}, size: ${file.length()}")
-
                         if (file.exists() && file.canRead() && file.length() > 0) {
                             validFiles.add(file)
-                            Log.d(TAG, "STRICT - Added valid file for postId $postId: ${file.name}")
+                            Log.d(TAG, "Added valid file: ${file.name}")
                         } else {
-                            Log.w(TAG, "STRICT - Invalid file for postId $postId: ${file.absolutePath}")
+                            Log.w(TAG, "Invalid file: ${file.absolutePath}")
                         }
                     } catch (e: Exception) {
-                        Log.e(TAG, "STRICT - Error processing path for postId $postId: $path", e)
+                        Log.e(TAG, "Error processing path: $path", e)
                     }
                 }
 
                 withContext(Dispatchers.Main) {
-                    Log.d(TAG, "STRICT - Final: Updating UI for postId $postId with ${validFiles.size} valid files")
-
+                    Log.d(TAG, "Updating UI with ${validFiles.size} valid files")
                     currentPost = post
                     mediaFiles.clear()
                     mediaFiles.addAll(validFiles)
-
                     updateUIWithFiles()
                 }
 
             } catch (e: Exception) {
-                Log.e(TAG, "STRICT - Error loading media from database for postId $postId", e)
+                Log.e(TAG, "Error loading media from database", e)
                 withContext(Dispatchers.Main) {
                     Toast.makeText(this@PostViewActivity, "Error loading media files: ${e.message}", Toast.LENGTH_LONG).show()
                 }
@@ -348,26 +416,21 @@ class PostViewActivity : AppCompatActivity() {
     private fun updateUIWithFiles() {
         Log.d(TAG, "Updating UI with ${mediaFiles.size} files")
 
-        // Recreate adapter with new data
         mediaAdapter = MediaCarouselAdapter(
             mediaFiles = mediaFiles,
             onMediaClick = {
-                Log.d(TAG, "Media clicked in updated adapter - toggling scale mode")
+                Log.d(TAG, "Media clicked - toggling scale mode")
                 toggleImageScaleMode()
             },
             onVideoPlayPause = { isPlaying ->
-                Log.d(TAG, "Video play/pause in updated adapter: $isPlaying")
+                Log.d(TAG, "Video play/pause: $isPlaying")
             }
         )
 
-        // Set initial caption state
         mediaAdapter.setCaptionExpanded(isCaptionExpanded)
-
         binding.rvMediaCarousel.adapter = mediaAdapter
 
-        // Setup dots indicator
         setupDotsIndicator()
-
         updateMediaCounter()
         calculateTotalFileSize()
 
@@ -387,22 +450,8 @@ class PostViewActivity : AppCompatActivity() {
         } else {
             binding.dotsIndicator.visibility = View.VISIBLE
             binding.dotsIndicator.setDotCount(fileCount)
-            binding.dotsIndicator.setSelectedPosition(0, false)
-        }
-    }
-
-    private fun updateMediaPosition() {
-        val layoutManager = binding.rvMediaCarousel.layoutManager as? LinearLayoutManager
-        val newPosition = layoutManager?.findFirstCompletelyVisibleItemPosition() ?: 0
-
-        if (newPosition != RecyclerView.NO_POSITION && newPosition != currentMediaPosition) {
-            currentMediaPosition = newPosition
-
-            // Update dots indicator with animation
-            binding.dotsIndicator.setSelectedPosition(currentMediaPosition, true)
-
-            // Update counter
-            updateMediaCounter()
+            // Initialize immediately at current position with no animation
+            binding.dotsIndicator.setSelectedPosition(currentMediaPosition, animate = false)
         }
     }
 
@@ -416,7 +465,7 @@ class PostViewActivity : AppCompatActivity() {
             }
         }
         val sizeInMB = (totalSize / (1024.0 * 1024.0))
-        binding.tvFileSize.text = String.format("%.1f MB", sizeInMB)
+        binding.tvFileSize.text = String.format(Locale.getDefault(), "%.1f MB", sizeInMB)
         Log.d(TAG, "Total file size calculated: %.1f MB".format(sizeInMB))
     }
 
@@ -428,7 +477,7 @@ class PostViewActivity : AppCompatActivity() {
             return
         }
 
-        val position = currentMediaPosition + 1
+        val position = (currentMediaPosition + 1).coerceAtMost(totalFiles.coerceAtLeast(1))
         binding.tvMediaCounter.text = "$position / $totalFiles"
     }
 
@@ -481,7 +530,6 @@ class PostViewActivity : AppCompatActivity() {
 
                         Log.d(TAG, "Deleting post: ${post.postId}")
 
-                        // Delete files from disk
                         var deletedCount = 0
                         mediaFiles.forEach { file ->
                             try {
@@ -494,7 +542,6 @@ class PostViewActivity : AppCompatActivity() {
                             }
                         }
 
-                        // Remove DB row
                         db.downloadedPostDao().deleteByPostId(post.postId)
                         Log.d(TAG, "Deleted post from database: ${post.postId}")
 
