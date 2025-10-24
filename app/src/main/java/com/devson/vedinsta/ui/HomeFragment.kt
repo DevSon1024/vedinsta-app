@@ -15,8 +15,10 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import com.chaquo.python.Python
 import com.devson.vedinsta.DownloadActivity
+import com.devson.vedinsta.GridPostItem
 import com.devson.vedinsta.PostsGridAdapter
 import com.devson.vedinsta.R
+import com.devson.vedinsta.VedInstaApplication
 import com.devson.vedinsta.database.DownloadedPost
 import com.devson.vedinsta.databinding.FragmentHomeBinding
 import com.devson.vedinsta.viewmodel.MainViewModel
@@ -24,6 +26,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.util.UUID
 import java.util.regex.Pattern
 
 class HomeFragment : Fragment() {
@@ -33,6 +36,10 @@ class HomeFragment : Fragment() {
 
     private lateinit var postsAdapter: PostsGridAdapter
     private lateinit var viewModel: MainViewModel
+
+    // Working list and pending tracking
+    private val workingItems = mutableListOf<GridPostItem>()
+    private val pendingTempIds = mutableSetOf<String>()
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -62,11 +69,11 @@ class HomeFragment : Fragment() {
     private fun setupRecyclerView() {
         postsAdapter = PostsGridAdapter(
             onPostClick = { post ->
-                // Navigate to detail view or open downloaded images
-                Toast.makeText(context, "View downloaded post: ${post.postId}", Toast.LENGTH_SHORT).show()
+                // Navigate to detail view
+                val intent = com.devson.vedinsta.PostViewActivity.createIntent(requireContext(), post)
+                startActivity(intent)
             },
             onPostLongClick = { post ->
-                // Show options to delete or share
                 showPostOptionsDialog(post)
             }
         )
@@ -79,8 +86,35 @@ class HomeFragment : Fragment() {
 
     private fun observeDownloadedPosts() {
         viewModel.allDownloadedPosts.observe(viewLifecycleOwner) { posts ->
-            postsAdapter.submitList(posts)
-            updateEmptyState(posts)
+            // Build a map of real posts by postId for replacement
+            val realById = posts.associateBy { it.postId }
+
+            // Rebuild working list: replace any dummy with matching real postId
+            val rebuilt = mutableListOf<GridPostItem>()
+
+            // Add real posts first (you can sort if needed)
+            posts.forEach { dp ->
+                rebuilt.add(GridPostItem(post = dp, isDownloading = false))
+            }
+
+            // Keep any dummy still not fulfilled (no matching real post yet)
+            workingItems.filter { it.isDownloading }.forEach { dummy ->
+                val key = dummy.post?.postId ?: dummy.tempId
+                val match = key?.let { realById[it] }
+                if (match == null) {
+                    rebuilt.add(dummy)
+                } else {
+                    // If matched, ensure tempId cleanup
+                    pendingTempIds.remove(dummy.tempId)
+                }
+            }
+
+            // Submit
+            workingItems.clear()
+            workingItems.addAll(rebuilt)
+            postsAdapter.submitList(workingItems.toList())
+
+            updateEmptyState(posts) // existing behavior for empty state
         }
     }
 
@@ -205,9 +239,13 @@ class HomeFragment : Fragment() {
     }
 
     private fun autoDownloadSingleMedia(jsonString: String, postUrl: String, postId: String?) {
-        // Show immediate feedback
         binding.progressBar.visibility = View.VISIBLE
         binding.fabDownload.hide()
+
+        // Insert dummy card immediately
+        val tempKey = postId ?: UUID.randomUUID().toString()
+        pendingTempIds.add(tempKey)
+        addOrUpdateDummyCard(tempKey)
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
@@ -216,12 +254,10 @@ class HomeFragment : Fragment() {
                 val caption = result.getString("caption")
                 val mediaArray = result.getJSONArray("media")
                 val mediaObject = mediaArray.getJSONObject(0)
-
                 val mediaUrl = mediaObject.getString("url")
                 val mediaType = mediaObject.getString("type")
 
-                // Download with notifications
-                val downloadedFiles = (requireActivity().application as com.devson.vedinsta.VedInstaApplication)
+                val downloadedFiles = (requireActivity().application as VedInstaApplication)
                     .downloadSingleFile(requireContext(), mediaUrl, mediaType, username, postId)
 
                 withContext(Dispatchers.Main) {
@@ -229,45 +265,63 @@ class HomeFragment : Fragment() {
                     binding.fabDownload.show()
 
                     if (downloadedFiles.isNotEmpty()) {
-                        // Save to database
-                        saveDownloadedPost(postId, postUrl, downloadedFiles, mediaType == "video", username, caption)
-
-                        Toast.makeText(
-                            requireContext(),
-                            "✓ ${if (mediaType == "video") "Video" else "Image"} downloaded successfully!",
-                            Toast.LENGTH_SHORT
-                        ).show()
+                        saveDownloadedPost(postId ?: tempKey, postUrl, downloadedFiles, mediaType == "video", username, caption)
+                        Toast.makeText(requireContext(), "✓ ${if (mediaType == "video") "Video" else "Image"} downloaded successfully!", Toast.LENGTH_SHORT).show()
+                        // Removal of dummy is automatic when LiveData updates and matches postId/tempKey
                     } else {
-                        Toast.makeText(
-                            requireContext(),
-                            "✗ Failed to download ${if (mediaType == "video") "video" else "image"}",
-                            Toast.LENGTH_SHORT
-                        ).show()
+                        Toast.makeText(requireContext(), "✗ Failed to download ${if (mediaType == "video") "video" else "image"}", Toast.LENGTH_SHORT).show()
+                        removeDummyCard(tempKey)
                     }
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     binding.progressBar.visibility = View.GONE
                     binding.fabDownload.show()
-                    Toast.makeText(
-                        requireContext(),
-                        "✗ Download failed: ${e.message}",
-                        Toast.LENGTH_SHORT
-                    ).show()
+                    Toast.makeText(requireContext(), "✗ Download failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                    removeDummyCard(tempKey)
                 }
             }
         }
     }
 
+    private fun addOrUpdateDummyCard(tempKey: String) {
+        // If already present, do nothing
+        if (workingItems.any { (it.post?.postId ?: it.tempId) == tempKey && it.isDownloading }) return
+
+        // Create a minimal placeholder (no real file yet)
+        val placeholderPost = DownloadedPost(
+            postId = tempKey,
+            postUrl = "",
+            thumbnailPath = "", // no file yet
+            totalImages = 1,
+            downloadDate = System.currentTimeMillis(),
+            hasVideo = false,
+            username = "downloading...",
+            caption = null,
+            mediaPaths = emptyList()
+        )
+        workingItems.add(0, GridPostItem(post = placeholderPost, isDownloading = true, tempId = tempKey))
+        postsAdapter.submitList(workingItems.toList())
+    }
+
+    private fun removeDummyCard(tempKey: String) {
+        pendingTempIds.remove(tempKey)
+        val idx = workingItems.indexOfFirst { (it.post?.postId ?: it.tempId) == tempKey && it.isDownloading }
+        if (idx >= 0) {
+            workingItems.removeAt(idx)
+            postsAdapter.submitList(workingItems.toList())
+        }
+    }
+
     private fun saveDownloadedPost(
-        postId: String?,
+        postId: String,
         postUrl: String,
         downloadedFiles: List<String>,
         hasVideo: Boolean,
         username: String,
         caption: String?
     ) {
-        if (postId != null && downloadedFiles.isNotEmpty()) {
+        if (downloadedFiles.isNotEmpty()) {
             val downloadedPost = DownloadedPost(
                 postId = postId,
                 postUrl = postUrl,
@@ -276,10 +330,12 @@ class HomeFragment : Fragment() {
                 downloadDate = System.currentTimeMillis(),
                 hasVideo = hasVideo,
                 username = username,
-                caption = caption
+                caption = caption,
+                mediaPaths = downloadedFiles
             )
-
             viewModel.insertDownloadedPost(downloadedPost)
+            // Once LiveData emits this post, the observeDownloadedPosts() will automatically
+            // replace the dummy (tempKey == postId) with the real one and hide the spinner.
         }
     }
 
@@ -289,8 +345,9 @@ class HomeFragment : Fragment() {
             .setItems(arrayOf("View Media", "Delete from History")) { _, which ->
                 when (which) {
                     0 -> {
-                        // View media - you can implement this
-                        Toast.makeText(context, "View media feature coming soon", Toast.LENGTH_SHORT).show()
+                        // View media
+                        val intent = com.devson.vedinsta.PostViewActivity.createIntent(requireContext(), post)
+                        startActivity(intent)
                     }
                     1 -> {
                         // Delete from database
