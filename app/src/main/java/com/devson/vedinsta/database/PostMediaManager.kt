@@ -1,9 +1,7 @@
 package com.devson.vedinsta.database
 
-import android.content.Context
 import android.os.Environment
 import java.io.File
-import java.util.UUID
 
 class PostMediaManager {
 
@@ -26,8 +24,7 @@ class PostMediaManager {
 
         fun generateUniqueFileName(username: String, mediaType: String, timestamp: Long = System.currentTimeMillis()): String {
             val extension = if (mediaType.lowercase() == "video") "mp4" else "jpg"
-            val uniqueId = UUID.randomUUID().toString().substring(0, 8)
-            return "${username}_${timestamp}_${uniqueId}.$extension"
+            return "${username}_175${timestamp}_.$extension"
         }
 
         fun deleteMediaFiles(mediaPaths: List<String>) {
