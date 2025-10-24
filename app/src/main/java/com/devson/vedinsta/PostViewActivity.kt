@@ -7,6 +7,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
+import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
@@ -30,6 +31,7 @@ class PostViewActivity : AppCompatActivity() {
     private lateinit var mediaAdapter: MediaCarouselAdapter
     private var currentPost: DownloadedPost? = null
     private var mediaFiles: MutableList<File> = mutableListOf()
+    private var currentMediaPosition = 0
 
     companion object {
         private const val TAG = "PostViewActivity"
@@ -127,7 +129,7 @@ class PostViewActivity : AppCompatActivity() {
                 override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
                     super.onScrollStateChanged(recyclerView, newState)
                     if (newState == RecyclerView.SCROLL_STATE_IDLE) {
-                        updateMediaCounter()
+                        updateMediaPosition()
                     }
                 }
             })
@@ -178,6 +180,7 @@ class PostViewActivity : AppCompatActivity() {
         val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
         val formattedDate = dateFormat.format(Date(post.downloadDate))
         binding.tvDownloadDate.text = "Downloaded on $formattedDate"
+        binding.tvPostDate.text = "2 days ago"
     }
 
     private fun loadMediaFilesFromDatabase() {
@@ -279,6 +282,10 @@ class PostViewActivity : AppCompatActivity() {
         )
 
         binding.rvMediaCarousel.adapter = mediaAdapter
+
+        // Setup dots indicator
+        setupDotsIndicator()
+
         updateMediaCounter()
         calculateTotalFileSize()
 
@@ -287,6 +294,33 @@ class PostViewActivity : AppCompatActivity() {
             Toast.makeText(this, "No media files found for this post", Toast.LENGTH_LONG).show()
         } else {
             Log.d(TAG, "Successfully loaded ${mediaFiles.size} media files")
+        }
+    }
+
+    private fun setupDotsIndicator() {
+        val fileCount = mediaFiles.size
+
+        if (fileCount <= 1) {
+            binding.dotsIndicator.visibility = View.GONE
+        } else {
+            binding.dotsIndicator.visibility = View.VISIBLE
+            binding.dotsIndicator.setDotCount(fileCount)
+            binding.dotsIndicator.setSelectedPosition(0, false)
+        }
+    }
+
+    private fun updateMediaPosition() {
+        val layoutManager = binding.rvMediaCarousel.layoutManager as? LinearLayoutManager
+        val newPosition = layoutManager?.findFirstCompletelyVisibleItemPosition() ?: 0
+
+        if (newPosition != RecyclerView.NO_POSITION && newPosition != currentMediaPosition) {
+            currentMediaPosition = newPosition
+
+            // Update dots indicator with animation
+            binding.dotsIndicator.setSelectedPosition(currentMediaPosition, true)
+
+            // Update counter
+            updateMediaCounter()
         }
     }
 
@@ -305,7 +339,6 @@ class PostViewActivity : AppCompatActivity() {
     }
 
     private fun updateMediaCounter() {
-        val layoutManager = binding.rvMediaCarousel.layoutManager as? LinearLayoutManager
         val totalFiles = mediaFiles.size
 
         if (totalFiles == 0) {
@@ -313,17 +346,8 @@ class PostViewActivity : AppCompatActivity() {
             return
         }
 
-        if (layoutManager != null) {
-            val currentPosition = layoutManager.findFirstCompletelyVisibleItemPosition()
-            if (currentPosition != RecyclerView.NO_POSITION) {
-                val position = currentPosition + 1
-                binding.tvMediaCounter.text = "$position / $totalFiles"
-            } else {
-                binding.tvMediaCounter.text = "1 / $totalFiles"
-            }
-        } else {
-            binding.tvMediaCounter.text = "1 / $totalFiles"
-        }
+        val position = currentMediaPosition + 1
+        binding.tvMediaCounter.text = "$position / $totalFiles"
     }
 
     private fun shareCurrentMedia() {
@@ -332,11 +356,8 @@ class PostViewActivity : AppCompatActivity() {
             return
         }
 
-        val layoutManager = binding.rvMediaCarousel.layoutManager as? LinearLayoutManager
-        val currentPosition = layoutManager?.findFirstCompletelyVisibleItemPosition() ?: 0
-
-        if (currentPosition != RecyclerView.NO_POSITION && currentPosition < mediaFiles.size) {
-            val currentFile = mediaFiles[currentPosition]
+        if (currentMediaPosition < mediaFiles.size) {
+            val currentFile = mediaFiles[currentMediaPosition]
 
             try {
                 val shareIntent = Intent().apply {
