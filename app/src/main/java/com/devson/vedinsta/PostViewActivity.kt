@@ -37,6 +37,7 @@ class PostViewActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityPostViewBinding
     private lateinit var mediaAdapter: MediaCarouselAdapter
+    // Make currentPost nullable and initialize later
     private var currentPost: DownloadedPost? = null
     private var mediaFiles: MutableList<File> = mutableListOf()
 
@@ -49,27 +50,31 @@ class PostViewActivity : AppCompatActivity() {
     private var isCaptionExpanded = false
     private val maxCaptionLength = 100
 
+    // Store postId from intent separately
+    private var intentPostId: String? = null
+
     companion object {
         private const val TAG = "PostViewActivity"
         const val EXTRA_POST_ID = "post_id"
-        const val EXTRA_POST_URL = "post_url"
-        const val EXTRA_THUMBNAIL_PATH = "thumbnail_path"
-        const val EXTRA_TOTAL_IMAGES = "total_images"
-        const val EXTRA_HAS_VIDEO = "has_video"
-        const val EXTRA_DOWNLOAD_DATE = "download_date"
-        const val EXTRA_USERNAME = "username"
-        const val EXTRA_CAPTION = "caption"
+        // Keep other extras for initial display if needed, but DB is primary source
+        const val EXTRA_POST_URL = "post_url" // Optional
+        const val EXTRA_THUMBNAIL_PATH = "thumbnail_path" // Optional
+        const val EXTRA_TOTAL_IMAGES = "total_images" // Optional
+        const val EXTRA_HAS_VIDEO = "has_video" // Optional
+        const val EXTRA_DOWNLOAD_DATE = "download_date" // Optional
+        const val EXTRA_USERNAME = "username" // Optional initial value
+        const val EXTRA_CAPTION = "caption" // Optional initial value
+
 
         fun createIntent(context: Context, post: DownloadedPost): Intent {
             return Intent(context, PostViewActivity::class.java).apply {
+                // Only pass the postId, load everything else from DB
                 putExtra(EXTRA_POST_ID, post.postId)
-                putExtra(EXTRA_POST_URL, post.postUrl)
-                putExtra(EXTRA_THUMBNAIL_PATH, post.thumbnailPath)
-                putExtra(EXTRA_TOTAL_IMAGES, post.totalImages)
-                putExtra(EXTRA_HAS_VIDEO, post.hasVideo)
-                putExtra(EXTRA_DOWNLOAD_DATE, post.downloadDate)
+                // Optionally pass initial values if needed for faster initial display
                 putExtra(EXTRA_USERNAME, post.username)
                 putExtra(EXTRA_CAPTION, post.caption)
+                putExtra(EXTRA_THUMBNAIL_PATH, post.thumbnailPath)
+                putExtra(EXTRA_TOTAL_IMAGES, post.totalImages)
             }
         }
     }
@@ -81,49 +86,39 @@ class PostViewActivity : AppCompatActivity() {
 
         Log.d(TAG, "PostViewActivity onCreate started")
 
-        extractPostData()
-        setupRecyclerView()
-        setupClickListeners()
-        setupPostInfo()
-        loadMediaFilesFromDatabase()
-    }
+        // 1. Get postId from Intent
+        intentPostId = intent.getStringExtra(EXTRA_POST_ID)
+        Log.d(TAG, "Received postId from Intent: $intentPostId")
 
-    private fun extractPostData() {
-        val postId = intent.getStringExtra(EXTRA_POST_ID)
-        Log.d(TAG, "Extracting post data for postId: $postId")
-
-        if (postId == null) {
-            Log.e(TAG, "PostId is null, finishing activity")
+        if (intentPostId == null) {
+            Log.e(TAG, "PostId is null in Intent, finishing activity")
+            Toast.makeText(this, "Error: Post ID not provided", Toast.LENGTH_SHORT).show()
             finish()
             return
         }
 
-        val postUrl = intent.getStringExtra(EXTRA_POST_URL) ?: ""
-        val thumbnailPath = intent.getStringExtra(EXTRA_THUMBNAIL_PATH) ?: ""
-        val totalImages = intent.getIntExtra(EXTRA_TOTAL_IMAGES, 1)
-        val hasVideo = intent.getBooleanExtra(EXTRA_HAS_VIDEO, false)
-        val downloadDate = intent.getLongExtra(EXTRA_DOWNLOAD_DATE, System.currentTimeMillis()) // FIXED: was EXRA_DOWNLOAD_DATE
-        val username = intent.getStringExtra(EXTRA_USERNAME) ?: "unknown"
-        val caption = intent.getStringExtra(EXTRA_CAPTION)
+        // 2. Setup UI elements (RecyclerView, ClickListeners)
+        setupRecyclerView()
+        setupClickListeners()
 
-        Log.d(TAG, "Post data - ID: $postId, Username: $username, TotalImages: $totalImages, HasVideo: $hasVideo")
+        // 3. Show initial placeholder/loading state (Optional)
+        // You could show temporary username/caption from Intent if passed
+        val initialUsername = intent.getStringExtra(EXTRA_USERNAME) ?: "Loading..."
+        val initialCaption = intent.getStringExtra(EXTRA_CAPTION) // Nullable
+        binding.tvUsername.text = "@$initialUsername"
+        setupExpandableCaption(initialCaption) // Show initial caption if available
 
-        currentPost = DownloadedPost(
-            postId = postId,
-            postUrl = postUrl,
-            thumbnailPath = thumbnailPath,
-            totalImages = totalImages,
-            downloadDate = downloadDate,
-            hasVideo = hasVideo,
-            username = username,
-            caption = caption,
-            mediaPaths = emptyList()
-        )
+
+        // 4. Load full post data and media files from Database
+        loadDataFromDatabase(intentPostId!!) // Use non-null postId
     }
+
+    // Removed extractPostData - We load directly from DB
 
     private fun setupRecyclerView() {
         Log.d(TAG, "Setting up RecyclerView")
 
+        // Initialize adapter with empty list first
         mediaAdapter = MediaCarouselAdapter(
             mediaFiles = mediaFiles,
             onMediaClick = {
@@ -146,11 +141,7 @@ class PostViewActivity : AppCompatActivity() {
         val snapHelper = PagerSnapHelper()
         snapHelper.attachToRecyclerView(binding.rvMediaCarousel)
 
-        // Ensure dots prepare once sizes are laid out
-        binding.rvMediaCarousel.doOnNextLayout {
-            setupDotsIndicator()
-            updateMediaCounter()
-        }
+        // Dots setup will happen AFTER data loading completes and updates the adapter
 
         // High-frequency, real-time updates using onScrolled
         binding.rvMediaCarousel.addOnScrollListener(object : RecyclerView.OnScrollListener() {
@@ -158,39 +149,39 @@ class PostViewActivity : AppCompatActivity() {
                 isUserFlinging = newState == RecyclerView.SCROLL_STATE_SETTLING
 
                 if (newState == RecyclerView.SCROLL_STATE_IDLE) {
-                    // Snap settled, finalize the selected page instantly without animation
                     val page = findCurrentPageFast(layoutManager)
-                    setSelectedPage(page, animate = false)
+                    // Only update if mediaFiles is not empty
+                    if (mediaFiles.isNotEmpty()) {
+                        setSelectedPage(page, animate = false)
+                    }
                 }
             }
 
             override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
-                if (mediaFiles.isEmpty()) return
+                if (mediaFiles.isEmpty()) return // Check moved here
 
-                // Compute fractional page based on the first visible child offset
                 val fractionalPosition = computeFractionalPosition(layoutManager)
-
-                // Drive the dots smoothly with fractional position
                 binding.dotsIndicator.updatePositionSmooth(fractionalPosition)
 
-                // For the numeric counter, update when integer page changes
                 val currentPage = fractionalPosition.roundToInt().coerceIn(0, mediaFiles.lastIndex)
                 if (currentPage != lastReportedPage) {
                     lastReportedPage = currentPage
                     currentMediaPosition = currentPage
-                    updateMediaCounter()
+                    updateMediaCounter() // Update counter based on potentially loaded files
                 }
 
-                // If the user is flinging fast, also preemptively set selected without animation
                 if (isUserFlinging) {
-                    binding.dotsIndicator.setSelectedPosition(currentPage, animate = false)
+                    if (mediaFiles.isNotEmpty()) { // Check before accessing lastIndex
+                        binding.dotsIndicator.setSelectedPosition(currentPage.coerceIn(0, mediaFiles.lastIndex), animate = false)
+                    }
                 }
             }
         })
 
-        Log.d(TAG, "RecyclerView setup complete")
+        Log.d(TAG, "RecyclerView setup complete (Adapter initialized empty)")
     }
 
+    // computeFractionalPosition remains the same
     private fun computeFractionalPosition(layoutManager: LinearLayoutManager): Float {
         val firstPos = layoutManager.findFirstVisibleItemPosition()
         if (firstPos == RecyclerView.NO_POSITION) return currentMediaPosition.toFloat()
@@ -204,9 +195,13 @@ class PostViewActivity : AppCompatActivity() {
         val offsetPx = -firstView.left.toFloat()
         val fraction = (offsetPx / childWidth).coerceIn(0f, 1f)
 
-        return (firstPos + fraction).coerceIn(0f, (mediaFiles.size - 1).toFloat())
+        // Ensure calculation uses the current size of mediaFiles
+        val lastIndexFloat = (mediaFiles.size - 1).coerceAtLeast(0).toFloat()
+        return (firstPos + fraction).coerceIn(0f, lastIndexFloat)
     }
 
+
+    // findCurrentPageFast remains the same
     private fun findCurrentPageFast(layoutManager: LinearLayoutManager): Int {
         // Prefer completely visible if available, else center-most visible
         val completelyVisible = layoutManager.findFirstCompletelyVisibleItemPosition()
@@ -215,7 +210,7 @@ class PostViewActivity : AppCompatActivity() {
         val first = layoutManager.findFirstVisibleItemPosition()
         val last = layoutManager.findLastVisibleItemPosition()
         if (first == RecyclerView.NO_POSITION || last == RecyclerView.NO_POSITION) {
-            return currentMediaPosition
+            return currentMediaPosition // Return current if no visible items
         }
 
         // Pick the view whose center is closest to RecyclerView center
@@ -232,10 +227,14 @@ class PostViewActivity : AppCompatActivity() {
                 bestPosition = position
             }
         }
-        return bestPosition
+        // Ensure the returned position is valid for the current mediaFiles list
+        return bestPosition.coerceIn(0, mediaFiles.lastIndex.coerceAtLeast(0))
     }
 
+
     private fun setSelectedPage(page: Int, animate: Boolean) {
+        if (mediaFiles.isEmpty()) return // Don't update if no media yet
+
         val clampedPage = page.coerceIn(0, mediaFiles.lastIndex)
         currentMediaPosition = clampedPage
         binding.dotsIndicator.setSelectedPosition(clampedPage, animate)
@@ -246,7 +245,10 @@ class PostViewActivity : AppCompatActivity() {
     }
 
     private fun toggleImageScaleMode() {
-        mediaAdapter.toggleImageScaleMode()
+        // Ensure adapter is initialized and has items
+        if (::mediaAdapter.isInitialized && mediaFiles.isNotEmpty()) {
+            mediaAdapter.toggleImageScaleMode()
+        }
     }
 
     private fun setupClickListeners() {
@@ -269,6 +271,7 @@ class PostViewActivity : AppCompatActivity() {
     }
 
     private fun copyCaptionToClipboard() {
+        // Use currentPost safely
         val caption = currentPost?.caption
         if (!caption.isNullOrEmpty()) {
             val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -280,18 +283,23 @@ class PostViewActivity : AppCompatActivity() {
         }
     }
 
+    // This function now uses the fully loaded currentPost object
     private fun setupPostInfo() {
-        val post = currentPost ?: return
-        Log.d(TAG, "Setting up post info for: ${post.username}")
+        val post = currentPost ?: run {
+            Log.e(TAG, "setupPostInfo called but currentPost is null")
+            return
+        }
+        Log.d(TAG, "Setting up post info for DB loaded post: ${post.username}")
 
-        binding.tvUsername.text = "@${post.username}"
-        setupExpandableCaption(post.caption)
+        binding.tvUsername.text = "@${post.username}" // Use username from DB post
+        setupExpandableCaption(post.caption) // Use caption from DB post
 
         val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
         val formattedDate = dateFormat.format(Date(post.downloadDate))
         binding.tvDownloadDate.text = "Downloaded on $formattedDate"
     }
 
+    // setupExpandableCaption remains the same
     private fun setupExpandableCaption(caption: String?) {
         if (caption.isNullOrEmpty()) {
             binding.tvPostCaption.text = ""
@@ -303,12 +311,20 @@ class PostViewActivity : AppCompatActivity() {
 
         if (caption.length <= maxCaptionLength) {
             binding.tvPostCaption.text = caption
+            // Disable LinkMovementMethod if not expandable to allow normal text selection
             binding.tvPostCaption.movementMethod = null
+            binding.tvPostCaption.isClickable = false
+            binding.tvPostCaption.isFocusable = false
+
         } else {
             updateCaptionDisplay(caption)
+            binding.tvPostCaption.isClickable = true
+            binding.tvPostCaption.isFocusable = true
         }
     }
 
+
+    // updateCaptionDisplay remains the same
     private fun updateCaptionDisplay(fullCaption: String) {
         val captionToShow = if (isCaptionExpanded) {
             createClickableCaption(fullCaption, " ... less", false)
@@ -320,6 +336,8 @@ class PostViewActivity : AppCompatActivity() {
         binding.tvPostCaption.movementMethod = LinkMovementMethod.getInstance()
     }
 
+
+    // createClickableCaption remains the same
     private fun createClickableCaption(text: String, clickableText: String, isExpanding: Boolean): SpannableString {
         val fullText = text + clickableText
         val spannableString = SpannableString(fullText)
@@ -328,10 +346,17 @@ class PostViewActivity : AppCompatActivity() {
             override fun onClick(widget: View) {
                 isCaptionExpanded = isExpanding
                 currentPost?.caption?.let { updateCaptionDisplay(it) }
-                mediaAdapter.setCaptionExpanded(isCaptionExpanded)
+                // Notify adapter about caption state change AFTER updating text view
+                if (::mediaAdapter.isInitialized) {
+                    mediaAdapter.setCaptionExpanded(isCaptionExpanded)
+                }
                 // When caption expands/collapses, re-affirm current selection without animation
-                setSelectedPage(currentMediaPosition, animate = false)
+                // Ensure mediaFiles is not empty before accessing lastIndex
+                if (mediaFiles.isNotEmpty()) {
+                    setSelectedPage(currentMediaPosition.coerceIn(0, mediaFiles.lastIndex), animate = false)
+                }
             }
+
 
             override fun updateDrawState(ds: TextPaint) {
                 super.updateDrawState(ds)
@@ -347,49 +372,47 @@ class PostViewActivity : AppCompatActivity() {
         return spannableString
     }
 
-    private fun loadMediaFilesFromDatabase() {
-        val postId = currentPost?.postId
-        if (postId == null) {
-            Log.e(TAG, "PostId is null, cannot load media")
-            return
-        }
 
-        Log.d(TAG, "Loading media files from database for postId: $postId")
+    // Renamed loadMediaFilesFromDatabase to loadDataFromDatabase
+    private fun loadDataFromDatabase(postId: String) {
+        Log.d(TAG, "Loading post data and media files from database for postId: $postId")
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val db = AppDatabase.getDatabase(applicationContext)
-                val post = db.downloadedPostDao().getPostById(postId)
+                val postFromDb = db.downloadedPostDao().getPostById(postId)
 
-                Log.d(TAG, "Post retrieved from DB: $post")
+                Log.d(TAG, "Post retrieved from DB: ID=${postFromDb?.postId}, User=${postFromDb?.username}, Caption=${postFromDb?.caption?.take(20)}...")
 
-                if (post == null) {
-                    Log.w(TAG, "No post found in database for ID: $postId")
+                if (postFromDb == null) {
+                    Log.e(TAG, "No post found in database for ID: $postId")
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(this@PostViewActivity, "Post not found in database", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this@PostViewActivity, "Error: Post not found in database", Toast.LENGTH_SHORT).show()
                         finish()
                     }
                     return@launch
                 }
 
-                val paths = post.mediaPaths
+                // --- Update currentPost with data from DB ---
+                currentPost = postFromDb
+                // --- ---
+
+                val paths = postFromDb.mediaPaths
                 Log.d(TAG, "Media paths from DB for postId $postId: $paths")
 
                 val validFiles = mutableListOf<File>()
-
                 for (path in paths) {
                     try {
                         if (path.startsWith("content://")) {
-                            Log.d(TAG, "Skipping content URI: $path")
-                            continue
+                            Log.w(TAG, "Skipping content URI (not directly usable): $path")
+                            continue // Skip content URIs for now
                         }
-
                         val file = File(path)
                         if (file.exists() && file.canRead() && file.length() > 0) {
                             validFiles.add(file)
                             Log.d(TAG, "Added valid file: ${file.name}")
                         } else {
-                            Log.w(TAG, "Invalid file: ${file.absolutePath}")
+                            Log.w(TAG, "Invalid or inaccessible file: ${file.absolutePath}, Exists=${file.exists()}, CanRead=${file.canRead()}, Length=${file.length()}")
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "Error processing path: $path", e)
@@ -397,51 +420,64 @@ class PostViewActivity : AppCompatActivity() {
                 }
 
                 withContext(Dispatchers.Main) {
-                    Log.d(TAG, "Updating UI with ${validFiles.size} valid files")
-                    currentPost = post
+                    Log.d(TAG, "Updating UI with DB data and ${validFiles.size} valid files")
                     mediaFiles.clear()
                     mediaFiles.addAll(validFiles)
-                    updateUIWithFiles()
+
+                    // --- Update UI elements that depend on DB data ---
+                    setupPostInfo() // Update username, caption, date using currentPost
+                    updateUIWithFiles() // Update RecyclerView adapter, dots, counter, file size
+                    // --- ---
                 }
 
             } catch (e: Exception) {
-                Log.e(TAG, "Error loading media from database", e)
+                Log.e(TAG, "Error loading data from database", e)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@PostViewActivity, "Error loading media files: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this@PostViewActivity, "Error loading post details: ${e.message}", Toast.LENGTH_LONG).show()
+                    finish() // Finish if DB load fails critically
                 }
             }
         }
     }
 
+
+    // updateUIWithFiles remains mostly the same, but relies on mediaFiles being updated first
     private fun updateUIWithFiles() {
-        Log.d(TAG, "Updating UI with ${mediaFiles.size} files")
+        Log.d(TAG, "Updating RecyclerView adapter and related UI for ${mediaFiles.size} files")
 
-        mediaAdapter = MediaCarouselAdapter(
+        // Update adapter's data (important if adapter was already created)
+        mediaAdapter = MediaCarouselAdapter( // Recreate or update adapter
             mediaFiles = mediaFiles,
-            onMediaClick = {
-                Log.d(TAG, "Media clicked - toggling scale mode")
-                toggleImageScaleMode()
-            },
-            onVideoPlayPause = { isPlaying ->
-                Log.d(TAG, "Video play/pause: $isPlaying")
-            }
+            onMediaClick = { toggleImageScaleMode() },
+            onVideoPlayPause = { /* Handle if needed */ }
         )
+        mediaAdapter.setCaptionExpanded(isCaptionExpanded) // Ensure caption state is synced
+        binding.rvMediaCarousel.adapter = mediaAdapter // Set the adapter again
 
-        mediaAdapter.setCaptionExpanded(isCaptionExpanded)
-        binding.rvMediaCarousel.adapter = mediaAdapter
 
-        setupDotsIndicator()
-        updateMediaCounter()
+        // Reset scroll position and page tracking if files changed
+        currentMediaPosition = 0
+        lastReportedPage = -1
+        binding.rvMediaCarousel.scrollToPosition(0)
+
+
+        // Setup/Update dots, counter, file size
+        setupDotsIndicator() // Now call setupDotsIndicator AFTER mediaFiles is populated
+        updateMediaCounter() // Update counter based on loaded files
         calculateTotalFileSize()
 
         if (mediaFiles.isEmpty()) {
-            Log.w(TAG, "No valid media files found")
+            Log.w(TAG, "No valid media files found after DB load")
             Toast.makeText(this, "No media files found for this post", Toast.LENGTH_LONG).show()
+            // Optionally handle empty state UI here
         } else {
-            Log.d(TAG, "Successfully loaded ${mediaFiles.size} media files")
+            Log.d(TAG, "Successfully updated UI for ${mediaFiles.size} media files")
+            // Ensure the first page is correctly selected visually
+            setSelectedPage(0, animate = false)
         }
     }
 
+    // setupDotsIndicator remains the same
     private fun setupDotsIndicator() {
         val fileCount = mediaFiles.size
 
@@ -451,10 +487,13 @@ class PostViewActivity : AppCompatActivity() {
             binding.dotsIndicator.visibility = View.VISIBLE
             binding.dotsIndicator.setDotCount(fileCount)
             // Initialize immediately at current position with no animation
-            binding.dotsIndicator.setSelectedPosition(currentMediaPosition, animate = false)
+            // Ensure currentMediaPosition is valid for the list size
+            val initialPos = currentMediaPosition.coerceIn(0, fileCount -1)
+            binding.dotsIndicator.setSelectedPosition(initialPos, animate = false)
         }
     }
 
+    // calculateTotalFileSize remains the same
     private fun calculateTotalFileSize() {
         var totalSize = 0L
         mediaFiles.forEach { file ->
@@ -469,6 +508,7 @@ class PostViewActivity : AppCompatActivity() {
         Log.d(TAG, "Total file size calculated: %.1f MB".format(sizeInMB))
     }
 
+    // updateMediaCounter remains the same
     private fun updateMediaCounter() {
         val totalFiles = mediaFiles.size
 
@@ -477,10 +517,12 @@ class PostViewActivity : AppCompatActivity() {
             return
         }
 
-        val position = (currentMediaPosition + 1).coerceAtMost(totalFiles.coerceAtLeast(1))
+        // Ensure position is 1-based and within bounds
+        val position = (currentMediaPosition + 1).coerceIn(1, totalFiles)
         binding.tvMediaCounter.text = "$position / $totalFiles"
     }
 
+    // shareCurrentMedia remains the same
     private fun shareCurrentMedia() {
         if (mediaFiles.isEmpty()) {
             Toast.makeText(this, "No media to share", Toast.LENGTH_SHORT).show()
@@ -508,50 +550,75 @@ class PostViewActivity : AppCompatActivity() {
                 startActivity(Intent.createChooser(shareIntent, "Share media"))
             } catch (e: Exception) {
                 Log.e(TAG, "Error sharing file", e)
-                Toast.makeText(this, "Error sharing media", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Error sharing media: ${e.message}", Toast.LENGTH_SHORT).show()
             }
+        } else {
+            Log.e(TAG, "Share error: currentMediaPosition ($currentMediaPosition) is out of bounds for mediaFiles size (${mediaFiles.size})")
+            Toast.makeText(this, "Error sharing media: Invalid position", Toast.LENGTH_SHORT).show()
         }
     }
 
+
+    // deletePost remains the same
     private fun deletePost() {
-        if (mediaFiles.isEmpty()) {
-            Toast.makeText(this, "No media to delete", Toast.LENGTH_SHORT).show()
+        // Use currentPost safely
+        val postToDelete = currentPost
+        if (postToDelete == null) {
+            Toast.makeText(this, "Cannot delete, post data not loaded", Toast.LENGTH_SHORT).show()
             return
+        }
+
+        if (mediaFiles.isEmpty()) { // Check mediaFiles which holds the validated files
+            Log.w(TAG, "Attempting to delete post ${postToDelete.postId}, but no valid media files were loaded.")
+            // Allow deleting DB entry even if files are missing
         }
 
         androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle("Delete Post")
-            .setMessage("Are you sure you want to delete this post? This action cannot be undone.")
+            .setMessage("Are you sure you want to delete this post and its downloaded media (${mediaFiles.size} files)? This action cannot be undone.")
             .setPositiveButton("Delete") { _, _ ->
                 lifecycleScope.launch(Dispatchers.IO) {
                     try {
                         val db = AppDatabase.getDatabase(applicationContext)
-                        val post = currentPost ?: return@launch
 
-                        Log.d(TAG, "Deleting post: ${post.postId}")
+                        Log.d(TAG, "Deleting post: ${postToDelete.postId}")
 
-                        var deletedCount = 0
-                        mediaFiles.forEach { file ->
+                        var deletedFileCount = 0
+                        // Iterate over the mediaPaths stored in the DB record
+                        postToDelete.mediaPaths.forEach { path ->
                             try {
+                                if (path.startsWith("content://")) {
+                                    Log.w(TAG, "Cannot directly delete content URI: $path")
+                                    // Optionally try to resolve and delete if possible, but might fail
+                                    // val file = //... resolve URI to file if possible
+                                    // if (file.exists() && file.delete()) deletedFileCount++
+                                    return@forEach // Continue to next path
+                                }
+                                val file = File(path)
                                 if (file.exists() && file.delete()) {
-                                    deletedCount++
+                                    deletedFileCount++
                                     Log.d(TAG, "Deleted file: ${file.absolutePath}")
+                                } else if (file.exists()) {
+                                    Log.w(TAG, "Failed to delete file: ${file.absolutePath}")
+                                } else {
+                                    Log.w(TAG, "File not found for deletion: ${file.absolutePath}")
                                 }
                             } catch (e: Exception) {
-                                Log.e(TAG, "Error deleting file: ${file.absolutePath}", e)
+                                Log.e(TAG, "Error deleting file: $path", e)
                             }
                         }
 
-                        db.downloadedPostDao().deleteByPostId(post.postId)
-                        Log.d(TAG, "Deleted post from database: ${post.postId}")
+
+                        db.downloadedPostDao().deleteByPostId(postToDelete.postId)
+                        Log.d(TAG, "Deleted post from database: ${postToDelete.postId}")
 
                         withContext(Dispatchers.Main) {
-                            Toast.makeText(this@PostViewActivity, "Post deleted successfully ($deletedCount files)", Toast.LENGTH_SHORT).show()
-                            setResult(RESULT_OK)
+                            Toast.makeText(this@PostViewActivity, "Post deleted successfully ($deletedFileCount files)", Toast.LENGTH_SHORT).show()
+                            setResult(RESULT_OK) // Notify previous activity if needed
                             finish()
                         }
                     } catch (e: Exception) {
-                        Log.e(TAG, "Error deleting post", e)
+                        Log.e(TAG, "Error deleting post from DB or files", e)
                         withContext(Dispatchers.Main) {
                             Toast.makeText(this@PostViewActivity, "Error deleting post: ${e.message}", Toast.LENGTH_SHORT).show()
                         }

@@ -12,7 +12,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.LiveData
-import androidx.lifecycle.Observer // Import Observer
+import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
@@ -20,7 +20,7 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import com.chaquo.python.Python
 import com.devson.vedinsta.DownloadActivity
-import com.devson.vedinsta.EnhancedDownloadManager // Import worker
+import com.devson.vedinsta.EnhancedDownloadManager
 import com.devson.vedinsta.GridPostItem
 import com.devson.vedinsta.PostsGridAdapter
 import com.devson.vedinsta.R
@@ -249,10 +249,22 @@ class HomeFragment : Fragment() {
         binding.fabDownload.hide()
 
         lifecycleScope.launch(Dispatchers.IO) {
+            var fetchedCaption: String? = null // Variable to store caption
+            var fetchedUsername: String? = null // Variable to store username
             try {
                 val py = Python.getInstance()
                 val pyModule = py.getModule("insta_downloader")
                 val resultJson = pyModule.callAttr("get_media_urls", url).toString()
+
+                // Try to parse username and caption early if possible
+                kotlin.runCatching {
+                    val preliminaryResult = JSONObject(resultJson)
+                    if (preliminaryResult.optString("status") == "success") {
+                        fetchedUsername = preliminaryResult.optString("username", "unknown")
+                        fetchedCaption = preliminaryResult.optString("caption", null)
+                    }
+                }
+
 
                 withContext(Dispatchers.Main) {
                     binding.progressBar.visibility = View.GONE
@@ -266,24 +278,25 @@ class HomeFragment : Fragment() {
                         return@withContext
                     }
 
+                    // Update fetchedUsername and fetchedCaption again to be sure
+                    fetchedUsername = result.optString("username", "unknown")
+                    fetchedCaption = result.optString("caption", null)
 
-                    // Use postId if available, otherwise use URL as a unique key for tracking non-post downloads (if needed)
+
                     val trackingKey = postId ?: url
 
-                    // Check again if already downloading before proceeding
                     if (workIdMap.containsKey(trackingKey) && !forceRedownload) {
                         Toast.makeText(context, "Download already in progress.", Toast.LENGTH_SHORT).show()
                         return@withContext
                     }
 
-
                     if (shouldAutoDownload(resultJson)) {
-                        autoDownloadSingleMedia(resultJson, url, trackingKey)
+                        // Pass fetched caption and username to autoDownloadSingleMedia
+                        autoDownloadSingleMedia(resultJson, url, trackingKey, fetchedUsername, fetchedCaption)
                     } else {
                         val intent = Intent(context, DownloadActivity::class.java).apply {
                             putExtra("RESULT_JSON", resultJson)
                             putExtra("POST_URL", url)
-                            // Pass the trackingKey (postId or URL) consistently
                             putExtra("POST_ID", trackingKey)
                         }
                         startActivity(intent)
@@ -327,34 +340,40 @@ class HomeFragment : Fragment() {
         }
     }
 
-    private fun autoDownloadSingleMedia(jsonString: String, postUrl: String, trackingKey: String) {
-        // trackingKey is postId or URL
-        binding.progressBar.visibility = View.GONE // Use dummy card indicator
+    private fun autoDownloadSingleMedia(
+        jsonString: String,
+        postUrl: String,
+        trackingKey: String,
+        username: String?, // Receive username
+        caption: String? // Receive caption
+    ) {
+        binding.progressBar.visibility = View.GONE
         binding.fabDownload.hide()
 
-        // Check if already downloading this specific item
         if (workIdMap.containsKey(trackingKey)) {
             Toast.makeText(context, "Download already in progress.", Toast.LENGTH_SHORT).show()
-            binding.fabDownload.show() // Show FAB again
+            binding.fabDownload.show()
             return
         }
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val result = JSONObject(jsonString)
-                val username = result.getString("username")
+                // Use the passed username or extract again as fallback
+                val finalUsername = username ?: result.optString("username", "unknown")
                 val mediaArray = result.getJSONArray("media")
                 val mediaObject = mediaArray.getJSONObject(0)
                 val mediaUrl = mediaObject.getString("url")
                 val mediaType = mediaObject.getString("type")
 
-                // Enqueue the download using WorkManager
+                // Enqueue the download using WorkManager, passing the caption
                 val workId = (requireActivity().application as VedInstaApplication).enqueueSingleDownload(
                     requireContext().applicationContext,
                     mediaUrl,
                     mediaType,
-                    username,
-                    trackingKey // Use trackingKey for postId/tagging
+                    finalUsername,
+                    trackingKey,
+                    caption // Pass the caption here
                 )
 
                 withContext(Dispatchers.Main) {

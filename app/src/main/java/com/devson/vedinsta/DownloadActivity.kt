@@ -293,7 +293,7 @@ class DownloadActivity : AppCompatActivity() {
         val selectedMediaList = selectedItems.map { mediaList[it] }
 
         if (selectedMediaList.isNotEmpty()) {
-            Log.d(TAG, "Enqueueing download for ${selectedMediaList.size} selected items")
+            Log.d(TAG, "Enqueueing download for ${selectedMediaList.size} selected items for Post ID: $postId") // Log postId
 
             // Disable button immediately
             binding.btnDownload.isEnabled = false
@@ -303,24 +303,19 @@ class DownloadActivity : AppCompatActivity() {
             // Use Application context for WorkManager
             val applicationContext = this.applicationContext
 
-            // Enqueue work using the application method
+            // Enqueue work using the application method, passing the caption
             workRequestIds = (application as VedInstaApplication).enqueueMultipleDownloads(
                 applicationContext,
                 selectedMediaList,
-                postId
+                postId, // Pass the postId (or key) obtained from intent
+                postCaption // Pass the fetched caption
             )
 
             if (workRequestIds.isNotEmpty()) {
                 Toast.makeText(this, "Download started in background", Toast.LENGTH_SHORT).show()
-                // Optionally observe the combined progress here if needed,
-                // or rely on the Application class observer and individual notifications.
-                // observeCombinedWorkProgress(workRequestIds)
-
-                // Finish activity after enqueuing
                 finish()
             } else {
                 Toast.makeText(this, "Failed to start downloads", Toast.LENGTH_SHORT).show()
-                // Re-enable button on failure
                 updateDownloadButton() // Reset button state based on selection
             }
 
@@ -372,11 +367,11 @@ class DownloadActivity : AppCompatActivity() {
             val result = JSONObject(jsonString)
             when (result.getString("status")) {
                 "success" -> {
-                    postUsername = result.getString("username")
-                    postCaption = result.getString("caption")
+                    postUsername = result.getString("username") // Store username
+                    postCaption = result.optString("caption", null) // Store caption, default to null
                     val mediaArray = result.getJSONArray("media")
 
-                    Log.d(TAG, "Processing ${mediaArray.length()} media items")
+                    Log.d(TAG, "Processing ${mediaArray.length()} media items. User: $postUsername, Caption: ${postCaption?.take(20)}...")
                     binding.tvUsername.text = "@$postUsername"
 
                     mediaList.clear()
@@ -386,19 +381,23 @@ class DownloadActivity : AppCompatActivity() {
                             ImageCard(
                                 url = mediaObject.getString("url"),
                                 type = mediaObject.getString("type"),
-                                username = postUsername
+                                username = postUsername // Pass username to ImageCard
                             )
                         )
                     }
 
-                    // Setup dots indicator with real-time functionality
+                    // Select all items by default when the activity opens
+                    selectedItems.clear()
+                    selectedItems.addAll(0 until mediaList.size)
+
+                    // Setup dots indicator
                     setupDotsIndicator()
 
-                    imageAdapter.notifyDataSetChanged()
+                    imageAdapter.notifyDataSetChanged() // Notify after populating and selecting
                     updateDownloadButton()
                     updateSelectAllButton()
 
-                    Log.d(TAG, "Successfully processed ${mediaList.size} media items with real-time dots")
+                    Log.d(TAG, "Successfully processed ${mediaList.size} media items")
                 }
                 else -> {
                     val message = result.getString("message")
