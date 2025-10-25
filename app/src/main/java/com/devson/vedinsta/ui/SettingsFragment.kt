@@ -4,14 +4,24 @@ import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog // Use AppCompat AlertDialog
 import androidx.fragment.app.Fragment
+import coil.Coil // Import Coil
+import coil.request.CachePolicy // Import CachePolicy if needed
+import com.devson.vedinsta.R // Assuming ic_delete_white is in drawable
 import com.devson.vedinsta.SettingsManager
 import com.devson.vedinsta.databinding.FragmentSettingsBinding
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 
 class SettingsFragment : Fragment() {
 
@@ -19,6 +29,7 @@ class SettingsFragment : Fragment() {
     private val binding get() = _binding!!
     private lateinit var settingsManager: SettingsManager
 
+    // ... (Launchers remain the same) ...
     // Launcher for Image folder picker
     private val imageFolderPickerLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -45,6 +56,7 @@ class SettingsFragment : Fragment() {
             }
         }
 
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -67,26 +79,33 @@ class SettingsFragment : Fragment() {
         binding.btnPickImageFolder.setOnClickListener {
             openFolderPicker(imageFolderPickerLauncher)
         }
-
         binding.btnPickVideoFolder.setOnClickListener {
             openFolderPicker(videoFolderPickerLauncher)
         }
-
         binding.llStorageSettings.setOnClickListener {
             toggleStorageSection()
         }
+
+        // --- Clear Cache ---
+        binding.llClearCache.setOnClickListener {
+            showClearCacheConfirmation()
+        }
+        // --- ---
 
         // Privacy Policy
         binding.llPrivacyPolicy.setOnClickListener {
             openPrivacyPolicy()
         }
 
-        // About
+        // About - Changed to launch AboutActivity
         binding.llAbout.setOnClickListener {
-            showAboutDialog()
+            // Use the standard way to launch AboutActivity
+            val intent = Intent(requireContext(), com.devson.vedinsta.AboutActivity::class.java)
+            startActivity(intent)
         }
     }
 
+    // ... (toggleStorageSection, openFolderPicker, takePersistablePermissions, updatePathLabels, openPrivacyPolicy remain the same) ...
     private fun toggleStorageSection() {
         if (binding.storageDetails.visibility == View.VISIBLE) {
             binding.storageDetails.visibility = View.GONE
@@ -98,15 +117,31 @@ class SettingsFragment : Fragment() {
     }
 
     private fun openFolderPicker(launcher: androidx.activity.result.ActivityResultLauncher<Intent>) {
-        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
-        launcher.launch(intent)
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+            // Optionally add initial URI if needed
+            // putExtra(DocumentsContract.EXTRA_INITIAL_URI, ...)
+        }
+        try {
+            launcher.launch(intent)
+        } catch (e: Exception) {
+            Log.e("SettingsFragment", "Error launching folder picker", e)
+            Toast.makeText(requireContext(), "Cannot open folder picker", Toast.LENGTH_SHORT).show()
+        }
     }
 
+
     private fun takePersistablePermissions(uri: Uri) {
-        val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-        requireContext().contentResolver.takePersistableUriPermission(uri, takeFlags)
+        try {
+            val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            requireContext().contentResolver.takePersistableUriPermission(uri, takeFlags)
+            Log.d("SettingsFragment", "Persistable permissions taken for URI: $uri")
+        } catch (e: SecurityException) {
+            Log.e("SettingsFragment", "Failed to take persistable permissions for $uri", e)
+            Toast.makeText(requireContext(), "Failed to grant access. Please try again.", Toast.LENGTH_LONG).show()
+        }
     }
+
 
     private fun updatePathLabels() {
         binding.tvImagePath.text = settingsManager.getImagePathLabel()
@@ -115,29 +150,85 @@ class SettingsFragment : Fragment() {
 
     private fun openPrivacyPolicy() {
         val intent = Intent(Intent.ACTION_VIEW).apply {
-            data = Uri.parse("https://github.com/DevSon1024/vedinsta-app/blob/main/PRIVACY_POLICY.md")
+            data = Uri.parse("https://github.com/DevSon1024/vedinsta-app/blob/main/PRIVACY_POLICY.md") // Ensure this URL is correct
         }
         try {
             startActivity(intent)
         } catch (e: Exception) {
-            Toast.makeText(requireContext(), "No browser app found", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), "No browser app found to open link", Toast.LENGTH_SHORT).show()
         }
     }
 
-    private fun showAboutDialog() {
-        androidx.appcompat.app.AlertDialog.Builder(requireContext())
-            .setTitle("About VedInsta")
-            .setMessage("VedInsta v1.0.0\n\nA powerful Instagram downloader app that helps you save photos and videos from Instagram posts, stories, and reels.\n\nDeveloper: DevSon1024\nGitHub: github.com/DevSon1024/vedinsta-app")
-            .setPositiveButton("OK") { dialog, _ ->
-                dialog.dismiss()
+
+    // Removed showAboutDialog, using AboutActivity now
+
+    // --- Clear Cache Implementation ---
+    private fun showClearCacheConfirmation() {
+        AlertDialog.Builder(requireContext())
+            .setTitle("Clear Cache")
+            .setMessage("This will remove temporary files and cached images. Downloaded media will not be affected. Continue?")
+            .setPositiveButton("Clear") { _, _ ->
+                clearApplicationCache()
             }
-            .setNeutralButton("Visit GitHub") { _, _ ->
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/DevSon1024/vedinsta-app"))
-                startActivity(intent)
-            }
+            .setNegativeButton("Cancel", null)
             .show()
     }
 
+    private fun clearApplicationCache() {
+        Log.d("SettingsFragment", "Clearing application cache...")
+        val context = requireContext().applicationContext
+        // Use a background thread for file operations
+        GlobalScope.launch(Dispatchers.IO) {
+            var cacheCleared = false
+            var coilCleared = false
+            try {
+                // Clear app's internal cache directory
+                context.cacheDir?.let { deleteDir(it) }
+                // Clear app's external cache directory (if used)
+                context.externalCacheDir?.let { deleteDir(it) }
+                cacheCleared = true
+                Log.d("SettingsFragment", "System cache directories cleared.")
+
+                // Clear Coil's cache
+                val imageLoader = Coil.imageLoader(context)
+                imageLoader.memoryCache?.clear() // Clear memory cache
+                imageLoader.diskCache?.clear()   // Clear disk cache (runs IO)
+                coilCleared = true
+                Log.d("SettingsFragment", "Coil memory and disk cache cleared.")
+
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Cache cleared successfully", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Log.e("SettingsFragment", "Error clearing cache", e)
+                withContext(Dispatchers.Main) {
+                    val message = when {
+                        !cacheCleared -> "Failed to clear system cache"
+                        !coilCleared -> "Failed to clear image cache"
+                        else -> "An error occurred while clearing cache"
+                    }
+                    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    // Recursive function to delete directory contents
+    private fun deleteDir(dir: File?): Boolean {
+        if (dir != null && dir.isDirectory) {
+            val children = dir.list() ?: return false // Check if list() returns null
+            for (i in children.indices) {
+                val success = deleteDir(File(dir, children[i]))
+                if (!success) {
+                    Log.w("SettingsFragment", "Failed to delete file/subdir: ${children[i]}")
+                    // Continue trying to delete others
+                }
+            }
+        }
+        // The directory is now empty or it's a file
+        return dir?.delete() ?: false
+    }
+    // --- ---
 
     override fun onDestroyView() {
         super.onDestroyView()

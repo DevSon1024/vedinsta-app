@@ -4,7 +4,10 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
+import android.os.VibrationEffect
+import android.os.Vibrator
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.TextPaint
@@ -15,7 +18,6 @@ import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.core.view.doOnNextLayout
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.PagerSnapHelper
@@ -37,7 +39,6 @@ class PostViewActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityPostViewBinding
     private lateinit var mediaAdapter: MediaCarouselAdapter
-    // Make currentPost nullable and initialize later
     private var currentPost: DownloadedPost? = null
     private var mediaFiles: MutableList<File> = mutableListOf()
 
@@ -50,10 +51,10 @@ class PostViewActivity : AppCompatActivity() {
     private var isCaptionExpanded = false
     private val maxCaptionLength = 100
 
-    // Store postId from intent separately
     private var intentPostId: String? = null
 
     companion object {
+        // ... (Companion object remains the same) ...
         private const val TAG = "PostViewActivity"
         const val EXTRA_POST_ID = "post_id"
         // Keep other extras for initial display if needed, but DB is primary source
@@ -86,7 +87,6 @@ class PostViewActivity : AppCompatActivity() {
 
         Log.d(TAG, "PostViewActivity onCreate started")
 
-        // 1. Get postId from Intent
         intentPostId = intent.getStringExtra(EXTRA_POST_ID)
         Log.d(TAG, "Received postId from Intent: $intentPostId")
 
@@ -97,24 +97,19 @@ class PostViewActivity : AppCompatActivity() {
             return
         }
 
-        // 2. Setup UI elements (RecyclerView, ClickListeners)
         setupRecyclerView()
-        setupClickListeners()
+        setupClickListeners() // Includes long press now
 
-        // 3. Show initial placeholder/loading state (Optional)
-        // You could show temporary username/caption from Intent if passed
         val initialUsername = intent.getStringExtra(EXTRA_USERNAME) ?: "Loading..."
-        val initialCaption = intent.getStringExtra(EXTRA_CAPTION) // Nullable
+        val initialCaption = intent.getStringExtra(EXTRA_CAPTION)
         binding.tvUsername.text = "@$initialUsername"
-        setupExpandableCaption(initialCaption) // Show initial caption if available
+        // Setup initial caption display INCLUDING long press listener
+        setupExpandableCaption(initialCaption, true)
 
-
-        // 4. Load full post data and media files from Database
-        loadDataFromDatabase(intentPostId!!) // Use non-null postId
+        loadDataFromDatabase(intentPostId!!)
     }
 
-    // Removed extractPostData - We load directly from DB
-
+    // ... (RecyclerView setup, computeFractionalPosition, findCurrentPageFast, setSelectedPage, toggleImageScaleMode remain mostly the same) ...
     private fun setupRecyclerView() {
         Log.d(TAG, "Setting up RecyclerView")
 
@@ -251,6 +246,7 @@ class PostViewActivity : AppCompatActivity() {
         }
     }
 
+
     private fun setupClickListeners() {
         binding.btnBack.setOnClickListener {
             Log.d(TAG, "Back button clicked")
@@ -264,26 +260,61 @@ class PostViewActivity : AppCompatActivity() {
             Log.d(TAG, "Delete button clicked")
             deletePost()
         }
+        // Button click remains for short press
         binding.btnCopyCaption.setOnClickListener {
-            Log.d(TAG, "Copy caption clicked")
-            copyCaptionToClipboard()
+            Log.d(TAG, "Copy caption button SHORT clicked")
+            copyCaptionToClipboard() // Keep short click behavior
+        }
+
+        // Add long click listener to the TextView itself
+        binding.tvPostCaption.setOnLongClickListener {
+            Log.d(TAG, "Caption text LONG clicked")
+            copyCaptionToClipboard(true) // Pass true to indicate long press
+            true // Indicate the event was handled
         }
     }
 
-    private fun copyCaptionToClipboard() {
-        // Use currentPost safely
+    // Updated to handle long press and vibration
+    private fun copyCaptionToClipboard(isLongPress: Boolean = false) {
         val caption = currentPost?.caption
         if (!caption.isNullOrEmpty()) {
             val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             val clip = ClipData.newPlainText("caption", caption)
             clipboard.setPrimaryClip(clip)
-            Toast.makeText(this, "Caption copied to clipboard", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Caption copied", Toast.LENGTH_SHORT).show()
+
+            // Perform vibration on long press
+            if (isLongPress) {
+                performHapticFeedback()
+            }
         } else {
-            Toast.makeText(this, "No caption to copy", Toast.LENGTH_SHORT).show()
+            if (!isLongPress) { // Only show "no caption" toast on short press
+                Toast.makeText(this, "No caption to copy", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
-    // This function now uses the fully loaded currentPost object
+    // Helper function for vibration/haptic feedback
+    private fun performHapticFeedback() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+//            val vibratorManager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+//            val vibrator = vibratorManager.defaultVibrator
+//            vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK))
+//        } else {
+//            // Use standard haptic feedback for older versions
+//            binding.tvPostCaption.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            // Or use deprecated Vibrator (requires permission in Manifest)
+             val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                 vibrator.vibrate(VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE))
+             } else {
+                 @Suppress("DEPRECATION")
+                 vibrator.vibrate(50)
+             }
+        }
+    }
+
+
     private fun setupPostInfo() {
         val post = currentPost ?: run {
             Log.e(TAG, "setupPostInfo called but currentPost is null")
@@ -291,40 +322,46 @@ class PostViewActivity : AppCompatActivity() {
         }
         Log.d(TAG, "Setting up post info for DB loaded post: ${post.username}")
 
-        binding.tvUsername.text = "@${post.username}" // Use username from DB post
-        setupExpandableCaption(post.caption) // Use caption from DB post
+        binding.tvUsername.text = "@${post.username}"
+        // Setup caption display INCLUDING long press listener (called again after DB load)
+        setupExpandableCaption(post.caption, true)
 
         val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
         val formattedDate = dateFormat.format(Date(post.downloadDate))
         binding.tvDownloadDate.text = "Downloaded on $formattedDate"
     }
 
-    // setupExpandableCaption remains the same
-    private fun setupExpandableCaption(caption: String?) {
+    // Modified to always attach long-press listener
+    private fun setupExpandableCaption(caption: String?, attachLongClickListener: Boolean = false) {
         if (caption.isNullOrEmpty()) {
             binding.tvPostCaption.text = ""
             binding.tvPostCaption.visibility = View.GONE
-            return
+        } else {
+            binding.tvPostCaption.visibility = View.VISIBLE
+            if (caption.length <= maxCaptionLength) {
+                binding.tvPostCaption.text = caption
+                binding.tvPostCaption.movementMethod = null
+                binding.tvPostCaption.isClickable = false
+                binding.tvPostCaption.isFocusable = false
+            } else {
+                updateCaptionDisplay(caption)
+                binding.tvPostCaption.isClickable = true // Required for LinkMovementMethod
+                binding.tvPostCaption.isFocusable = true
+            }
         }
 
-        binding.tvPostCaption.visibility = View.VISIBLE
-
-        if (caption.length <= maxCaptionLength) {
-            binding.tvPostCaption.text = caption
-            // Disable LinkMovementMethod if not expandable to allow normal text selection
-            binding.tvPostCaption.movementMethod = null
-            binding.tvPostCaption.isClickable = false
-            binding.tvPostCaption.isFocusable = false
-
-        } else {
-            updateCaptionDisplay(caption)
-            binding.tvPostCaption.isClickable = true
-            binding.tvPostCaption.isFocusable = true
+        // Ensure long click listener is attached/reattached
+        if (attachLongClickListener) {
+            binding.tvPostCaption.setOnLongClickListener {
+                Log.d(TAG, "Caption text LONG clicked (listener attached in setup)")
+                copyCaptionToClipboard(true) // Pass true to indicate long press
+                true // Indicate the event was handled
+            }
         }
     }
 
 
-    // updateCaptionDisplay remains the same
+    // ... (updateCaptionDisplay, createClickableCaption, loadDataFromDatabase, updateUIWithFiles, setupDotsIndicator, calculateTotalFileSize, updateMediaCounter, shareCurrentMedia, deletePost remain the same) ...
     private fun updateCaptionDisplay(fullCaption: String) {
         val captionToShow = if (isCaptionExpanded) {
             createClickableCaption(fullCaption, " ... less", false)
@@ -628,4 +665,5 @@ class PostViewActivity : AppCompatActivity() {
             .setNegativeButton("Cancel", null)
             .show()
     }
+
 }
