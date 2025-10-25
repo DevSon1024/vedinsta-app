@@ -8,48 +8,100 @@ plugins {
 
 android {
     namespace = "com.devson.vedinsta"
-    compileSdk = 36  // Updated from 35 to 36
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.devson.vedinsta"
         minSdk = 24
-        targetSdk = 36  // Updated from 35 to 36
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        ndk {
-            abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+    }
+
+    flavorDimensions += "abi"
+
+    productFlavors {
+        create("arm64") {
+            dimension = "abi"
+            versionCode = 3  // Highest priority
+            versionNameSuffix = "-arm64"
+            ndk {
+                abiFilters.clear()
+                abiFilters += "arm64-v8a"
+            }
+        }
+
+        create("arm32") {
+            dimension = "abi"
+            versionCode = 2
+            versionNameSuffix = "-arm32"
+            ndk {
+                abiFilters.clear()
+                abiFilters += "armeabi-v7a"
+            }
+        }
+
+        create("x86") {
+            dimension = "abi"
+            versionCode = 4
+            versionNameSuffix = "-x86"
+            ndk {
+                abiFilters.clear()
+                abiFilters += "x86_64"
+            }
+        }
+
+        create("universal") {
+            dimension = "abi"
+            versionCode = 1
+            versionNameSuffix = "-universal"
+            ndk {
+                abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+            }
+        }
+    }
+    signingConfigs {
+        create("release") {
+            // This is a placeholder for your signing configuration.
         }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+             signingConfig = signingConfigs.getByName("release")
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
     kotlinOptions {
         jvmTarget = "17"
     }
+
     buildFeatures {
         compose = true
         viewBinding = true
+        resValues = false
     }
+
     ndkVersion = "27.0.12077973"
 }
 
 chaquopy {
     defaultConfig {
         version = "3.11"
-        buildPython("C:\\Users\\DEVENDRA\\AppData\\Local\\Programs\\Python\\Python313\\python.exe")
+        buildPython("C:\\Users\\DEVENDRA\\AppData\\Local\\Programs\\Python\\Python311\\python.exe")
 
         pyc {
             src = false
@@ -57,11 +109,10 @@ chaquopy {
             stdlib = false
         }
 
-        // Add Python packages here
         pip {
             install("instaloader")
             install("requests")
-            install("pillow") // For image quality handling
+            install("pillow")
             install("beautifulsoup4")
         }
     }

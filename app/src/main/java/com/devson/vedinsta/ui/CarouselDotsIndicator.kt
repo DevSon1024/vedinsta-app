@@ -3,14 +3,18 @@ package com.devson.vedinsta.ui
 import android.animation.ArgbEvaluator
 import android.animation.ValueAnimator
 import android.content.Context
+import android.content.res.Configuration
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
 import android.util.AttributeSet
+import android.util.DisplayMetrics
 import android.view.View
+import android.view.ViewGroup
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.OvershootInterpolator
 import androidx.core.content.ContextCompat
+import kotlin.math.min
 
 class CarouselDotsIndicator @JvmOverloads constructor(
     context: Context,
@@ -26,10 +30,10 @@ class CarouselDotsIndicator @JvmOverloads constructor(
     private val inactiveColor = 0xFFE0E0E0.toInt() // Light gray
     private val transitionalColor = 0xFFFFB6C1.toInt() // Light pink
 
-    // Enhanced dot properties
-    private val inactiveDotRadius = dpToPx(5f)
-    private val activeDotRadius = dpToPx(8f)
-    private val dotSpacing = dpToPx(18f)
+    // Dynamic dot properties based on screen size and dot count
+    private var inactiveDotRadius = dpToPx(5f)
+    private var activeDotRadius = dpToPx(8f)
+    private var dotSpacing = dpToPx(18f)
     private val animationDuration = 400L
     private val scaleAnimationDuration = 300L
 
@@ -83,6 +87,9 @@ class CarouselDotsIndicator @JvmOverloads constructor(
             selectedPosition = 0
             animatedPosition = 0f
 
+            // Calculate dynamic sizing based on dot count and available space
+            calculateDynamicSizing()
+
             // Initialize dynamic arrays
             dotRadii.clear()
             dotColors.clear()
@@ -100,6 +107,49 @@ class CarouselDotsIndicator @JvmOverloads constructor(
             requestLayout()
             invalidate()
         }
+    }
+
+    private fun calculateDynamicSizing() {
+        if (dotCount <= 0) return
+
+        // Get screen width
+        val displayMetrics = context.resources.displayMetrics
+        val screenWidth = displayMetrics.widthPixels
+        val availableWidth = screenWidth * 0.8f // Use 80% of screen width
+
+        // Calculate maximum width needed for all dots
+        val maxDotRadius = dpToPx(8f)
+        val minDotRadius = dpToPx(3f)
+        val maxSpacing = dpToPx(18f)
+        val minSpacing = dpToPx(8f)
+
+        // Calculate required width with maximum sizing
+        val maxRequiredWidth = (dotCount * maxDotRadius * 2) + ((dotCount - 1) * maxSpacing)
+
+        if (maxRequiredWidth <= availableWidth) {
+            // Use maximum sizing if it fits
+            activeDotRadius = maxDotRadius
+            inactiveDotRadius = dpToPx(5f)
+            dotSpacing = maxSpacing
+        } else {
+            // Scale down proportionally
+            val scale = availableWidth / maxRequiredWidth
+
+            // Apply scaling but maintain minimum sizes
+            activeDotRadius = (maxDotRadius * scale).coerceAtLeast(minDotRadius * 1.6f)
+            inactiveDotRadius = (activeDotRadius * 0.625f).coerceAtLeast(minDotRadius)
+            dotSpacing = (maxSpacing * scale).coerceAtLeast(minSpacing)
+
+            // For very large dot counts (>15), use compact mode
+            if (dotCount > 15) {
+                activeDotRadius = minDotRadius * 1.5f
+                inactiveDotRadius = minDotRadius
+                dotSpacing = minSpacing
+            }
+        }
+
+        // Update animated radius
+        animatedRadius = inactiveDotRadius
     }
 
     fun setSelectedPosition(position: Int, animate: Boolean = true) {
@@ -173,7 +223,11 @@ class CarouselDotsIndicator @JvmOverloads constructor(
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val desiredWidth = if (dotCount > 0) {
-            (dotCount * activeDotRadius * 2 + (dotCount - 1) * dotSpacing + dpToPx(16f)).toInt()
+            // Calculate width based on dynamic sizing
+            val totalDotsWidth = dotCount * activeDotRadius * 2
+            val totalSpacingWidth = if (dotCount > 1) (dotCount - 1) * dotSpacing else 0f
+            val padding = dpToPx(16f)
+            (totalDotsWidth + totalSpacingWidth + padding).toInt()
         } else {
             0
         }
@@ -195,16 +249,20 @@ class CarouselDotsIndicator @JvmOverloads constructor(
         val totalWidth = (dotCount * activeDotRadius * 2 + (dotCount - 1) * dotSpacing)
         val startX = (width - totalWidth) / 2f + activeDotRadius
 
-        // Draw connection line (subtle)
-        drawConnectionLine(canvas, centerY, startX)
+        // Only draw connection line for reasonable dot counts
+        if (dotCount <= 15) {
+            drawConnectionLine(canvas, centerY, startX)
+        }
 
         // Draw inactive dots with shadows
         for (i in 0 until dotCount) {
             if (i != selectedPosition) {
                 val x = startX + i * (activeDotRadius * 2 + dotSpacing)
 
-                // Draw shadow
-                canvas.drawCircle(x, centerY + dpToPx(1f), dotRadii[i], shadowPaint)
+                // Draw shadow only if dots are large enough
+                if (dotRadii[i] > dpToPx(3f)) {
+                    canvas.drawCircle(x, centerY + dpToPx(1f), dotRadii[i], shadowPaint)
+                }
 
                 // Draw dot
                 inactivePaint.color = dotColors[i]
@@ -215,8 +273,10 @@ class CarouselDotsIndicator @JvmOverloads constructor(
         // Draw active dot with enhanced effects
         drawActiveDot(canvas, centerY, startX)
 
-        // Draw progress indicator
-        drawProgressIndicator(canvas, centerY, startX)
+        // Draw progress indicator only for reasonable dot counts
+        if (dotCount <= 15) {
+            drawProgressIndicator(canvas, centerY, startX)
+        }
     }
 
     private fun drawConnectionLine(canvas: Canvas, centerY: Float, startX: Float) {
@@ -239,36 +299,40 @@ class CarouselDotsIndicator @JvmOverloads constructor(
     private fun drawActiveDot(canvas: Canvas, centerY: Float, startX: Float) {
         val activeX = startX + animatedPosition * (activeDotRadius * 2 + dotSpacing)
 
-        // Draw enhanced shadow for active dot
-        val shadowOffset = dpToPx(2f)
-        val enhancedShadowPaint = Paint().apply {
-            isAntiAlias = true
-            color = 0x40000000
-            style = Paint.Style.FILL
-        }
-        canvas.drawCircle(activeX, centerY + shadowOffset, animatedRadius, enhancedShadowPaint)
+        // Draw enhanced shadow for active dot (only if large enough)
+        if (animatedRadius > dpToPx(4f)) {
+            val shadowOffset = dpToPx(2f)
+            val enhancedShadowPaint = Paint().apply {
+                isAntiAlias = true
+                color = 0x40000000
+                style = Paint.Style.FILL
+            }
+            canvas.drawCircle(activeX, centerY + shadowOffset, animatedRadius, enhancedShadowPaint)
 
-        // Draw outer glow effect
-        val glowRadius = animatedRadius * 1.3f
-        val glowPaint = Paint().apply {
-            isAntiAlias = true
-            color = activeColor
-            alpha = 60
-            style = Paint.Style.FILL
+            // Draw outer glow effect
+            val glowRadius = animatedRadius * 1.3f
+            val glowPaint = Paint().apply {
+                isAntiAlias = true
+                color = activeColor
+                alpha = 60
+                style = Paint.Style.FILL
+            }
+            canvas.drawCircle(activeX, centerY, glowRadius, glowPaint)
         }
-        canvas.drawCircle(activeX, centerY, glowRadius, glowPaint)
 
         // Draw main active dot
         activePaint.color = activeColor
         canvas.drawCircle(activeX, centerY, animatedRadius, activePaint)
 
-        // Draw inner highlight
-        val highlightPaint = Paint().apply {
-            isAntiAlias = true
-            color = 0x40FFFFFF
-            style = Paint.Style.FILL
+        // Draw inner highlight (only if large enough)
+        if (animatedRadius > dpToPx(4f)) {
+            val highlightPaint = Paint().apply {
+                isAntiAlias = true
+                color = 0x40FFFFFF
+                style = Paint.Style.FILL
+            }
+            canvas.drawCircle(activeX, centerY - dpToPx(1f), animatedRadius * 0.6f, highlightPaint)
         }
-        canvas.drawCircle(activeX, centerY - dpToPx(1f), animatedRadius * 0.6f, highlightPaint)
     }
 
     private fun drawProgressIndicator(canvas: Canvas, centerY: Float, startX: Float) {
@@ -287,8 +351,10 @@ class CarouselDotsIndicator @JvmOverloads constructor(
 
         canvas.drawLine(startX - activeDotRadius, centerY, progressEndX, centerY, progressPaint)
 
-        // Draw animated trail effect
-        drawAnimatedTrail(canvas, centerY, startX, progressEndX)
+        // Draw animated trail effect (only for reasonable dot counts)
+        if (dotCount <= 10) {
+            drawAnimatedTrail(canvas, centerY, startX, progressEndX)
+        }
     }
 
     private fun drawAnimatedTrail(canvas: Canvas, centerY: Float, startX: Float, progressEndX: Float) {
@@ -336,5 +402,15 @@ class CarouselDotsIndicator @JvmOverloads constructor(
     // Method to get current animation progress for external use
     fun getAnimationProgress(): Float {
         return colorProgress
+    }
+
+    // Method to handle configuration changes (orientation, etc.)
+    override fun onConfigurationChanged(newConfig: Configuration?) {
+        super.onConfigurationChanged(newConfig)
+        if (dotCount > 0) {
+            calculateDynamicSizing()
+            requestLayout()
+            invalidate()
+        }
     }
 }

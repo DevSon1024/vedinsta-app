@@ -1,1 +1,6 @@
 /build
+/release
+/arm64
+/x64
+/arm32
+/x86
