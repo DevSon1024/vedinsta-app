@@ -25,6 +25,9 @@ import kotlinx.coroutines.launch
 import org.json.JSONObject
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
+import java.util.UUID
 
 class DownloadActivity : AppCompatActivity() {
 
@@ -33,6 +36,8 @@ class DownloadActivity : AppCompatActivity() {
     private lateinit var viewModel: MainViewModel
     private lateinit var notificationManager: VedInstaNotificationManager
     private val mediaList = mutableListOf<ImageCard>()
+
+    private var workRequestIds: List<UUID> = emptyList()
     private val selectedItems = mutableSetOf<Int>()
 
     // Position tracking for real-time updates
@@ -288,67 +293,78 @@ class DownloadActivity : AppCompatActivity() {
         val selectedMediaList = selectedItems.map { mediaList[it] }
 
         if (selectedMediaList.isNotEmpty()) {
-            Log.d(TAG, "Starting download for ${selectedMediaList.size} selected items")
+            Log.d(TAG, "Enqueueing download for ${selectedMediaList.size} selected items")
 
-            lifecycleScope.launch(Dispatchers.Main) {
-                // Show initial notification
-                val notificationId = notificationManager.showDownloadStarted(
-                    if (selectedMediaList.size == 1) "${postUsername}_media"
-                    else "${selectedMediaList.size} files"
-                )
+            // Disable button immediately
+            binding.btnDownload.isEnabled = false
+            binding.btnDownload.alpha = 0.6f
+            binding.btnDownload.text = "ENQUEUED..."
 
-                // Start download in background
-                lifecycleScope.launch(Dispatchers.IO) {
-                    try {
-                        val downloadedFiles = (application as VedInstaApplication).downloadFiles(
-                            this@DownloadActivity,
-                            selectedMediaList,
-                            postId
-                        )
+            // Use Application context for WorkManager
+            val applicationContext = this.applicationContext
 
-                        if (downloadedFiles.isNotEmpty()) {
-                            // Save to database
-                            saveDownloadedPost(postId, postUrl ?: "", downloadedFiles)
+            // Enqueue work using the application method
+            workRequestIds = (application as VedInstaApplication).enqueueMultipleDownloads(
+                applicationContext,
+                selectedMediaList,
+                postId
+            )
 
-                            // Show completion notification
-                            notificationManager.cancelDownloadNotification(notificationId)
-                            notificationManager.showDownloadCompleted(
-                                "${postUsername}_media",
-                                downloadedFiles.size
-                            )
+            if (workRequestIds.isNotEmpty()) {
+                Toast.makeText(this, "Download started in background", Toast.LENGTH_SHORT).show()
+                // Optionally observe the combined progress here if needed,
+                // or rely on the Application class observer and individual notifications.
+                // observeCombinedWorkProgress(workRequestIds)
 
-                            runOnUiThread {
-                                Toast.makeText(this@DownloadActivity,
-                                    "Downloaded ${downloadedFiles.size} files successfully!",
-                                    Toast.LENGTH_SHORT).show()
-
-                                // Exit the activity after successful download
-                                finish()
-                            }
-                        } else {
-                            notificationManager.showDownloadError(
-                                "${postUsername}_media",
-                                "No files were downloaded"
-                            )
-                        }
-
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Download failed", e)
-                        notificationManager.showDownloadError(
-                            "${postUsername}_media",
-                            e.message ?: "Download failed"
-                        )
-                        runOnUiThread {
-                            Toast.makeText(this@DownloadActivity,
-                                "Download failed: ${e.message}",
-                                Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                }
+                // Finish activity after enqueuing
+                finish()
+            } else {
+                Toast.makeText(this, "Failed to start downloads", Toast.LENGTH_SHORT).show()
+                // Re-enable button on failure
+                updateDownloadButton() // Reset button state based on selection
             }
+
         } else {
             Toast.makeText(this, "Please select at least one item to download", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun observeCombinedWorkProgress(workIds: List<UUID>) {
+        val workManager = WorkManager.getInstance(this)
+        workManager.getWorkInfosForUniqueWorkLiveData(postId ?: VedInstaApplication.UNIQUE_DOWNLOAD_WORK_NAME)
+            .observe(this) { workInfos ->
+                if (workInfos == null || workInfos.isEmpty()) return@observe
+
+                val relevantWorkInfos = workInfos.filter { it.id in workIds }
+                if (relevantWorkInfos.isEmpty()) return@observe
+
+                var completedCount = 0
+                var totalProgress = 0
+                var runningCount = 0
+
+                relevantWorkInfos.forEach { workInfo ->
+                    if (workInfo.state.isFinished) {
+                        completedCount++
+                    } else if (workInfo.state == WorkInfo.State.RUNNING) {
+                        runningCount++
+                        totalProgress += workInfo.progress.getInt(EnhancedDownloadManager.PROGRESS, 0)
+                    }
+                    // Handle other states if needed (FAILED, CANCELLED)
+                }
+
+                val averageProgress = if (runningCount > 0) totalProgress / runningCount else 0
+
+                // Update UI - e.g., show overall progress if desired
+                // binding.someProgressBar.progress = averageProgress
+                // binding.someTextView.text = "Downloading $runningCount files ($averageProgress%)... $completedCount completed."
+
+                if (completedCount == workIds.size) {
+                    // All finished
+                    Log.d(TAG, "All downloads completed for this batch.")
+                    // Can potentially finish activity here if not already done
+                    // finish()
+                }
+            }
     }
 
     private fun handlePythonResult(jsonString: String) {
@@ -394,30 +410,6 @@ class DownloadActivity : AppCompatActivity() {
             Log.e(TAG, "Failed to parse result", e)
             Toast.makeText(this, "Failed to parse result: ${e.message}", Toast.LENGTH_LONG).show()
             finish()
-        }
-    }
-
-    private fun saveDownloadedPost(postId: String?, postUrl: String, downloadedFiles: List<String>) {
-        if (postId != null && downloadedFiles.isNotEmpty()) {
-            Log.d(TAG, "Saving post to database:")
-            Log.d(TAG, "  PostId: $postId")
-            Log.d(TAG, "  Downloaded files: $downloadedFiles")
-            Log.d(TAG, "  Files count: ${downloadedFiles.size}")
-
-            val downloadedPost = DownloadedPost(
-                postId = postId,
-                postUrl = postUrl,
-                thumbnailPath = downloadedFiles.first(),
-                totalImages = downloadedFiles.size,
-                downloadDate = System.currentTimeMillis(),
-                hasVideo = downloadedFiles.any { it.endsWith(".mp4") },
-                username = postUsername,
-                caption = postCaption,
-                mediaPaths = downloadedFiles
-            )
-
-            viewModel.insertDownloadedPost(downloadedPost)
-            Log.d(TAG, "Post saved to database successfully")
         }
     }
 

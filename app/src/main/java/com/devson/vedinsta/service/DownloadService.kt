@@ -4,6 +4,7 @@ import android.app.Service
 import android.content.Intent
 import android.os.IBinder
 import androidx.core.app.ServiceCompat
+import androidx.core.app.NotificationCompat // Import NotificationCompat
 import com.devson.vedinsta.notification.VedInstaNotificationManager
 import kotlinx.coroutines.*
 import okhttp3.OkHttpClient
@@ -39,8 +40,10 @@ class DownloadService : Service() {
             val fileName = it.getStringExtra(EXTRA_FILE_NAME)
 
             if (url != null && filePath != null && fileName != null) {
-                val notificationId = notificationManager.showDownloadStarted(fileName)
-                startForeground(notificationId, createForegroundNotification(fileName))
+                // *** PROBLEM LINE 1: showDownloadStarted likely removed/changed signature ***
+                // val notificationId = notificationManager.showDownloadStarted(fileName)
+                val notificationId = System.currentTimeMillis().toInt() // Use a temporary ID
+                startForeground(notificationId, createForegroundNotification(fileName)) // Keep foreground notification
 
                 serviceScope.launch {
                     downloadFile(url, filePath, fileName, notificationId)
@@ -54,12 +57,13 @@ class DownloadService : Service() {
         return START_NOT_STICKY
     }
 
+    // Keep createForegroundNotification as it's used by startForeground
     private fun createForegroundNotification(fileName: String) =
-        androidx.core.app.NotificationCompat.Builder(this, VedInstaNotificationManager.CHANNEL_ID)
+        NotificationCompat.Builder(this, VedInstaNotificationManager.CHANNEL_ID) // Use NotificationCompat
             .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle("VedInsta Download")
+            .setContentTitle("VedInsta Download (Legacy)") // Indicate it's the old service if used
             .setContentText("Downloading: $fileName")
-            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_LOW)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
             .build()
 
@@ -95,19 +99,24 @@ class DownloadService : Service() {
 
                         if (contentLength > 0) {
                             val progress = ((totalBytesRead * 100) / contentLength).toInt()
-                            notificationManager.updateDownloadProgress(notificationId, fileName, progress)
+                            // *** PROBLEM LINE 2: updateDownloadProgress likely removed/changed ***
+                            // notificationManager.updateDownloadProgress(notificationId, fileName, progress)
                         }
                     }
                 }
             }
 
-            notificationManager.cancelDownloadNotification(notificationId)
+            notificationManager.cancelDownloadNotification(notificationId) // Cancel the foreground notification
             notificationManager.showDownloadCompleted(fileName, 1)
 
         } catch (e: Exception) {
             notificationManager.showDownloadError(fileName, e.message ?: "Unknown error")
+        } finally {
+            // Ensure foreground service stops even if download fails partially
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         }
     }
+
 
     override fun onDestroy() {
         super.onDestroy()

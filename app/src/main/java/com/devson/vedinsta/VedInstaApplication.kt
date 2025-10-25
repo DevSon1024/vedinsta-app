@@ -3,33 +3,37 @@ package com.devson.vedinsta
 import android.app.Application
 import android.content.Context
 import android.net.Uri
-import android.os.Environment
+import android.os.Build
 import android.util.Log
 import android.widget.Toast
 import androidx.documentfile.provider.DocumentFile
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.Observer // Standard Observer import
+import androidx.work.*
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import java.io.File
-import java.io.FileOutputStream
-import java.io.IOException
-import java.net.HttpURLConnection
-import java.net.URL
-import okhttp3.*
-import java.util.concurrent.TimeUnit
-import android.media.MediaScannerConnection
-import com.devson.vedinsta.notification.VedInstaNotificationManager
-import com.devson.vedinsta.database.PostMediaManager
 import com.devson.vedinsta.database.AppDatabase
 import com.devson.vedinsta.database.DownloadedPost
+import com.devson.vedinsta.database.PostMediaManager
+import com.devson.vedinsta.notification.VedInstaNotificationManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 
 class VedInstaApplication : Application() {
 
     lateinit var settingsManager: SettingsManager
+    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     companion object {
         private const val TAG = "VedInstaApplication"
+        const val UNIQUE_DOWNLOAD_WORK_NAME = "vedInstaDownloadWork"
     }
 
     override fun onCreate() {
@@ -38,635 +42,452 @@ class VedInstaApplication : Application() {
         if (!Python.isStarted()) {
             Python.start(AndroidPlatform(this))
         }
+        WorkManager.getInstance(this).pruneWork()
     }
 
-    /**
-     * Downloads files to centralized folders and returns list of successfully downloaded file paths
-     */
-    suspend fun downloadFiles(context: Context, filesToDownload: List<ImageCard>, postId: String?): List<String> {
-        Log.d(TAG, "=== downloadFiles called ===")
-        Log.d(TAG, "Files to download: ${filesToDownload.size}")
+    fun enqueueMultipleDownloads(
+        context: Context,
+        filesToDownload: List<ImageCard>,
+        postId: String?
+    ): List<UUID> {
+        Log.d(TAG, "=== enqueueMultipleDownloads called ===")
+        Log.d(TAG, "Files to enqueue: ${filesToDownload.size}")
         Log.d(TAG, "PostId: $postId")
 
-        val downloadedFiles = mutableListOf<String>()
-        var downloadedCount = 0
+        val workRequests = mutableListOf<OneTimeWorkRequest>() // Explicit type
+        val workManager = WorkManager.getInstance(context.applicationContext) // Use application context
+        val requestIds = mutableListOf<UUID>()
+        val groupTag = postId ?: UUID.randomUUID().toString()
 
-        for ((index, media) in filesToDownload.withIndex()) {
+        filesToDownload.forEachIndexed { index, media ->
             try {
-                Log.d(TAG, "Processing media $index: ${media.url}, type: ${media.type}")
-
-                val directoryUriString = if (media.type == "video") {
+                val fileName = PostMediaManager.generateUniqueFileName(media.username, media.type)
+                // Use var for targetFilePath as it might change based on SAF check
+                var targetFilePath: String
+                val targetDirectoryUriString = if (media.type.lowercase() == "video") {
                     settingsManager.videoDirectoryUri
                 } else {
                     settingsManager.imageDirectoryUri
                 }
 
-                val filePath = if (directoryUriString != null) {
-                    Log.d(TAG, "Using SAF download for media $index")
-                    downloadWithSAFCentralized(context, media, Uri.parse(directoryUriString))
+                if (targetDirectoryUriString != null) {
+                    val cacheDir = File(context.cacheDir, "downloads")
+                    cacheDir.mkdirs()
+                    targetFilePath = File(cacheDir, fileName).absolutePath
+                    Log.w(TAG, "SAF chosen but using internal cache path for Worker: $targetFilePath. Manual move needed.")
+                    // TODO: Implement post-download move to SAF URI
                 } else {
-                    Log.d(TAG, "Using default download for media $index")
-                    downloadWithDownloadManagerCentralized(context, media)
+                    val targetDir = if (media.type.lowercase() == "video") {
+                        PostMediaManager.getVideoDirectory()
+                    } else {
+                        PostMediaManager.getImageDirectory()
+                    }
+                    // Ensure targetDir exists before creating the File path
+                    targetDir.mkdirs()
+                    targetFilePath = File(targetDir, fileName).absolutePath
                 }
 
-                Log.d(TAG, "Download result for media $index: $filePath")
+                Log.d(TAG, "Media $index: URL=${media.url}, Path=$targetFilePath, Name=$fileName")
 
-                if (filePath != null) {
-                    downloadedFiles.add(filePath)
-                    downloadedCount++
-                    Log.d(TAG, "Successfully downloaded file $index: $filePath")
-                } else {
-                    Log.w(TAG, "Failed to download file $index")
-                }
+                val inputData = workDataOf(
+                    EnhancedDownloadManager.KEY_MEDIA_URL to media.url,
+                    EnhancedDownloadManager.KEY_FILE_PATH to targetFilePath,
+                    EnhancedDownloadManager.KEY_FILE_NAME to fileName,
+                    EnhancedDownloadManager.KEY_POST_ID to postId, // Pass original postId if available
+                    EnhancedDownloadManager.KEY_MEDIA_TYPE to media.type
+                )
+
+                val constraints = Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build()
+
+                val downloadWorkRequest = OneTimeWorkRequestBuilder<EnhancedDownloadManager>()
+                    .setInputData(inputData)
+                    .setConstraints(constraints)
+                    .addTag(groupTag) // Tag all work in the batch with the same groupTag
+                    .build()
+
+                workRequests.add(downloadWorkRequest) // Add to list
+                requestIds.add(downloadWorkRequest.id)
+                Log.d(TAG, "Prepared WorkRequest ${downloadWorkRequest.id} for $fileName (Tag: $groupTag)")
+
             } catch (e: Exception) {
-                Log.e(TAG, "Error downloading media $index", e)
+                Log.e(TAG, "Error creating WorkRequest for media $index", e)
             }
         }
 
-        withContext(Dispatchers.Main) {
-            Toast.makeText(
-                context,
-                "Downloaded $downloadedCount / ${filesToDownload.size} files.",
-                Toast.LENGTH_LONG
-            ).show()
+        if (workRequests.isNotEmpty()) {
+            workManager.beginUniqueWork(
+                groupTag,
+                ExistingWorkPolicy.APPEND_OR_REPLACE, // Or KEEP, REPLACE
+                workRequests // Pass the whole list here
+            ).enqueue() // Call enqueue() at the end
+
+            Log.d(TAG, "Enqueued ${workRequests.size} requests with tag: $groupTag")
+
+            observeWorkProgressByTag(context.applicationContext, groupTag, requestIds.size, postUrl = filesToDownload.firstOrNull()?.url ?: "")
         }
 
-        Log.d(TAG, "=== downloadFiles completed ===")
-        Log.d(TAG, "Total downloaded files: ${downloadedFiles.size}")
-        downloadedFiles.forEachIndexed { index, path ->
-            Log.d(TAG, "Final file $index: $path")
-        }
-
-        return downloadedFiles
+        Log.d(TAG, "=== enqueueMultipleDownloads completed ===")
+        return requestIds
     }
 
-    /**
-     * Single-file download used for auto-download of single posts
-     * FIXED VERSION with proper database saving and upsert logic
-     */
-    suspend fun downloadSingleFile(
+
+    fun enqueueSingleDownload(
         context: Context,
         mediaUrl: String,
         mediaType: String,
         username: String,
-        postId: String?
-    ): List<String> {
-        Log.d(TAG, "=== downloadSingleFile called ===")
-        Log.d(TAG, "Media URL: $mediaUrl")
-        Log.d(TAG, "Media Type: $mediaType")
-        Log.d(TAG, "Username: $username")
-        Log.d(TAG, "PostId: $postId")
-
-        return withContext(Dispatchers.IO) {
-            val downloadedFiles = mutableListOf<String>()
-            val notificationManager = VedInstaNotificationManager.getInstance(context)
-
-            try {
-                val fileName = PostMediaManager.generateUniqueFileName(username, mediaType)
-                Log.d(TAG, "Generated filename: $fileName")
-
-                // Show initial notification
-                val notificationId = notificationManager.showDownloadStarted(fileName)
-
-                // Determine save directory
-                val directoryUriString = if (mediaType.lowercase() == "video") {
-                    settingsManager.videoDirectoryUri
-                } else {
-                    settingsManager.imageDirectoryUri
-                }
-
-                // Download with progress tracking
-                val savedPath = if (directoryUriString != null) {
-                    Log.d(TAG, "Using SAF for single file")
-                    downloadSingleFileWithSAFCentralized(context, mediaUrl, fileName, Uri.parse(directoryUriString), notificationManager, notificationId)
-                } else {
-                    Log.d(TAG, "Using default for single file")
-                    downloadSingleFileWithDefaultCentralized(context, mediaUrl, fileName, mediaType, notificationManager, notificationId)
-                }
-
-                Log.d(TAG, "Single file download result: $savedPath")
-
-                if (savedPath != null) {
-                    downloadedFiles.add(savedPath)
-
-                    // Show completion notification
-                    notificationManager.cancelDownloadNotification(notificationId)
-                    notificationManager.showDownloadCompleted(fileName, 1)
-
-                    // Add to MediaStore for gallery visibility
-                    MediaScannerConnection.scanFile(
-                        context,
-                        arrayOf(savedPath),
-                        arrayOf(if (mediaType.lowercase() == "video") "video/mp4" else "image/jpeg"),
-                        null
-                    )
-
-                    // *** CRITICAL: Save to database with UPSERT logic ***
-                    // *** CRITICAL: Save to database with ENHANCED UPSERT logic ***
-                    if (postId != null) {
-                        Log.d(TAG, "=== SAVING TO DATABASE ===")
-                        Log.d(TAG, "PostId for DB: $postId")
-                        Log.d(TAG, "Downloaded file for DB: $savedPath")
-
-                        try {
-                            val db = AppDatabase.getDatabase(context.applicationContext)
-
-                            // *** FIX: Check if post already exists ***
-                            val existingPost = db.downloadedPostDao().getPostById(postId)
-                            Log.d(TAG, "Existing post in DB: $existingPost")
-
-                            if (existingPost != null) {
-                                if (existingPost.mediaPaths.isEmpty()) {
-                                    // If existing post has empty mediaPaths, update with our file
-                                    Log.d(TAG, "Updating existing post (empty mediaPaths) with: [$savedPath]")
-                                    db.downloadedPostDao().updateMediaPaths(postId, listOf(savedPath))
-                                } else {
-                                    // Merge with existing paths
-                                    val updatedPaths = (existingPost.mediaPaths + savedPath).distinct()
-                                    Log.d(TAG, "Merging with existing paths: $updatedPaths")
-                                    db.downloadedPostDao().updateMediaPaths(postId, updatedPaths)
-                                }
-                            } else {
-                                // Create new post with IGNORE strategy (won't overwrite if another component creates it)
-                                val downloadedPost = DownloadedPost(
-                                    postId = postId,
-                                    postUrl = mediaUrl,
-                                    thumbnailPath = savedPath,
-                                    totalImages = 1,
-                                    downloadDate = System.currentTimeMillis(),
-                                    hasVideo = mediaType.lowercase() == "video",
-                                    username = username,
-                                    caption = null,
-                                    mediaPaths = listOf(savedPath)
-                                )
-
-                                Log.d(TAG, "Inserting new post (with IGNORE): $downloadedPost")
-                                db.downloadedPostDao().insert(downloadedPost) // Uses IGNORE strategy
-
-                                // If insert was ignored, update the mediaPaths
-                                val insertedPost = db.downloadedPostDao().getPostById(postId)
-                                if (insertedPost != null && insertedPost.mediaPaths.isEmpty()) {
-                                    Log.d(TAG, "Insert was ignored, updating mediaPaths manually")
-                                    db.downloadedPostDao().updateMediaPaths(postId, listOf(savedPath))
-                                }
-                            }
-
-                            Log.d(TAG, "Database operation completed")
-
-                            // Verify the save
-                            val savedPost = db.downloadedPostDao().getPostById(postId)
-                            Log.d(TAG, "Final verification - Retrieved post: $savedPost")
-                            if (savedPost != null) {
-                                Log.d(TAG, "Final verification SUCCESS - MediaPaths: ${savedPost.mediaPaths}")
-                                Log.d(TAG, "Final verification SUCCESS - MediaPaths count: ${savedPost.mediaPaths.size}")
-                            } else {
-                                Log.e(TAG, "Final verification FAILED - Post not found after operation!")
-                            }
-
-                        } catch (e: Exception) {
-                            Log.e(TAG, "DATABASE SAVE ERROR", e)
-                        }
-                    } else {
-                        Log.w(TAG, "PostId is null - cannot save to database")
-                    }
-
-                    Log.d(TAG, "Single file download completed successfully")
-                } else {
-                    notificationManager.showDownloadError(fileName, "Download failed")
-                    Log.w(TAG, "Single file download failed")
-                }
-
-            } catch (e: Exception) {
-                notificationManager.showDownloadError("Download", e.message ?: "Unknown error")
-                Log.e(TAG, "Single file download error", e)
-            }
-
-            Log.d(TAG, "=== downloadSingleFile completed ===")
-            Log.d(TAG, "Downloaded files: $downloadedFiles")
-            downloadedFiles
-        }
-    }
-
-    /**
-     * Download using Storage Access Framework (SAF) to centralized folders
-     */
-    private suspend fun downloadWithSAFCentralized(context: Context, media: ImageCard, directoryUri: Uri): String? {
-        return withContext(Dispatchers.IO) {
-            try {
-                Log.d(TAG, "SAF download starting for: ${media.url}")
-
-                val directory = DocumentFile.fromTreeUri(context, directoryUri) ?: return@withContext null
-
-                val mimeType = if (media.type == "video") "video/mp4" else "image/jpeg"
-                val fileName = PostMediaManager.generateUniqueFileName(media.username, media.type)
-
-                Log.d(TAG, "SAF creating file: $fileName")
-
-                val newFile = directory.createFile(mimeType, fileName)
-                newFile?.uri?.let { fileUri ->
-                    context.contentResolver.openOutputStream(fileUri)?.use { outputStream ->
-                        URL(media.url).openStream().use { inputStream ->
-                            inputStream.copyTo(outputStream)
-                        }
-                    }
-
-                    val resultPath = fileUri.toString()
-                    Log.d(TAG, "SAF download completed: $resultPath")
-                    return@withContext resultPath
-                }
-
-                Log.w(TAG, "SAF download failed: Could not create file")
-                null
-            } catch (e: Exception) {
-                Log.e(TAG, "SAF download error", e)
-                null
-            }
-        }
-    }
-
-    /**
-     * Download using DownloadManager to centralized folders
-     */
-    private suspend fun downloadWithDownloadManagerCentralized(context: Context, media: ImageCard): String? {
-        return withContext(Dispatchers.IO) {
-            try {
-                Log.d(TAG, "Default download starting for: ${media.url}")
-
-                val fileName = PostMediaManager.generateUniqueFileName(media.username, media.type)
-                Log.d(TAG, "Generated filename: $fileName")
-
-                val targetDirectory = if (media.type == "video") {
-                    PostMediaManager.getVideoDirectory()
-                } else {
-                    PostMediaManager.getImageDirectory()
-                }
-
-                Log.d(TAG, "Target directory: ${targetDirectory.absolutePath}")
-                Log.d(TAG, "Directory exists: ${targetDirectory.exists()}")
-
-                val file = File(targetDirectory, fileName)
-                Log.d(TAG, "Target file: ${file.absolutePath}")
-
-                // Download file directly
-                URL(media.url).openStream().use { inputStream ->
-                    FileOutputStream(file).use { outputStream ->
-                        inputStream.copyTo(outputStream)
-                    }
-                }
-
-                Log.d(TAG, "File downloaded successfully")
-                Log.d(TAG, "File exists: ${file.exists()}")
-                Log.d(TAG, "File size: ${file.length()}")
-
-                // Add to MediaStore for gallery visibility
-                MediaScannerConnection.scanFile(
-                    context,
-                    arrayOf(file.absolutePath),
-                    arrayOf(if (media.type == "video") "video/mp4" else "image/jpeg"),
-                    null
-                )
-
-                Log.d(TAG, "MediaScan completed for: ${file.absolutePath}")
-
-                return@withContext file.absolutePath
-            } catch (e: Exception) {
-                Log.e(TAG, "Default download error", e)
-                null
-            }
-        }
-    }
-
-    private suspend fun downloadSingleFileWithSAFCentralized(
-        context: Context,
-        mediaUrl: String,
-        fileName: String,
-        directoryUri: Uri,
-        notificationManager: VedInstaNotificationManager,
-        notificationId: Int
-    ): String? {
-        return withContext(Dispatchers.IO) {
-            try {
-                val directory = DocumentFile.fromTreeUri(context, directoryUri) ?: return@withContext null
-                val mimeType = if (fileName.endsWith(".mp4")) "video/mp4" else "image/jpeg"
-
-                val newFile = directory.createFile(mimeType, fileName)
-                newFile?.uri?.let { fileUri ->
-                    context.contentResolver.openOutputStream(fileUri)?.use { outputStream ->
-                        // Use the enhanced download method
-                        downloadWithSimpleHeaders(mediaUrl, outputStream, notificationManager, notificationId, fileName)
-                    }
-                    return@withContext fileUri.toString()
-                }
-                null
-            } catch (e: Exception) {
-                Log.e(TAG, "SAF download error", e)
-                null
-            }
-        }
-    }
-    private suspend fun downloadWithSimpleHeaders(
-        url: String,
-        outputStream: java.io.OutputStream,
-        notificationManager: VedInstaNotificationManager,
-        notificationId: Int,
-        fileName: String
-    ) {
-        withContext(Dispatchers.IO) {
-            val urlConnection = URL(url).openConnection() as HttpURLConnection
-
-            try {
-                urlConnection.apply {
-                    requestMethod = "GET"
-                    connectTimeout = 30000
-                    readTimeout = 120000
-
-                    // Essential headers
-                    setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 12; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36")
-                    setRequestProperty("Referer", "https://www.instagram.com/")
-                    setRequestProperty("Accept", "*/*")
-                }
-
-                urlConnection.connect()
-
-                if (urlConnection.responseCode == HttpURLConnection.HTTP_OK) {
-                    val contentLength = urlConnection.contentLength.toLong()
-
-                    urlConnection.inputStream.use { inputStream ->
-                        val buffer = ByteArray(8192)
-                        var totalBytesRead = 0L
-                        var bytesRead: Int
-                        var lastProgressUpdate = 0
-
-                        while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                            outputStream.write(buffer, 0, bytesRead)
-                            totalBytesRead += bytesRead
-
-                            val progress = if (contentLength > 0) {
-                                ((totalBytesRead * 100) / contentLength).toInt()
-                            } else {
-                                -1
-                            }
-
-                            if (progress != lastProgressUpdate && (progress - lastProgressUpdate >= 5 || totalBytesRead % 102400 == 0L)) {
-                                notificationManager.updateDownloadProgress(notificationId, fileName, progress)
-                                lastProgressUpdate = progress
-                            }
-                        }
-                    }
-                } else {
-                    throw IOException("HTTP ${urlConnection.responseCode}: ${urlConnection.responseMessage}")
-                }
-
-            } finally {
-                urlConnection.disconnect()
-            }
-        }
-    }
-
-    private suspend fun downloadSingleFileWithDefaultCentralized(
-        context: Context,
-        mediaUrl: String,
-        fileName: String,
-        mediaType: String,
-        notificationManager: VedInstaNotificationManager,
-        notificationId: Int
-    ): String? {
-        return withContext(Dispatchers.IO) {
-            try {
-                Log.d(TAG, "Enhanced Instagram download starting")
-                Log.d(TAG, "URL: $mediaUrl")
-                Log.d(TAG, "File: $fileName")
-
-                val targetDirectory = if (mediaType.lowercase() == "video") {
-                    PostMediaManager.getVideoDirectory()
-                } else {
-                    PostMediaManager.getImageDirectory()
-                }
-
-                val file = File(targetDirectory, fileName)
-                Log.d(TAG, "Target file path: ${file.absolutePath}")
-
-                // Try multiple download strategies
-                var success = false
-
-                // Strategy 1: Enhanced headers with referrer context
-                if (!success) {
-                    success = downloadWithInstagramContext(mediaUrl, file, notificationManager, notificationId, fileName)
-                }
-
-                // Strategy 2: Range request (partial content)
-                if (!success) {
-                    Log.d(TAG, "Trying range request strategy")
-                    success = downloadWithRangeRequest(mediaUrl, file, notificationManager, notificationId, fileName)
-                }
-
-                // Strategy 3: Simple request with minimal headers
-                if (!success) {
-                    Log.d(TAG, "Trying minimal headers strategy")
-                    success = downloadWithMinimalHeaders(mediaUrl, file, notificationManager, notificationId, fileName)
-                }
-
-                if (success && file.exists() && file.length() > 0) {
-                    Log.d(TAG, "File downloaded successfully. Size: ${file.length()} bytes")
-                    return@withContext file.absolutePath
-                } else {
-                    Log.e(TAG, "All download strategies failed")
-                    return@withContext null
-                }
-
-            } catch (e: Exception) {
-                Log.e(TAG, "Enhanced Instagram download error", e)
-                return@withContext null
-            }
-        }
-    }
-
-    private suspend fun downloadWithInstagramContext(
-        url: String,
-        file: File,
-        notificationManager: VedInstaNotificationManager,
-        notificationId: Int,
-        fileName: String
-    ): Boolean {
-        return try {
-            val urlConnection = URL(url).openConnection() as HttpURLConnection
-
-            urlConnection.apply {
-                requestMethod = "GET"
-                connectTimeout = 30000
-                readTimeout = 120000
-                doInput = true
-
-                // Instagram-specific headers with mobile context
-                setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 12; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36 Instagram 308.0.0.34.113 Android")
-                setRequestProperty("Accept", "video/webm,video/ogg,video/*;q=0.9,application/ogg;q=0.7,audio/*;q=0.6,*/*;q=0.5")
-                setRequestProperty("Accept-Language", "en-US,en;q=0.9")
-                setRequestProperty("Accept-Encoding", "identity")
-                setRequestProperty("Cache-Control", "no-cache")
-                setRequestProperty("Connection", "keep-alive")
-                setRequestProperty("Referer", "https://www.instagram.com/")
-                setRequestProperty("Origin", "https://www.instagram.com")
-                setRequestProperty("sec-ch-ua", "\"Google Chrome\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\"")
-                setRequestProperty("sec-ch-ua-mobile", "?1")
-                setRequestProperty("sec-ch-ua-platform", "\"Android\"")
-                setRequestProperty("Sec-Fetch-Dest", "video")
-                setRequestProperty("Sec-Fetch-Mode", "cors")
-                setRequestProperty("Sec-Fetch-Site", "cross-site")
-            }
-
-            urlConnection.connect()
-            val responseCode = urlConnection.responseCode
-            Log.d(TAG, "Instagram context download - Response: $responseCode")
-
-            if (responseCode == HttpURLConnection.HTTP_OK) {
-                downloadFileContent(urlConnection, file, notificationManager, notificationId, fileName)
-                true
-            } else {
-                Log.w(TAG, "Instagram context download failed: $responseCode")
-                urlConnection.disconnect()
-                false
-            }
-
-        } catch (e: Exception) {
-            Log.w(TAG, "Instagram context download error", e)
-            false
-        }
-    }
-
-    /**
-     * Download with Range request (partial content strategy)
-     */
-    private suspend fun downloadWithRangeRequest(
-        url: String,
-        file: File,
-        notificationManager: VedInstaNotificationManager,
-        notificationId: Int,
-        fileName: String
-    ): Boolean {
-        return try {
-            val urlConnection = URL(url).openConnection() as HttpURLConnection
-
-            urlConnection.apply {
-                requestMethod = "GET"
-                connectTimeout = 30000
-                readTimeout = 120000
-                doInput = true
-
-                // Range request headers
-                setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 12; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36")
-                setRequestProperty("Accept", "*/*")
-                setRequestProperty("Accept-Language", "en-US,en;q=0.9")
-                setRequestProperty("Accept-Encoding", "identity")
-                setRequestProperty("Referer", "https://www.instagram.com/")
-                setRequestProperty("Origin", "https://www.instagram.com")
-                setRequestProperty("Range", "bytes=0-") // Request all content starting from byte 0
-                setRequestProperty("Connection", "keep-alive")
-            }
-
-            urlConnection.connect()
-            val responseCode = urlConnection.responseCode
-            Log.d(TAG, "Range request download - Response: $responseCode")
-
-            if (responseCode == HttpURLConnection.HTTP_OK || responseCode == HttpURLConnection.HTTP_PARTIAL) {
-                downloadFileContent(urlConnection, file, notificationManager, notificationId, fileName)
-                true
-            } else {
-                Log.w(TAG, "Range request download failed: $responseCode")
-                urlConnection.disconnect()
-                false
-            }
-
-        } catch (e: Exception) {
-            Log.w(TAG, "Range request download error", e)
-            false
-        }
-    }
-
-    /**
-     * Download with minimal headers as fallback
-     */
-    private suspend fun downloadWithMinimalHeaders(
-        url: String,
-        file: File,
-        notificationManager: VedInstaNotificationManager,
-        notificationId: Int,
-        fileName: String
-    ): Boolean {
-        return try {
-            val urlConnection = URL(url).openConnection() as HttpURLConnection
-
-            urlConnection.apply {
-                requestMethod = "GET"
-                connectTimeout = 45000  // Longer timeout as fallback
-                readTimeout = 180000    // 3 minutes
-                doInput = true
-
-                // Minimal headers
-                setRequestProperty("User-Agent", "Instagram 308.0.0.34.113 Android (31/12; 450dpi; 1080x2392; samsung; SM-G991B; o1s; exynos2100; en_US; 458229237)")
-                setRequestProperty("Accept", "*/*")
-            }
-
-            urlConnection.connect()
-            val responseCode = urlConnection.responseCode
-            Log.d(TAG, "Minimal headers download - Response: $responseCode")
-
-            if (responseCode == HttpURLConnection.HTTP_OK) {
-                downloadFileContent(urlConnection, file, notificationManager, notificationId, fileName)
-                true
-            } else {
-                Log.w(TAG, "Minimal headers download failed: $responseCode")
-                urlConnection.disconnect()
-                false
-            }
-
-        } catch (e: Exception) {
-            Log.w(TAG, "Minimal headers download error", e)
-            false
-        }
-    }
-
-    /**
-     * Common method to download file content from connection
-     */
-    private suspend fun downloadFileContent(
-        connection: HttpURLConnection,
-        file: File,
-        notificationManager: VedInstaNotificationManager,
-        notificationId: Int,
-        fileName: String
-    ) {
+        postIdOrKey: String // Can be postId or a generated key/URL
+    ): UUID? {
+        Log.d(TAG, "=== enqueueSingleDownload called ===")
+        Log.d(TAG, "Media URL: $mediaUrl, Type: $mediaType, User: $username, Key: $postIdOrKey")
+        val workManager = WorkManager.getInstance(context.applicationContext) // Use application context
         try {
-            val contentLength = connection.contentLength.toLong()
-            Log.d(TAG, "Content length: $contentLength bytes")
+            val fileName = PostMediaManager.generateUniqueFileName(username, mediaType)
+            var targetFilePath: String // Use var
+            val targetDirectoryUriString = if (mediaType.lowercase() == "video") settingsManager.videoDirectoryUri else settingsManager.imageDirectoryUri
 
-            FileOutputStream(file).use { outputStream ->
-                connection.inputStream.use { inputStream ->
-                    val buffer = ByteArray(8192)
-                    var totalBytesRead = 0L
-                    var bytesRead: Int
-                    var lastProgressUpdate = 0
+            if (targetDirectoryUriString != null) {
+                val cacheDir = File(context.cacheDir, "downloads"); cacheDir.mkdirs()
+                targetFilePath = File(cacheDir, fileName).absolutePath
+                Log.w(TAG, "SAF chosen but using internal cache path: $targetFilePath.")
+                // TODO: Implement post-download move
+            } else {
+                val targetDir = if (mediaType.lowercase() == "video") PostMediaManager.getVideoDirectory() else PostMediaManager.getImageDirectory()
+                targetDir.mkdirs()
+                targetFilePath = File(targetDir, fileName).absolutePath
+            }
 
-                    while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                        outputStream.write(buffer, 0, bytesRead)
-                        totalBytesRead += bytesRead
+            Log.d(TAG, "Single Download: Path=$targetFilePath, Name=$fileName")
+            val inputData = workDataOf(
+                EnhancedDownloadManager.KEY_MEDIA_URL to mediaUrl,
+                EnhancedDownloadManager.KEY_FILE_PATH to targetFilePath,
+                EnhancedDownloadManager.KEY_FILE_NAME to fileName,
+                EnhancedDownloadManager.KEY_POST_ID to postIdOrKey,
+                EnhancedDownloadManager.KEY_MEDIA_TYPE to mediaType
+            )
+            val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
+            val downloadWorkRequest = OneTimeWorkRequestBuilder<EnhancedDownloadManager>()
+                .setInputData(inputData)
+                .setConstraints(constraints)
+                .addTag(postIdOrKey)
+                .build()
 
-                        val progress = if (contentLength > 0) {
-                            ((totalBytesRead * 100) / contentLength).toInt()
-                        } else {
-                            (totalBytesRead / 1024).toInt()
-                        }
+            workManager.enqueueUniqueWork(postIdOrKey, ExistingWorkPolicy.KEEP, downloadWorkRequest)
+            Log.d(TAG, "Enqueued single WorkRequest ${downloadWorkRequest.id} for key $postIdOrKey")
+            observeWorkProgressById(context.applicationContext, downloadWorkRequest.id, postIdOrKey, postUrl = mediaUrl, username = username, mediaType = mediaType)
+            Log.d(TAG, "=== enqueueSingleDownload completed ===")
+            return downloadWorkRequest.id
+        } catch (e: Exception) {
+            Log.e(TAG, "Error enqueuing single download", e)
+            VedInstaNotificationManager.getInstance(context).showDownloadError("File", e.message ?: "Enqueue failed")
+            return null
+        }
+    }
 
-                        if (progress != lastProgressUpdate && (progress - lastProgressUpdate >= 5 || totalBytesRead % 102400 == 0L)) {
-                            notificationManager.updateDownloadProgress(notificationId, fileName, progress)
-                            lastProgressUpdate = progress
-                        }
+
+    // --- Observation Logic ---
+    private val observedWorkIds = ConcurrentHashMap.newKeySet<UUID>()
+    private val groupCompletedFiles = ConcurrentHashMap<String, CopyOnWriteArrayList<String>>()
+    private val singleCompletedFiles = ConcurrentHashMap<UUID, String>()
+    private val tagObservers = ConcurrentHashMap<String, Observer<List<WorkInfo>>>()
+    private val idObservers = ConcurrentHashMap<UUID, Observer<WorkInfo>>()
+
+
+    private fun observeWorkProgressById(
+        context: Context,
+        workId: UUID,
+        tag: String,
+        postUrl: String,
+        username: String,
+        mediaType: String
+    ) {
+        if (!observedWorkIds.add(workId)) {
+            Log.d(TAG, "Already observing Work ID: $workId")
+            return
+        }
+        Log.d(TAG, "Observing single Work ID: $workId for tag: $tag")
+
+        val workManager = WorkManager.getInstance(context)
+        val workInfoLiveData = workManager.getWorkInfoByIdLiveData(workId)
+
+        val observer = Observer<WorkInfo> { workInfo ->
+            if (workInfo == null) return@Observer
+
+            // *** Get file path from OUTPUT data on SUCCESS ***
+            var filePath = if (workInfo.state == WorkInfo.State.SUCCEEDED) {
+                workInfo.outputData.getString(EnhancedDownloadManager.KEY_FILE_PATH)
+            } else {
+                // Otherwise, try input data (stored in progress) as fallback
+                workInfo.progress.getString(EnhancedDownloadManager.KEY_FILE_PATH)
+            }
+            val fileName = workInfo.progress.getString(EnhancedDownloadManager.KEY_FILE_NAME) ?: "file"
+
+
+            when (workInfo.state) {
+                WorkInfo.State.SUCCEEDED -> {
+                    Log.i(TAG, "Work $workId ($fileName) SUCCEEDED.")
+                    if (filePath != null) {
+                        singleCompletedFiles[workId] = filePath
+                        handleSingleCompletion(context, tag, postUrl, filePath, username, mediaType)
+                        // TODO: Handle SAF move
+                    } else {
+                        // Log error if path is missing even on success
+                        Log.e(TAG, "Work $workId ($fileName) succeeded BUT outputData missing KEY_FILE_PATH!")
+                        handleSingleFailure(context, fileName) // Treat as failure
                     }
+                    cleanupObserver(workId, workInfoLiveData)
+                }
+                WorkInfo.State.FAILED, WorkInfo.State.CANCELLED -> {
+                    Log.w(TAG, "Work $workId ($fileName) ${workInfo.state}.")
+                    handleSingleFailure(context, fileName)
+                    cleanupObserver(workId, workInfoLiveData)
+                }
+                WorkInfo.State.RUNNING -> { /* Progress handled by worker notification */ }
+                else -> { /* ENQUEUED, BLOCKED */ }
+            }
+        }
+
+        idObservers[workId] = observer
+
+        applicationScope.launch {
+            workInfoLiveData.observeForever(observer)
+        }
+    }
+
+
+    private fun observeWorkProgressByTag(
+        context: Context,
+        groupTag: String,
+        expectedCount: Int,
+        postUrl: String
+    ) {
+        if (tagObservers.containsKey(groupTag)) {
+            Log.d(TAG, "Already observing group tag: $groupTag")
+            return
+        }
+        Log.d(TAG, "Observing group tag: $groupTag (expecting $expectedCount)")
+
+        val workManager = WorkManager.getInstance(context)
+        val workInfosLiveData = workManager.getWorkInfosByTagLiveData(groupTag)
+
+        groupCompletedFiles.putIfAbsent(groupTag, CopyOnWriteArrayList())
+
+        val observer = Observer<List<WorkInfo>> { workInfos -> // Lambda syntax is fine
+            if (workInfos.isNullOrEmpty()) return@Observer
+            val completionHandled = !tagObservers.containsKey(groupTag)
+            if (completionHandled) {
+                Log.d(TAG, "Completion appears handled for tag $groupTag (observer removed), ignoring update.")
+                return@Observer
+            }
+
+            val finishedCount = workInfos.count { it.state.isFinished }
+            val succeededCount = workInfos.count { it.state == WorkInfo.State.SUCCEEDED }
+            val runningCount = workInfos.count { it.state == WorkInfo.State.RUNNING }
+
+            Log.d(TAG, "Tag '$groupTag' update: Total=${workInfos.size}, Finished=$finishedCount, Succeeded=$succeededCount, Running=$runningCount")
+
+            // Collect successful file paths ONCE per work ID when SUCCEEDED
+            workInfos.filter { it.state == WorkInfo.State.SUCCEEDED }.forEach { workInfo ->
+                // *** Get file path from OUTPUT data on SUCCESS ***
+                val filePath = workInfo.outputData.getString(EnhancedDownloadManager.KEY_FILE_PATH)
+                // Fallback to input data if needed (less ideal)
+                    ?: workInfo.progress.getString(EnhancedDownloadManager.KEY_FILE_PATH)
+
+                if (filePath != null) {
+                    groupCompletedFiles[groupTag]?.addIfAbsent(filePath)
+                } else {
+                    Log.e(TAG, "Work ${workInfo.id} (Tag: $groupTag) succeeded BUT outputData missing KEY_FILE_PATH!")
                 }
             }
 
-            Log.d(TAG, "File content downloaded successfully")
-        } finally {
-            connection.disconnect()
+            if (finishedCount >= expectedCount) {
+                Log.i(TAG, "All $expectedCount works for tag '$groupTag' have finished.")
+                // Cleanup observer FIRST
+                val observerToRemove = tagObservers[groupTag]
+                if (observerToRemove != null) {
+                    cleanupTagObserver(groupTag, workInfosLiveData, observerToRemove)
+                }
+
+                // THEN get completed files and process
+                val completedFiles = groupCompletedFiles.remove(groupTag)?.toList() ?: emptyList()
+
+                if (completedFiles.isNotEmpty()) {
+                    val firstSuccessInfo = workInfos.find { it.state == WorkInfo.State.SUCCEEDED }
+                    // Get username from Input data (stored in progress) of first success
+                    val username = firstSuccessInfo?.progress?.getString(EnhancedDownloadManager.KEY_POST_ID)?.substringBefore('_') ?: "unknown"
+                    val hasVideo = completedFiles.any { it.endsWith(".mp4", ignoreCase = true) }
+
+                    applicationScope.launch(Dispatchers.IO) {
+                        saveDownloadedPostToDb(context, groupTag, postUrl, completedFiles, hasVideo, username, null)
+                        // TODO: Handle SAF move
+                        scanFiles(context, completedFiles)
+                        withContext(Dispatchers.Main) { Toast.makeText(context, "Downloaded ${completedFiles.size} / $expectedCount files.", Toast.LENGTH_LONG).show() }
+                        VedInstaNotificationManager.getInstance(context).showDownloadCompleted(username, completedFiles.size)
+                    }
+                } else {
+                    Log.w(TAG, "All work finished for tag '$groupTag', but no files succeeded.")
+                    applicationScope.launch(Dispatchers.Main) { Toast.makeText(context, "Download failed for post.", Toast.LENGTH_LONG).show() }
+                    // Get username from Input data of *any* workInfo for notification fallback
+                    val username = workInfos.firstOrNull()?.progress?.getString(EnhancedDownloadManager.KEY_POST_ID)?.substringBefore('_') ?: groupTag
+                    VedInstaNotificationManager.getInstance(context).showDownloadError("Post $username", "Download failed")
+                }
+                // groupCompletedFiles entry already removed above
+            } else {
+                Log.d(TAG, "Tag '$groupTag': Waiting for ${expectedCount - finishedCount} more jobs.")
+            }
+        } // End lambda observer
+
+        tagObservers[groupTag] = observer // Store before observing
+
+        applicationScope.launch {
+            workInfosLiveData.observeForever(observer)
         }
+    }
+
+
+    // --- Other methods remain largely the same ---
+    // Handle completion for single file downloads
+    private fun handleSingleCompletion(
+        context: Context,
+        tag: String, // postId or generated key
+        postUrl: String,
+        filePath: String,
+        username: String,
+        mediaType: String
+    ) {
+        applicationScope.launch(Dispatchers.IO) {
+            val hasVideo = mediaType.lowercase() == "video"
+            saveDownloadedPostToDb(
+                context = context,
+                postId = tag,
+                postUrl = postUrl,
+                downloadedFiles = listOf(filePath),
+                hasVideo = hasVideo,
+                username = username,
+                caption = null // TODO: Get caption if needed
+            )
+            scanFiles(context, listOf(filePath))
+        }
+    }
+
+    // Handle failure for single file downloads
+    private fun handleSingleFailure(context: Context, fileName: String) {
+        applicationScope.launch(Dispatchers.Main) {
+            Toast.makeText(context, "Download failed for $fileName", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // Helper to safely get input data
+    private fun inputDataForWork(workManager: WorkManager, workId: UUID): Data? {
+        return try {
+            workManager.getWorkInfoById(workId).get()?.progress
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting WorkInfo synchronously for $workId", e)
+            null
+        }
+    }
+
+    private suspend fun saveDownloadedPostToDb(
+        context: Context, postId: String, postUrl: String, downloadedFiles: List<String>,
+        hasVideo: Boolean, username: String, caption: String?
+    ) {
+        if (downloadedFiles.isEmpty()) {
+            Log.w(TAG, "Attempted to save post $postId with empty downloaded files list.")
+            return
+        }
+        Log.d(TAG, "Saving/Updating post to database: PostId=$postId, Files=${downloadedFiles.size}")
+        try {
+            val db = AppDatabase.getDatabase(context.applicationContext)
+            val existingPost = db.downloadedPostDao().getPostById(postId)
+
+            if (existingPost != null) {
+                val updatedPaths = (existingPost.mediaPaths + downloadedFiles).distinct()
+                val updatedPost = existingPost.copy(
+                    mediaPaths = updatedPaths,
+                    totalImages = updatedPaths.size,
+                    downloadDate = System.currentTimeMillis(),
+                    thumbnailPath = if (existingPost.thumbnailPath.isBlank() || !File(existingPost.thumbnailPath).exists() || existingPost.thumbnailPath.endsWith(".mp4")) downloadedFiles.first() else existingPost.thumbnailPath,
+                    username = if (existingPost.username == "unknown" || existingPost.username == "downloading...") username else existingPost.username,
+                    caption = existingPost.caption ?: caption,
+                    hasVideo = existingPost.hasVideo || hasVideo
+                )
+                db.downloadedPostDao().insertOrReplace(updatedPost)
+                Log.d(TAG, "Updated existing post $postId with ${updatedPaths.size} media paths.")
+            } else {
+                val downloadedPost = DownloadedPost(
+                    postId = postId, postUrl = postUrl,
+                    thumbnailPath = downloadedFiles.first(),
+                    totalImages = downloadedFiles.size,
+                    downloadDate = System.currentTimeMillis(),
+                    hasVideo = hasVideo, username = username, caption = caption,
+                    mediaPaths = downloadedFiles
+                )
+                db.downloadedPostDao().insert(downloadedPost)
+                Log.d(TAG, "Inserted new post $postId with ${downloadedFiles.size} media paths.")
+                val insertedPost = db.downloadedPostDao().getPostById(postId)
+                if (insertedPost != null && insertedPost.mediaPaths.isEmpty()) {
+                    Log.w(TAG, "Post $postId insert IGNORED, updating media paths manually.")
+                    db.downloadedPostDao().updateMediaPaths(postId, downloadedFiles)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "DATABASE SAVE ERROR for postId $postId", e)
+        }
+    }
+
+    private fun scanFiles(context: Context, filePaths: List<String>) {
+        if (filePaths.isEmpty()) return
+        Log.d(TAG, "Requesting media scan for ${filePaths.size} files.")
+        try {
+            android.media.MediaScannerConnection.scanFile(
+                context.applicationContext,
+                filePaths.toTypedArray(),
+                null,
+                null
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "MediaScannerConnection failed", e)
+        }
+    }
+
+    // Cleanup for ID observers
+    private fun cleanupObserver(workId: UUID, liveData: LiveData<WorkInfo>) {
+        applicationScope.launch {
+            idObservers.remove(workId)?.let { observer ->
+                liveData.removeObserver(observer)
+                observedWorkIds.remove(workId)
+                Log.d(TAG, "Removed ID observer for Work ID: $workId")
+            }
+        }
+    }
+
+    // Cleanup for Tag observers
+    private fun cleanupTagObserver(tag: String, liveData: LiveData<List<WorkInfo>>, observerToRemove: Observer<List<WorkInfo>>) {
+        applicationScope.launch {
+            if (tagObservers.remove(tag, observerToRemove)) {
+                liveData.removeObserver(observerToRemove)
+                Log.d(TAG, "Removed tag observer for: $tag")
+            } else {
+                Log.w(TAG, "Attempted to remove tag observer for $tag, but it was not found.")
+            }
+        }
+    }
+
+    // --- Deprecated/Placeholder Download Methods ---
+    suspend fun downloadFiles(context: Context, filesToDownload: List<ImageCard>, postId: String?): List<String> {
+        Log.e(TAG, "Deprecated downloadFiles called! Use enqueueMultipleDownloads.")
+        return emptyList()
+    }
+
+    suspend fun downloadSingleFile(
+        context: Context, mediaUrl: String, mediaType: String,
+        username: String, postId: String?
+    ): List<String> {
+        Log.e(TAG, "Deprecated downloadSingleFile called! Use enqueueSingleDownload.")
+        val key = postId ?: UUID.randomUUID().toString()
+        enqueueSingleDownload(context, mediaUrl, mediaType, username, key)
+        return emptyList()
     }
 }
