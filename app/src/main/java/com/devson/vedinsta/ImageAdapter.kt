@@ -5,19 +5,24 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import androidx.recyclerview.widget.RecyclerView
+import coil.decode.VideoFrameDecoder // Import VideoFrameDecoder
 import coil.load
+import coil.request.videoFrameMillis // Import videoFrameMillis
 import coil.size.Size
+import com.devson.vedinsta.databinding.ItemImageSelectionBinding // Use ViewBinding
 
 class ImageAdapter(
     private val mediaList: List<ImageCard>,
-    private val selectedItems: MutableSet<Int> = mutableSetOf(),
-    private val onSelectionChanged: ((position: Int, isSelected: Boolean) -> Unit)? = null
+    val selectedItems: MutableSet<Int>, // Make it accessible from Activity
+    private val onSelectionChanged: (position: Int, isSelected: Boolean) -> Unit
 ) : RecyclerView.Adapter<ImageAdapter.ImageViewHolder>() {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ImageViewHolder {
-        val view = LayoutInflater.from(parent.context)
-            .inflate(R.layout.item_image_selection, parent, false)
-        return ImageViewHolder(view)
+        // Use ViewBinding
+        val binding = ItemImageSelectionBinding.inflate(
+            LayoutInflater.from(parent.context), parent, false
+        )
+        return ImageViewHolder(binding)
     }
 
     override fun onBindViewHolder(holder: ImageViewHolder, position: Int) {
@@ -26,59 +31,65 @@ class ImageAdapter(
 
     override fun getItemCount(): Int = mediaList.size
 
-    fun getSelectedItems(): List<ImageCard> {
-        return selectedItems.map { mediaList[it] }
+    // Keep this function if needed elsewhere, otherwise rely on selectedItems directly
+    fun getSelectedItemsData(): List<ImageCard> {
+        return selectedItems.mapNotNull { index -> mediaList.getOrNull(index) }.sortedBy { it.url } // Sort for consistency
     }
 
-    inner class ImageViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-        private val ivMedia: ImageView = itemView.findViewById(R.id.ivMedia)
-        private val ivVideoIcon: ImageView = itemView.findViewById(R.id.ivVideoIcon)
-        private val ivSelectionIcon: ImageView = itemView.findViewById(R.id.ivSelectionIcon)
-        private val overlayView: View = itemView.findViewById(R.id.overlayView)
+    inner class ImageViewHolder(private val binding: ItemImageSelectionBinding) : // Use ViewBinding
+        RecyclerView.ViewHolder(binding.root) {
 
         fun bind(media: ImageCard, position: Int) {
             val isSelected = selectedItems.contains(position)
+            val isVideo = media.type == "video" // Check if it's a video
 
-            // Load image/video thumbnail
-            if (media.type == "video") {
+            binding.apply { // Use binding directly
+                // Load image or video thumbnail
                 ivMedia.load(media.url) {
                     placeholder(R.drawable.placeholder_image)
-                    error(R.drawable.placeholder_image)
+                    error(R.drawable.placeholder_image) // Fallback placeholder
                     crossfade(300)
-                    size(Size.ORIGINAL)
+                    size(Size.ORIGINAL) // Load original size for better quality in carousel
+
+                    // **** Add Video Frame Decoding ****
+                    if (isVideo) {
+                        decoderFactory { result, options, _ -> VideoFrameDecoder(result.source, options) }
+                        videoFrameMillis(1000) // Load frame at 1 second (or 0 for the very first)
+                    }
+                    // **** End Video Frame Decoding ****
                 }
-                ivVideoIcon.visibility = View.VISIBLE
+
+                // Show video icon overlay if it's a video
+                ivVideoIcon.visibility = if (isVideo) View.VISIBLE else View.GONE
+
+                // Update selection state visuals
+                ivSelectionIcon.setImageResource(
+                    if (isSelected) R.drawable.ic_check_circle_filled // Filled green check
+                    else R.drawable.ic_check_circle_outline // Outline grey check
+                )
+
+                // Update selection overlay opacity
+                overlayView.alpha = if (isSelected) 0.35f else 0.0f // Slightly more visible overlay
+
+                // Click listeners for the whole item and the check icon
+                root.setOnClickListener { toggleSelection(position) }
+                ivSelectionIcon.setOnClickListener { toggleSelection(position) }
+            }
+        }
+
+        private fun toggleSelection(position: Int) {
+            val currentlySelected = selectedItems.contains(position)
+            val newSelectionState = !currentlySelected
+
+            if (newSelectionState) {
+                selectedItems.add(position)
             } else {
-                ivMedia.load(media.url) {
-                    placeholder(R.drawable.placeholder_image)
-                    error(R.drawable.placeholder_image)
-                    crossfade(300)
-                    size(Size.ORIGINAL)
-                }
-                ivVideoIcon.visibility = View.GONE
+                selectedItems.remove(position)
             }
-
-            // Update selection state
-            ivSelectionIcon.setImageResource(
-                if (isSelected) R.drawable.ic_check_circle_filled
-                else R.drawable.ic_check_circle_outline
-            )
-
-            // Add selection overlay
-            overlayView.alpha = if (isSelected) 0.3f else 0.0f
-
-            // Click listeners
-            itemView.setOnClickListener {
-                val newSelectionState = !isSelected
-                onSelectionChanged?.invoke(position, newSelectionState)
-                notifyItemChanged(position)
-            }
-
-            ivSelectionIcon.setOnClickListener {
-                val newSelectionState = !isSelected
-                onSelectionChanged?.invoke(position, newSelectionState)
-                notifyItemChanged(position)
-            }
+            // Notify the adapter to redraw the item with the new state
+            notifyItemChanged(position)
+            // Inform the activity about the change
+            onSelectionChanged.invoke(position, newSelectionState)
         }
     }
 }
