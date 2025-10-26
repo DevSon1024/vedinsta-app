@@ -45,12 +45,10 @@ class HomeFragment : Fragment() {
     private lateinit var viewModel: MainViewModel
 
     private val workingItems = mutableListOf<GridPostItem>()
-    // Removed pendingTempIds, rely on workIdMap keys
     // Use ConcurrentHashMap for thread safety, although primary access is main thread
     private val workIdMap = ConcurrentHashMap<String, UUID>() // Map tempKey/postId to Work ID
 
     // Map to keep track of active observers *managed by this fragment instance*
-    // Storing only the Observer isn't needed here as LiveData handles removal with LifecycleOwner
     private val observedWorkIdsInFragment = ConcurrentHashMap.newKeySet<UUID>()
 
 
@@ -97,7 +95,7 @@ class HomeFragment : Fragment() {
             layoutManager = GridLayoutManager(context, 3)
             adapter = postsAdapter
             setHasFixedSize(true)
-            setItemViewCacheSize(10)
+            setItemViewCacheSize(10) // Cache more items for smoother grid scrolling
         }
     }
 
@@ -120,21 +118,20 @@ class HomeFragment : Fragment() {
                 val key = dummy.uniqueKey
                 if (!realById.containsKey(key)) { // Check if a real post replaced it
                     val workId = workIdMap[key] // Get ID from fragment's map
-                    val workState = workId?.let { getWorkState(it) }
 
-                    // Only keep if tracked by fragment and work is potentially active
-                    if (workId != null && (workState == null || !workState.isFinished)) {
-                        rebuilt.add(dummy)
-                        // Ensure observer is active (it should be if workId is in map)
-                        if (!observedWorkIdsInFragment.contains(workId)) {
-                            observeWorkProgress(key, workId) // Re-attach observer if needed
+                    // Use LiveData to check state asynchronously without blocking
+                    workId?.let { id ->
+                        if (!observedWorkIdsInFragment.contains(id)) {
+                            observeWorkProgress(key, id) // Start observing if not already
                         }
-                    } else {
-                        // Work finished unsuccessfully or dummy no longer tracked by fragment
-                        Log.w(TAG, "Removing dummy item $key as associated work finished unsuccessfully ($workState) or not tracked by fragment.")
-                        workId?.let { fragmentCancelWorkObserver(it) } // Clean up fragment observer state
-                        workIdMap.remove(key)
+                        // Check state via LiveData observation rather than blocking getWorkState() here
+                        // The observer itself will handle removal if work finishes
+                        rebuilt.add(dummy) // Assume it might still be running until observer confirms otherwise
+                    } ?: run {
+                        // If workId is null but dummy exists, it's an inconsistent state, remove dummy
+                        Log.w(TAG, "Removing dummy item $key as its workId is not tracked by fragment.")
                     }
+
                 } else {
                     // Real post exists, ensure full cleanup in fragment tracking
                     workIdMap[key]?.let { fragmentCancelWorkObserver(it) }
@@ -145,12 +142,14 @@ class HomeFragment : Fragment() {
 
             // Update list and submit
             workingItems.clear()
+            // Sort downloading items first, then downloaded items by date
             val downloadingItems = rebuilt.filter { it.isDownloading }
             val downloadedItems = rebuilt.filter { !it.isDownloading }.sortedByDescending { it.post?.downloadDate ?: 0L }
             workingItems.addAll(downloadingItems)
             workingItems.addAll(downloadedItems)
 
             postsAdapter.submitList(workingItems.toList()) {
+                // Optional: Scroll to top only if a new download was added *at the top*
                 if (workingItems.isNotEmpty() && workingItems.first().isDownloading && workingItems.size > rebuilt.size) {
                     binding.rvPosts.scrollToPosition(0)
                 }
@@ -173,6 +172,7 @@ class HomeFragment : Fragment() {
     }
 
     private fun handleDownloadFabClick() {
+        if (!isAdded) return
         val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         if (!clipboard.hasPrimaryClip()) {
             Toast.makeText(context, "Clipboard is empty.", Toast.LENGTH_SHORT).show()
@@ -202,26 +202,42 @@ class HomeFragment : Fragment() {
             return
         }
 
+        // Check DB asynchronously
         if (postId != null) {
             viewModel.checkIfPostDownloaded(postId) { isDownloaded ->
-                activity?.runOnUiThread { // Ensure UI operations on main thread
-                    if (isDownloaded) {
-                        showRedownloadDialog(url, postId)
-                    } else {
-                        fetchMediaFromUrl(url, postId)
+                // Ensure we are still attached and on the main thread
+                activity?.runOnUiThread {
+                    if (isAdded) { // Check fragment state again
+                        if (isDownloaded) {
+                            showRedownloadDialog(url, postId)
+                        } else {
+                            fetchMediaFromUrl(url, postId)
+                        }
                     }
                 }
             }
         } else {
+            // If no postId, assume it's not downloaded (or use URL as key if needed)
             fetchMediaFromUrl(url, null)
         }
     }
 
 
     private fun extractPostIdFromUrl(url: String): String? {
-        val pattern = Pattern.compile("instagram\\.com/(?:p|reel|tv)/([^/?]+)")
-        val matcher = pattern.matcher(url)
-        return if (matcher.find()) matcher.group(1) else null
+        // Regex patterns for various Instagram URL types
+        val patterns = listOf(
+            "instagram\\.com/(?:p|reel|tv)/([^/?]+)", // Matches /p/, /reel/, /tv/
+            "instagram\\.com/stories/([^/]+)/(\\d+)" // Matches /stories/username/story_id/ (might capture username instead) - Less reliable for uniqueness
+        )
+        for (patternString in patterns) {
+            val pattern = Pattern.compile(patternString)
+            val matcher = pattern.matcher(url)
+            if (matcher.find()) {
+                // Return the first captured group (usually the shortcode or ID)
+                return matcher.group(1)
+            }
+        }
+        return null // No match found
     }
 
     private fun showRedownloadDialog(url: String, postId: String) {
@@ -245,11 +261,14 @@ class HomeFragment : Fragment() {
         lifecycleScope.launch(Dispatchers.IO) {
             var fetchedCaption: String? = null
             var fetchedUsername: String? = null
+            var resultJson: String? = null // Store raw JSON result
+
             try {
                 val py = Python.getInstance()
                 val pyModule = py.getModule("insta_downloader")
-                val resultJson = pyModule.callAttr("get_media_urls", url).toString()
+                resultJson = pyModule.callAttr("get_media_urls", url).toString() // Execute python script
 
+                // Preliminary parsing to get username/caption early if successful
                 kotlin.runCatching {
                     val preliminaryResult = JSONObject(resultJson)
                     if (preliminaryResult.optString("status") == "success") {
@@ -263,44 +282,70 @@ class HomeFragment : Fragment() {
                     binding.progressBar.visibility = View.GONE
                     binding.fabDownload.show()
 
+                    if (resultJson == null) {
+                        Toast.makeText(context, "Error: Failed to get result from script", Toast.LENGTH_LONG).show()
+                        Log.e(TAG, "Python script execution failed or returned null")
+                        return@withContext
+                    }
+
                     val result = kotlin.runCatching { JSONObject(resultJson) }.getOrNull()
-                    if (result == null || result.optString("status") != "success") {
-                        val message = result?.optString("message", "Unknown error fetching media") ?: "Failed to parse result"
-                        Toast.makeText(context, "Error: $message", Toast.LENGTH_LONG).show()
-                        Log.e(TAG, "Python script failed or returned error: $resultJson")
-                        return@withContext
-                    }
+                    val status = result?.optString("status")
+                    val message = result?.optString("message", "Unknown error fetching media") ?: "Failed to parse result"
 
-                    fetchedUsername = result.optString("username", "unknown")
-                    fetchedCaption = result.optString("caption", null)
+                    when (status) {
+                        "success" -> {
+                            // Already got username/caption above, re-fetch just in case
+                            fetchedUsername = result.optString("username", "unknown")
+                            fetchedCaption = result.optString("caption", null)
 
-                    val trackingKey = postId ?: url
+                            val trackingKey = postId ?: url // Use postId if available, else URL
 
-                    // Check fragment's map
-                    if (workIdMap.containsKey(trackingKey) && !forceRedownload) {
-                        Toast.makeText(context, "Download already in progress.", Toast.LENGTH_SHORT).show()
-                        return@withContext
-                    }
+                            // Check fragment's map again before proceeding
+                            if (workIdMap.containsKey(trackingKey) && !forceRedownload) {
+                                Toast.makeText(context, "Download already in progress.", Toast.LENGTH_SHORT).show()
+                                return@withContext
+                            }
 
-                    if (shouldAutoDownload(resultJson)) {
-                        autoDownloadSingleMedia(resultJson, url, trackingKey, fetchedUsername, fetchedCaption)
-                    } else {
-                        // Pass key to DownloadActivity
-                        val intent = Intent(context, DownloadActivity::class.java).apply {
-                            putExtra("RESULT_JSON", resultJson)
-                            putExtra("POST_URL", url)
-                            putExtra("POST_ID", trackingKey) // Use trackingKey
+                            if (shouldAutoDownload(resultJson)) {
+                                autoDownloadSingleMedia(resultJson, url, trackingKey, fetchedUsername, fetchedCaption)
+                            } else {
+                                // Pass key to DownloadActivity
+                                val intent = Intent(context, DownloadActivity::class.java).apply {
+                                    putExtra("RESULT_JSON", resultJson)
+                                    putExtra("POST_URL", url)
+                                    putExtra("POST_ID", trackingKey) // Use trackingKey
+                                }
+                                startActivity(intent)
+                            }
                         }
-                        startActivity(intent)
+                        "private", "login_required" -> {
+                            Toast.makeText(context, "Cannot download: $message", Toast.LENGTH_LONG).show()
+                        }
+                        "not_found" -> {
+                            Toast.makeText(context, "Error: Post not found or unavailable.", Toast.LENGTH_LONG).show()
+                        }
+                        "rate_limited" -> {
+                            Toast.makeText(context, "Rate limited by Instagram. Please try again later.", Toast.LENGTH_LONG).show()
+                        }
+                        "error" -> {
+                            // More generic error
+                            Toast.makeText(context, "Error: $message", Toast.LENGTH_LONG).show()
+                            Log.e(TAG, "Python script returned error: $resultJson")
+                        }
+                        else -> {
+                            // Fallback for unexpected status or parsing failure
+                            Toast.makeText(context, "Error: $message", Toast.LENGTH_LONG).show()
+                            Log.e(TAG, "Python script failed or returned unexpected status: $resultJson")
+                        }
                     }
                 }
-            } catch (e: Exception) {
+            } catch (e: Exception) { // Catch errors during Python execution
                 withContext(Dispatchers.Main) {
                     if (!isAdded) return@withContext
                     binding.progressBar.visibility = View.GONE
                     binding.fabDownload.show()
-                    Toast.makeText(context, "Error fetching media info: ${e.message?.take(100)}", Toast.LENGTH_LONG).show()
-                    Log.e(TAG, "Python error: ", e)
+                    Toast.makeText(context, "Error running script: ${e.message?.take(100)}", Toast.LENGTH_LONG).show()
+                    Log.e(TAG, "Python execution error: ", e)
                 }
             }
         }
@@ -308,29 +353,23 @@ class HomeFragment : Fragment() {
 
 
     private fun shouldAutoDownload(jsonString: String): Boolean {
-        try {
+        return try {
             val result = JSONObject(jsonString)
-            if (result.getString("status") == "success") {
-                val mediaArray = result.getJSONArray("media")
-                return mediaArray.length() == 1
-            }
+            result.getString("status") == "success" && result.getJSONArray("media").length() == 1
         } catch (e: Exception) {
             Log.e(TAG, "JSON parsing error for auto-download check", e)
-        }
-        return false
-    }
-
-
-    private fun getWorkState(workId: UUID): WorkInfo.State? {
-        if (!isAdded) return null
-        return try {
-            // Use application context to get WorkManager instance
-            WorkManager.getInstance(requireContext().applicationContext).getWorkInfoById(workId).get()?.state
-        } catch (e: Exception) {
-            Log.e(TAG, "Error getting work state for $workId", e)
-            null
+            false
         }
     }
+
+    // Function to get WorkInfo state asynchronously (example using LiveData)
+    // Note: This might be less useful here now, as state checking is integrated into observeDownloadedPosts observer logic.
+    // Kept for reference or potential future use.
+//    private fun getWorkStateLiveData(workId: UUID): LiveData<WorkInfo.State?> {
+//        if (!isAdded) return MutableLiveData(null) // Return empty LiveData if not attached
+//        val workManager = WorkManager.getInstance(requireContext().applicationContext)
+//        return Transformations.map(workManager.getWorkInfoByIdLiveData(workId)) { it?.state }
+//    }
 
     private fun autoDownloadSingleMedia(
         jsonString: String,
@@ -340,59 +379,64 @@ class HomeFragment : Fragment() {
         caption: String?
     ) {
         if (!isAdded) return
-        binding.progressBar.visibility = View.GONE
-        binding.fabDownload.hide()
+        binding.progressBar.visibility = View.GONE // Hide progress bar used for fetching info
+        binding.fabDownload.hide() // Keep FAB hidden initially for download
 
-        // Check fragment's map
+        // Check fragment's map immediately
         if (workIdMap.containsKey(trackingKey)) {
             Toast.makeText(context, "Download already in progress.", Toast.LENGTH_SHORT).show()
-            binding.fabDownload.show()
+            binding.fabDownload.show() // Show FAB again if already downloading
             return
         }
 
         // Use application context for enqueueing
         val appContext = requireContext().applicationContext
 
-        lifecycleScope.launch(Dispatchers.IO) { // Still IO for JSON parsing
+        lifecycleScope.launch(Dispatchers.IO) { // IO for JSON parsing and enqueuing
             try {
                 val result = JSONObject(jsonString)
-                val finalUsername = username ?: result.optString("username", "unknown")
+                val finalUsername = username ?: result.optString("username", "unknown") // Use fetched or default
                 val mediaArray = result.getJSONArray("media")
+                if (mediaArray.length() == 0) throw Exception("No media found in JSON")
                 val mediaObject = mediaArray.getJSONObject(0)
                 val mediaUrl = mediaObject.getString("url")
                 val mediaType = mediaObject.getString("type")
 
-                // Enqueue using Application context
+                // Enqueue using Application context and get the Work ID
                 val workId = (appContext as VedInstaApplication).enqueueSingleDownload(
                     appContext,
                     mediaUrl,
                     mediaType,
                     finalUsername,
                     trackingKey,
-                    caption
+                    caption // Pass caption here
                 )
 
                 withContext(Dispatchers.Main) {
                     if (!isAdded) return@withContext
-                    binding.fabDownload.show()
+                    binding.fabDownload.show() // Show FAB after attempting enqueue
 
                     if (workId != null) {
                         Log.d(TAG, "Enqueued single download work $workId for key $trackingKey")
                         workIdMap[trackingKey] = workId // Track in fragment
-                        addOrUpdateDummyCard(trackingKey, workId, 0) // Show initial dummy card
+                        addOrUpdateDummyCard(trackingKey, workId, 0) // Show initial dummy card immediately
                         observeWorkProgress(trackingKey, workId) // Start observing in fragment
                         Toast.makeText(requireContext(), "Download started...", Toast.LENGTH_SHORT).show()
                     } else {
                         Toast.makeText(requireContext(), "✗ Failed to start download", Toast.LENGTH_SHORT).show()
+                        // Optionally remove tracking if enqueue failed instantly, though observer should handle it
+                        // workIdMap.remove(trackingKey)
                     }
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     if (!isAdded) return@withContext
-                    binding.progressBar.visibility = View.GONE
-                    binding.fabDownload.show()
+                    binding.progressBar.visibility = View.GONE // Ensure progress bar is hidden on error
+                    binding.fabDownload.show() // Show FAB on error
                     Toast.makeText(requireContext(), "✗ Download failed: ${e.message?.take(100)}", Toast.LENGTH_SHORT).show()
-                    Log.e(TAG, "Error processing/enqueuing single download", e)
+                    Log.e(TAG, "Error processing/enqueuing single download for key $trackingKey", e)
+                    // Clean up tracking map on failure
+                    workIdMap.remove(trackingKey)?.let { fragmentCancelWorkObserver(it) }
                 }
             }
         }
@@ -407,10 +451,10 @@ class HomeFragment : Fragment() {
         if (existingIndex != -1) {
             val existingItem = workingItems[existingIndex]
             if (existingItem.isDownloading) {
-                // Only notify if progress actually changes or if it wasn't indeterminate before
-                if (existingItem.downloadProgress != progress || (existingItem.downloadProgress == -1 && progress >= 0)) {
+                // Update progress only if it changed or state allows
+                // Use payload to avoid full rebind, only update progress view
+                if (existingItem.downloadProgress != progress) {
                     workingItems[existingIndex] = existingItem.copy(downloadProgress = progress)
-                    // Use a payload to avoid full rebind, only update progress view
                     postsAdapter.notifyItemChanged(existingIndex, PAYLOAD_PROGRESS)
                 }
             } else {
@@ -423,27 +467,35 @@ class HomeFragment : Fragment() {
         } else {
             // Add new dummy card
             Log.d(TAG, "Adding new dummy card for key $key, workId $workId")
+            // Create a minimal placeholder post for the dummy card
             val placeholderPost = DownloadedPost(
-                postId = key, // Use the key directly
-                postUrl = "", thumbnailPath = "", totalImages = 1,
-                downloadDate = System.currentTimeMillis(), hasVideo = false,
-                username = "downloading...", caption = null, mediaPaths = emptyList()
+                postId = key, // Use the key
+                postUrl = "", // Not needed for dummy
+                thumbnailPath = "", // No thumbnail yet
+                totalImages = 1, // Assume 1 initially
+                downloadDate = System.currentTimeMillis(),
+                hasVideo = false, // Assume image initially
+                username = "downloading...",
+                caption = null,
+                mediaPaths = emptyList()
             )
             val newItem = GridPostItem(
-                post = placeholderPost, // Use placeholder
+                post = placeholderPost,
                 isDownloading = true,
-                tempId = if (key.length > 20 || !key.matches(Regex("[A-Za-z0-9_-]+"))) key else null, // Keep tempId logic
+                tempId = if (key.length > 20 || !key.matches(Regex("[A-Za-z0-9_-]+"))) key else null, // Keep tempId logic if key isn't a valid postId format
                 downloadProgress = progress,
                 workId = workId
             )
-            // Insert at the beginning
+            // Insert at the beginning of the list
             workingItems.add(0, newItem)
-            // Submit the whole list for DiffUtil to handle insertion animation
+            // Submit the whole list for DiffUtil to handle insertion animation smoothly
             postsAdapter.submitList(workingItems.toList()) {
-                // Scroll only after the list update is complete
-                binding.rvPosts.scrollToPosition(0)
+                // Scroll only after the list update is complete and if needed
+                if (binding.rvPosts.computeVerticalScrollOffset() > 0) { // Only scroll if not already at top
+                    binding.rvPosts.scrollToPosition(0)
+                }
             }
-            updateEmptyState(false)
+            updateEmptyState(false) // Grid is no longer empty
         }
     }
 
@@ -461,24 +513,34 @@ class HomeFragment : Fragment() {
         val workInfoLiveData = workManager.getWorkInfoByIdLiveData(workId)
 
         // Observe using viewLifecycleOwner - automatically removes observer on view destruction
-        workInfoLiveData.observe(viewLifecycleOwner, Observer<WorkInfo> { workInfo ->
-            if (workInfo == null || !isAdded) return@Observer // Check fragment state again
+        workInfoLiveData.observe(viewLifecycleOwner, Observer { workInfo ->
+            // Note: Observer lambda gets a nullable WorkInfo
+            if (!isAdded) return@Observer // Check fragment state
 
-            val progress = workInfo.progress.getInt(EnhancedDownloadManager.PROGRESS, -2) // Default to -2 to distinguish from indeterminate -1
+            if (workInfo == null) {
+                // WorkInfo might be null if the work is pruned or otherwise removed
+                Log.w(TAG, "Observer received null WorkInfo for $workId (key $key). Removing dummy card.")
+                removeDummyCard(key)
+                fragmentCancelWorkObserver(workId) // Ensure cleanup
+                workIdMap.remove(key)
+                return@Observer
+            }
+
+            // Get progress, default to -1 for indeterminate if PROGRESS key isn't present
+            val progress = workInfo.progress.getInt(EnhancedDownloadManager.PROGRESS, -1)
 
             when (workInfo.state) {
                 WorkInfo.State.RUNNING -> {
-                    // Update dummy card progress
-                    // Use -1 for indeterminate if progress value is not valid (e.g., -2 or < 0)
-                    addOrUpdateDummyCard(key, workId, if (progress < 0) -1 else progress)
+                    addOrUpdateDummyCard(key, workId, progress)
                 }
                 WorkInfo.State.SUCCEEDED -> {
                     Log.d(TAG, "Fragment Observer: Work $workId SUCCEEDED for key $key. DB LiveData triggers UI update.")
-                    // Briefly show 100%
+                    // Briefly show 100% before DB update removes the dummy
                     addOrUpdateDummyCard(key, workId, 100)
-                    // Cleanup fragment-specific tracking
+                    // Cleanup fragment-specific tracking immediately
                     fragmentCancelWorkObserver(workId) // Removes from observedWorkIdsInFragment
                     workIdMap.remove(key) // Remove from fragment's workId tracking
+                    // No need to manually remove the dummy card here, let the DB observer handle the replacement
                 }
                 WorkInfo.State.FAILED, WorkInfo.State.CANCELLED -> {
                     Log.w(TAG, "Fragment Observer: Work $workId ${workInfo.state} for key $key")
@@ -486,7 +548,10 @@ class HomeFragment : Fragment() {
                     // Cleanup fragment-specific tracking
                     fragmentCancelWorkObserver(workId)
                     workIdMap.remove(key)
-                    Toast.makeText(context, "Download ${workInfo.state.name.lowercase()}", Toast.LENGTH_SHORT).show()
+                    // Show toast only if fragment is still added
+                    if (isAdded) {
+                        Toast.makeText(context, "Download ${workInfo.state.name.lowercase()}", Toast.LENGTH_SHORT).show()
+                    }
                 }
                 WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED -> {
                     // Show initial state (0% or indeterminate)
@@ -503,141 +568,148 @@ class HomeFragment : Fragment() {
         if(observedWorkIdsInFragment.remove(workId)) {
             Log.d(TAG, "Fragment stopped tracking observer state for work ID $workId")
         }
+        // No need to manually remove observer from LiveData here, viewLifecycleOwner handles it
     }
 
 
     private fun removeDummyCard(key: String) {
         if (!isAdded) return
 
-        // Stop tracking in fragment
-        workIdMap.remove(key)?.let { fragmentCancelWorkObserver(it) }
+        // Stop tracking in fragment map (if not already removed)
+        val removedWorkId = workIdMap.remove(key)
+        removedWorkId?.let { fragmentCancelWorkObserver(it) } // Also clear observer tracking state
 
         val idx = workingItems.indexOfFirst { it.uniqueKey == key && it.isDownloading }
         if (idx >= 0) {
             Log.d(TAG, "Removing dummy card for key $key at index $idx")
             workingItems.removeAt(idx)
-            // Submit the updated list
+            // Submit the updated list to RecyclerView
             postsAdapter.submitList(workingItems.toList())
-            updateEmptyState(workingItems.isEmpty())
+            updateEmptyState(workingItems.isEmpty()) // Update empty state if needed
         } else {
-            Log.w(TAG, "Tried to remove dummy card for key $key, but not found.")
+            Log.w(TAG, "Tried to remove dummy card for key $key, but not found in workingItems.")
         }
     }
 
     // Re-attach observers for work tracked by this fragment if view is recreated
     private fun reObserveOngoingWork() {
-        Log.d(TAG, "Re-observing ${workIdMap.size} potential ongoing works.")
-        // Iterate over a copy of the keys to avoid concurrent modification issues if cleanup happens during iteration
+        if (!isAdded) return // Don't run if fragment isn't attached
+
+        Log.d(TAG, "Re-observing ${workIdMap.size} potential ongoing works tracked by fragment.")
+        // Iterate over a copy of the keys to avoid concurrent modification issues
         val keysToReObserve = workIdMap.keys.toList()
         keysToReObserve.forEach { key ->
             workIdMap[key]?.let { workId ->
-                // Check current state before re-observing
-                val state = getWorkState(workId)
-                if (state != null && !state.isFinished) {
-                    Log.d(TAG, "Re-attaching observer for key $key, workId $workId (State: $state)")
-                    // Clear previous tracking just in case, then re-observe
-                    observedWorkIdsInFragment.remove(workId)
-                    observeWorkProgress(key, workId)
-                } else {
-                    // Work likely finished while fragment was down, clean up tracking
-                    Log.d(TAG, "Work $workId (key $key) finished while fragment view was destroyed. Cleaning up tracking.")
-                    fragmentCancelWorkObserver(workId)
-                    workIdMap.remove(key)
-                    // UI should be updated by the main DB observer
-                }
+                // No need to block checking state here, just re-attach observer if tracked.
+                // The observer itself will handle the current state when it first receives data.
+                Log.d(TAG, "Re-attaching observer for key $key, workId $workId")
+                // Clear previous *tracking state* just in case, then re-observe
+                observedWorkIdsInFragment.remove(workId)
+                observeWorkProgress(key, workId)
             }
         }
     }
 
 
     private fun showPostOptionsDialog(post: DownloadedPost?, itemKey: String?) {
-        val key = itemKey ?: post?.postId ?: return // Need a key
+        val key = itemKey ?: post?.postId ?: return // Need a key (postId or tempId)
         if (!isAdded) return
 
-        val options = mutableListOf<String>()
-        val isDummy = workingItems.find { it.uniqueKey == key }?.isDownloading ?: false
-        val workId = workIdMap[key] // Get from fragment's map
-        var workInfo: WorkInfo? = null
+        // Launch coroutine to check WorkInfo state off the main thread
+        lifecycleScope.launch {
+            var workInfo: WorkInfo? = null
+            val workId = workIdMap[key] // Get from fragment's map
 
-        if (workId != null) {
-            try {
-                // Use application context
-                workInfo = WorkManager.getInstance(requireContext().applicationContext).getWorkInfoById(workId).get()
-            } catch (e: Exception) { Log.e(TAG, "Error getting work info for cancel check", e) }
-        }
-
-        val isCancellable = workInfo != null && !workInfo.state.isFinished
-
-        // Only allow View Media if it's NOT a dummy card
-        if (!isDummy && post != null) {
-            options.add("View Media")
-        }
-
-        if (isCancellable) {
-            options.add("Cancel Download")
-        }
-        // Always allow delete
-        options.add("Delete from History")
-
-        if (options.isEmpty()) {
-            Toast.makeText(context, "No actions available.", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-
-        AlertDialog.Builder(requireContext())
-            .setTitle("Post Options")
-            .setItems(options.toTypedArray()) { _, which ->
-                if (!isAdded) return@setItems // Check fragment state again
-                when (options[which]) {
-                    "View Media" -> {
-                        // Check post is not null and has valid data
-                        if (post != null && post.postId.isNotBlank() && post.thumbnailPath.isNotBlank()) {
-                            val intent = com.devson.vedinsta.PostViewActivity.createIntent(requireContext(), post)
-                            startActivity(intent)
-                        } else {
-                            // This case should be less likely now due to the check above
-                            Toast.makeText(context, "Cannot view item.", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                    "Cancel Download" -> {
-                        workId?.let {
-                            Log.d(TAG, "Requesting cancellation for work ID: $it (key: $key)")
-                            // Use application context
-                            WorkManager.getInstance(requireContext().applicationContext).cancelWorkById(it)
-                            Toast.makeText(context, "Cancelling download...", Toast.LENGTH_SHORT).show()
-                            // Observer will handle UI update (removing dummy card)
-                        }
-                    }
-                    "Delete from History" -> {
-                        // Cancel work if it's running
-                        workId?.let {
-                            Log.d(TAG, "Cancelling work ID $it due to deletion request (key: $key).")
-                            // Use application context
-                            WorkManager.getInstance(requireContext().applicationContext).cancelWorkById(it)
-                        }
-                        // Delete from DB if it exists (use post if available)
-                        post?.let { viewModel.deleteDownloadedPost(it) }
-                        // Remove dummy card immediately
-                        removeDummyCard(key)
-                        Toast.makeText(context, "Removed from history", Toast.LENGTH_SHORT).show()
+            if (workId != null) {
+                // Fetch WorkInfo asynchronously on IO dispatcher
+                workInfo = withContext(Dispatchers.IO) {
+                    try {
+                        WorkManager.getInstance(requireContext().applicationContext).getWorkInfoById(workId).get()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error getting work info for cancel check on IO thread", e)
+                        null // Return null on error
                     }
                 }
             }
-            .show()
+
+            // Continue on the Main thread to build and show the dialog
+            withContext(Dispatchers.Main) {
+                if (!isAdded) return@withContext // Check fragment state again after background work
+
+                val options = mutableListOf<String>()
+                val isDummy = workingItems.find { it.uniqueKey == key }?.isDownloading ?: false
+                val isCancellable = workInfo != null && !workInfo.state.isFinished
+
+                // Only allow View Media if it's NOT a dummy card AND post data is available
+                if (!isDummy && post != null) {
+                    options.add("View Media")
+                }
+
+                if (isCancellable) {
+                    options.add("Cancel Download")
+                }
+                // Always allow delete option (handles both dummy and real posts)
+                options.add("Delete from History")
+
+                if (options.isEmpty()) {
+                    Toast.makeText(context, "No actions available.", Toast.LENGTH_SHORT).show()
+                    return@withContext
+                }
+
+                // Show the dialog
+                AlertDialog.Builder(requireContext())
+                    .setTitle("Post Options")
+                    .setItems(options.toTypedArray()) { _, which ->
+                        if (!isAdded) return@setItems // Check fragment state again inside click listener
+
+                        when (options[which]) {
+                            "View Media" -> {
+                                // Double-check post is not null (should be guaranteed by options logic)
+                                post?.let {
+                                    val intent = com.devson.vedinsta.PostViewActivity.createIntent(requireContext(), it)
+                                    startActivity(intent)
+                                } ?: Toast.makeText(context, "Cannot view item.", Toast.LENGTH_SHORT).show()
+                            }
+                            "Cancel Download" -> {
+                                workId?.let { idToCancel ->
+                                    Log.d(TAG, "Requesting cancellation for work ID: $idToCancel (key: $key)")
+                                    WorkManager.getInstance(requireContext().applicationContext).cancelWorkById(idToCancel)
+                                    Toast.makeText(context, "Cancelling download...", Toast.LENGTH_SHORT).show()
+                                    // The observer will handle removing the dummy card when cancellation completes
+                                }
+                            }
+                            "Delete from History" -> {
+                                // Cancel work if it's running
+                                workId?.let { idToCancel ->
+                                    Log.d(TAG, "Cancelling work ID $idToCancel due to deletion request (key: $key).")
+                                    WorkManager.getInstance(requireContext().applicationContext).cancelWorkById(idToCancel)
+                                }
+                                // Delete from DB if it's a real post
+                                post?.let { viewModel.deleteDownloadedPost(it) }
+                                // Remove dummy card immediately if it exists (won't affect real posts)
+                                removeDummyCard(key)
+                                Toast.makeText(context, "Removed from history", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                    .show()
+            } // End withContext(Dispatchers.Main)
+        } // End lifecycleScope.launch
     }
 
 
     override fun onDestroyView() {
         super.onDestroyView()
         Log.d(TAG, "Fragment onDestroyView called. Observers attached to viewLifecycleOwner will be removed automatically.")
+        // Clear fragment-specific tracking sets
         observedWorkIdsInFragment.clear()
-        _binding = null
+        // workIdMap is cleared implicitly as observers are removed and items potentially transition
+        _binding = null // Crucial: Clear binding reference
     }
 
 
     companion object {
         private const val TAG = "HomeFragment"
-        const val PAYLOAD_PROGRESS = "payload_progress"
+        const val PAYLOAD_PROGRESS = "payload_progress" // Payload for progress updates
     }
 }

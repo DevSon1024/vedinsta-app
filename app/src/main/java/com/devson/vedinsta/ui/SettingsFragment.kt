@@ -10,15 +10,13 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog // Use AppCompat AlertDialog
+import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
-import coil.Coil // Import Coil
-import coil.request.CachePolicy // Import CachePolicy if needed
-import com.devson.vedinsta.R // Assuming ic_delete_white is in drawable
+import androidx.lifecycle.lifecycleScope
+import coil.Coil
 import com.devson.vedinsta.SettingsManager
 import com.devson.vedinsta.databinding.FragmentSettingsBinding
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -164,6 +162,9 @@ class SettingsFragment : Fragment() {
 
     // --- Clear Cache Implementation ---
     private fun showClearCacheConfirmation() {
+        // Ensure fragment is added before showing dialog
+        if (!isAdded) return
+
         AlertDialog.Builder(requireContext())
             .setTitle("Clear Cache")
             .setMessage("This will remove temporary files and cached images. Downloaded media will not be affected. Continue?")
@@ -175,10 +176,14 @@ class SettingsFragment : Fragment() {
     }
 
     private fun clearApplicationCache() {
+        // Check fragment state again before launching coroutine
+        if (!isAdded) return
+
         Log.d("SettingsFragment", "Clearing application cache...")
-        val context = requireContext().applicationContext
-        // Use a background thread for file operations
-        GlobalScope.launch(Dispatchers.IO) {
+        val context = requireContext().applicationContext // Use application context safely
+
+        // Use lifecycleScope tied to the fragment's view lifecycle
+        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
             var cacheCleared = false
             var coilCleared = false
             try {
@@ -191,23 +196,32 @@ class SettingsFragment : Fragment() {
 
                 // Clear Coil's cache
                 val imageLoader = Coil.imageLoader(context)
-                imageLoader.memoryCache?.clear() // Clear memory cache
-                imageLoader.diskCache?.clear()   // Clear disk cache (runs IO)
+                // These might need Dispatchers.Main if they interact with UI thread internally
+                withContext(Dispatchers.Main) {
+                    imageLoader.memoryCache?.clear() // Clear memory cache (Main thread safe)
+                }
+                imageLoader.diskCache?.clear()   // Clear disk cache (runs IO, already on IO thread)
                 coilCleared = true
                 Log.d("SettingsFragment", "Coil memory and disk cache cleared.")
 
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Cache cleared successfully", Toast.LENGTH_SHORT).show()
+                    // Check if fragment is still added before showing Toast
+                    if (isAdded) {
+                        Toast.makeText(context, "Cache cleared successfully", Toast.LENGTH_SHORT).show()
+                    }
                 }
             } catch (e: Exception) {
                 Log.e("SettingsFragment", "Error clearing cache", e)
                 withContext(Dispatchers.Main) {
-                    val message = when {
-                        !cacheCleared -> "Failed to clear system cache"
-                        !coilCleared -> "Failed to clear image cache"
-                        else -> "An error occurred while clearing cache"
+                    // Check if fragment is still added before showing Toast
+                    if (isAdded) {
+                        val message = when {
+                            !cacheCleared -> "Failed to clear system cache"
+                            !coilCleared -> "Failed to clear image cache"
+                            else -> "An error occurred while clearing cache"
+                        }
+                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
                     }
-                    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -218,6 +232,9 @@ class SettingsFragment : Fragment() {
         if (dir != null && dir.isDirectory) {
             val children = dir.list() ?: return false // Check if list() returns null
             for (i in children.indices) {
+                // Check for cancellation before deleting each child
+                // No easy way to check lifecycleScope cancellation here directly
+                // Rely on the outer scope being cancelled if the fragment is destroyed
                 val success = deleteDir(File(dir, children[i]))
                 if (!success) {
                     Log.w("SettingsFragment", "Failed to delete file/subdir: ${children[i]}")
@@ -232,6 +249,6 @@ class SettingsFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
-        _binding = null
+        _binding = null // Important for preventing memory leaks
     }
 }

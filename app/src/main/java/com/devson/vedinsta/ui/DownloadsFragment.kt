@@ -6,10 +6,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView // Import TextView
 import androidx.fragment.app.Fragment
-import androidx.lifecycle.ViewModelProvider
-import androidx.recyclerview.widget.LinearLayoutManager
-// Import the correct binding if it exists, otherwise remove
-// import com.devson.vedinsta.databinding.FragmentDownloadsBinding // Assuming this exists
 import com.devson.vedinsta.databinding.FragmentFavoritesBinding // Keeping this as it was in the original file
 
 class DownloadsFragment : Fragment() {
