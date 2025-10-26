@@ -19,19 +19,27 @@
             android:scaleType="centerCrop"
             android:contentDescription="Post thumbnail" />
 
-        <!-- Play button overlay for videos -->
+        <!-- Semi-transparent overlay for better icon visibility -->
+        <View
+            android:id="@+id/overlay_dim"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@android:color/black"
+            android:alpha="0.1" />
+
+        <!-- Single overlay icon (used for both video play and multiple items) -->
         <ImageView
             android:id="@+id/iv_play_button"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
-            android:layout_gravity="center"
-            android:src="@drawable/ic_play_circle"
-            android:contentDescription="Video play button"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:layout_gravity="top|end"
+            android:layout_margin="8dp"
+            android:src="@drawable/ic_play_circle_filled"
+            android:contentDescription="Media indicator"
             android:visibility="gone"
-            app:tint="@android:color/white"
             android:elevation="4dp" />
 
-        <!-- Multiple items indicator -->
+        <!-- Multiple items indicator (kept for backward compatibility but hidden) -->
         <ImageView
             android:id="@+id/iv_multiple_indicator"
             android:layout_width="20dp"
@@ -43,14 +51,6 @@
             android:visibility="gone"
             app:tint="@android:color/white"
             android:elevation="4dp" />
-
-        <!-- Semi-transparent overlay for better icon visibility -->
-        <View
-            android:id="@+id/overlay_dim"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:background="@android:color/black"
-            android:alpha="0.1" />
 
         <!-- Loading overlay for dummy download card -->
         <FrameLayout
