@@ -8,7 +8,7 @@ import android.util.Log
 import android.widget.Toast
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.LiveData
-import androidx.lifecycle.Observer // Standard Observer import
+import androidx.lifecycle.Observer
 import androidx.work.*
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
