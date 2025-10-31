@@ -7,9 +7,10 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import com.devson.vedinsta.databinding.ActivityMainBinding
-import com.devson.vedinsta.ui.DownloadsFragment
+import com.devson.vedinsta.ui.DownloadsFragment // This import is no longer used by the nav bar
 import com.devson.vedinsta.ui.FavoritesFragment
 import com.devson.vedinsta.ui.HomeFragment
+import com.devson.vedinsta.ui.ProfileFragment // <-- IMPORTED
 import com.devson.vedinsta.ui.SettingsFragment
 import com.devson.vedinsta.viewmodel.NotificationViewModel
 
@@ -44,9 +45,10 @@ class MainActivity : AppCompatActivity() {
                     updateToolbarForPage("Home")
                     true
                 }
-                R.id.nav_downloads -> {
-                    loadFragment(DownloadsFragment())
-                    updateToolbarForPage("Downloads")
+                // MODIFIED: This now points to ProfileFragment
+                R.id.nav_profile -> {
+                    loadFragment(ProfileFragment())
+                    updateToolbarForPage("Profile")
                     true
                 }
                 R.id.nav_favorites -> {
