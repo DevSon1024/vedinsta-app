@@ -1,3 +1,6 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -6,9 +9,20 @@ plugins {
     kotlin("kapt")
 }
 
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+}
+val splitApks = !project.hasProperty("noSplits") && !gradle.startParameter.taskNames.any {
+    it.contains("debug", ignoreCase = true)
+}
+
 android {
     namespace = "com.devson.vedinsta"
-    compileSdk = 36
+    compileSdk {
+        version = release(36)
+    }
 
     defaultConfig {
         applicationId = "com.devson.vedinsta"
@@ -19,6 +33,12 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
+        }
+        if (!splitApks) {
+            // For debug builds - only include device ABI for faster builds
+            ndk {
+                abiFilters.add("arm64-v8a")
+            }
         }
 
     }
@@ -36,38 +56,23 @@ android {
             }
         }
 
-        create("arm32") {
-            dimension = "abi"
-            versionCode = 2
-            versionNameSuffix = "-arm32"
-            ndk {
-                abiFilters.clear()
-                abiFilters += "armeabi-v7a"
-            }
-        }
-
-        create("x86") {
-            dimension = "abi"
-            versionCode = 4
-            versionNameSuffix = "-x86"
-            ndk {
-                abiFilters.clear()
-                abiFilters += "x86_64"
-            }
-        }
-
         create("universal") {
             dimension = "abi"
             versionCode = 1
             versionNameSuffix = "-universal"
             ndk {
-                abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+                abiFilters += listOf("arm64-v8a", "x86_64")
             }
         }
     }
     signingConfigs {
         create("release") {
-            // This is a placeholder for your signing configuration.
+            if (keystorePropertiesFile.exists()) {
+                keyAlias = keystoreProperties["keyAlias"] as String?
+                keyPassword = keystoreProperties["keyPassword"] as String?
+                storeFile = file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String?
+            }
         }
     }
 
@@ -79,9 +84,28 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("release")
+            if (keystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
+        debug {
+            isMinifyEnabled = false
+            isDebuggable = true
+            applicationIdSuffix = ".debug"
         }
     }
+
+    if (splitApks) {
+        splits {
+            abi {
+                isEnable = true
+                reset()
+                include("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+                isUniversalApk = false
+            }
+        }
+    }
+
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -124,8 +148,8 @@ android {
 
 chaquopy {
     defaultConfig {
-        version = "3.11"
-        buildPython("C:\\Users\\DEVENDRA\\AppData\\Local\\Programs\\Python\\Python311\\python.exe")
+        version = "3.13"
+        buildPython("C:\\Users\\DEVENDRA\\AppData\\Local\\Programs\\Python\\Python313\\python.exe")
 
         pyc {
             src = false

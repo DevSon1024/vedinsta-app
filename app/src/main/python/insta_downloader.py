@@ -1,10 +1,5 @@
-#
-# devson1024/vedinsta-app/vedinsta-app-9ec3b010ae1f6ddf1c781f1cbac60602da288453/app/src/main/python/insta_downloader.py
-#
 import instaloader
-# Import the exceptions submodule
 import instaloader.exceptions
-# Import ProfileNotExistsException directly if it exists at the top level
 from instaloader import ProfileNotExistsException
 import json
 import sys
@@ -29,13 +24,6 @@ def setup_instaloader():
             quiet=True,
             user_agent=user_agent
         )
-        # Session loading attempt (optional)
-        # try:
-        #     L.load_session_from_file('your_username')
-        # except FileNotFoundError:
-        #     print("DEBUG: Session file not found.", file=sys.stderr)
-        # except Exception as e:
-        #     print(f"DEBUG: Error loading session: {e}", file=sys.stderr)
         return L
     except Exception as e:
         print(json.dumps({"status": "error", "message": f"Failed to setup Instaloader: {str(e)[:100]}"}))
