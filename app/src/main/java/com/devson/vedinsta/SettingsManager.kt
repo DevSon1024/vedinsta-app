@@ -14,7 +14,11 @@ class SettingsManager(private val context: Context) {
     companion object {
         const val KEY_IMAGE_URI = "image_uri"
         const val KEY_VIDEO_URI = "video_uri"
+        const val KEY_GRID_COLUMNS = "grid_columns"
     }
+    var gridColumnCount: Int
+        get() = prefs.getInt(KEY_GRID_COLUMNS, 3) // Default is 3 columns
+        set(value) = prefs.edit().putInt(KEY_GRID_COLUMNS, value.coerceIn(1, 6)).apply()
 
     var imageDirectoryUri: String?
         get() = prefs.getString(KEY_IMAGE_URI, null)

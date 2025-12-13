@@ -7,10 +7,9 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import com.devson.vedinsta.databinding.ActivityMainBinding
-import com.devson.vedinsta.ui.DownloadsFragment // This import is no longer used by the nav bar
 import com.devson.vedinsta.ui.FavoritesFragment
 import com.devson.vedinsta.ui.HomeFragment
-import com.devson.vedinsta.ui.ProfileFragment // <-- IMPORTED
+import com.devson.vedinsta.ui.ProfileFragment
 import com.devson.vedinsta.ui.SettingsFragment
 import com.devson.vedinsta.viewmodel.NotificationViewModel
 
@@ -18,22 +17,34 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var notificationViewModel: NotificationViewModel
+    private var currentFragment: Fragment? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Initialize ViewModel
         notificationViewModel = ViewModelProvider(this)[NotificationViewModel::class.java]
 
         setupBottomNavigation()
         setupNotificationIcon()
+        setupGridSizeIcon()
 
         // Load the home fragment by default
         if (savedInstanceState == null) {
+            val homeFragment = HomeFragment()
+            currentFragment = homeFragment
             loadFragment(HomeFragment())
             updateToolbarForPage("Home")
+        }
+    }
+
+    private fun setupGridSizeIcon() {
+        binding.gridSizeContainer.setOnClickListener {
+            val fragment = supportFragmentManager.findFragmentById(R.id.fragment_container)
+            if (fragment is HomeFragment && fragment.isAdded) {
+                fragment.showColumnSizeDialog()
+            }
         }
     }
 
@@ -41,23 +52,30 @@ class MainActivity : AppCompatActivity() {
         binding.bottomNavigation.setOnItemSelectedListener { item ->
             when (item.itemId) {
                 R.id.nav_home -> {
-                    loadFragment(HomeFragment())
+                    val fragment = HomeFragment()
+                    currentFragment = fragment
+                    loadFragment(fragment)
                     updateToolbarForPage("Home")
                     true
                 }
-                // MODIFIED: This now points to ProfileFragment
                 R.id.nav_profile -> {
-                    loadFragment(ProfileFragment())
+                    val fragment = ProfileFragment()
+                    currentFragment = fragment // UPDATE
+                    loadFragment(fragment)
                     updateToolbarForPage("Profile")
                     true
                 }
                 R.id.nav_favorites -> {
-                    loadFragment(FavoritesFragment())
+                    val fragment = FavoritesFragment()
+                    currentFragment = fragment // UPDATE
+                    loadFragment(fragment)
                     updateToolbarForPage("Favorites")
                     true
                 }
                 R.id.nav_settings -> {
-                    loadFragment(SettingsFragment())
+                    val fragment = SettingsFragment()
+                    currentFragment = fragment // UPDATE
+                    loadFragment(fragment)
                     updateToolbarForPage("Settings")
                     true
                 }
@@ -71,16 +89,16 @@ class MainActivity : AppCompatActivity() {
     private fun updateToolbarForPage(pageName: String) {
         when (pageName) {
             "Home" -> {
-                // Show full app bar with app name and notification for home
                 binding.toolbarTitle.text = "VedInsta"
                 binding.toolbarTitle.textSize = 24f
                 binding.notificationContainer.visibility = View.VISIBLE
+                binding.gridSizeContainer.visibility = View.VISIBLE // ADD THIS
             }
             else -> {
-                // Show simple page title for other pages
                 binding.toolbarTitle.text = pageName
                 binding.toolbarTitle.textSize = 20f
                 binding.notificationContainer.visibility = View.GONE
+                binding.gridSizeContainer.visibility = View.GONE // ADD THIS
             }
         }
     }

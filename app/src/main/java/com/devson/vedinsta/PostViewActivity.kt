@@ -18,6 +18,7 @@ import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import com.devson.vedinsta.ui.PostOptionsBottomSheet
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.PagerSnapHelper
@@ -98,7 +99,7 @@ class PostViewActivity : AppCompatActivity() {
         }
 
         setupRecyclerView()
-        setupClickListeners() // Includes long press now
+        setupClickListeners()
 
         val initialUsername = intent.getStringExtra(EXTRA_USERNAME) ?: "Loading..."
         val initialCaption = intent.getStringExtra(EXTRA_CAPTION)
@@ -109,7 +110,6 @@ class PostViewActivity : AppCompatActivity() {
         loadDataFromDatabase(intentPostId!!)
     }
 
-    // ... (RecyclerView setup, computeFractionalPosition, findCurrentPageFast, setSelectedPage, toggleImageScaleMode remain mostly the same) ...
     private fun setupRecyclerView() {
         Log.d(TAG, "Setting up RecyclerView")
 
@@ -246,32 +246,42 @@ class PostViewActivity : AppCompatActivity() {
         }
     }
 
-
     private fun setupClickListeners() {
         binding.btnBack.setOnClickListener {
-            Log.d(TAG, "Back button clicked")
             finish()
         }
+
         binding.btnShare.setOnClickListener {
-            Log.d(TAG, "Share button clicked")
             shareCurrentMedia()
         }
-        binding.btnDelete.setOnClickListener {
-            Log.d(TAG, "Delete button clicked")
-            deletePost()
-        }
-        // Button click remains for short press
-        binding.btnCopyCaption.setOnClickListener {
-            Log.d(TAG, "Copy caption button SHORT clicked")
-            copyCaptionToClipboard() // Keep short click behavior
+
+        // Replace the old delete button with a three-dot menu button
+        binding.btnOptions.setOnClickListener { // Change from btnDelete
+            showOptionsMenu()
         }
 
-        // Add long click listener to the TextView itself
-        binding.tvPostCaption.setOnLongClickListener {
-            Log.d(TAG, "Caption text LONG clicked")
-            copyCaptionToClipboard(true) // Pass true to indicate long press
-            true // Indicate the event was handled
+        // Keep copy caption button as is
+        binding.btnCopyCaption.setOnClickListener {
+            copyCaptionToClipboard()
         }
+
+        binding.tvPostCaption.setOnLongClickListener {
+            copyCaptionToClipboard(true)
+            true
+        }
+    }
+    private fun showOptionsMenu() {
+        val post = currentPost ?: run {
+            Toast.makeText(this, "Post data not loaded", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val bottomSheet = PostOptionsBottomSheet(post) {
+            // On delete callback
+            setResult(RESULT_OK)
+            finish()
+        }
+        bottomSheet.show(supportFragmentManager, PostOptionsBottomSheet.TAG)
     }
 
     // Updated to handle long press and vibration

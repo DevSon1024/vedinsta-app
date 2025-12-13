@@ -1,6 +1,3 @@
-//
-// devson1024/vedinsta-app/vedinsta-app-9ec3b010ae1f6ddf1c781f1cbac60602da288453/app/src/main/java/com/devson/vedinsta/ui/HomeFragment.kt
-//
 package com.devson.vedinsta.ui
 
 import android.content.ClipboardManager
@@ -27,6 +24,7 @@ import com.devson.vedinsta.EnhancedDownloadManager
 import com.devson.vedinsta.GridPostItem
 import com.devson.vedinsta.PostsGridAdapter
 import com.devson.vedinsta.R
+import com.devson.vedinsta.SettingsManager
 import com.devson.vedinsta.VedInstaApplication
 import com.devson.vedinsta.database.DownloadedPost
 import com.devson.vedinsta.databinding.FragmentHomeBinding
@@ -36,7 +34,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap // Import ConcurrentHashMap
+import java.util.concurrent.ConcurrentHashMap
 import java.util.regex.Pattern
 
 class HomeFragment : Fragment() {
@@ -46,9 +44,11 @@ class HomeFragment : Fragment() {
 
     private lateinit var postsAdapter: PostsGridAdapter
     private lateinit var viewModel: MainViewModel
+    private lateinit var settingsManager: SettingsManager // ADD THIS
+    private var currentColumnCount = 3
 
     private val workingItems = mutableListOf<GridPostItem>()
-    private val workIdMap = ConcurrentHashMap<String, UUID>() // Map tempKey/postId/storyItemId to Work ID
+    private val workIdMap = ConcurrentHashMap<String, UUID>()
 
     private val observedWorkIdsInFragment = ConcurrentHashMap.newKeySet<UUID>()
 
@@ -66,6 +66,8 @@ class HomeFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         viewModel = ViewModelProvider(requireActivity())[MainViewModel::class.java]
+        settingsManager = SettingsManager(requireContext())
+        currentColumnCount = settingsManager.gridColumnCount
 
         setupUI()
         setupRecyclerView()
@@ -81,25 +83,56 @@ class HomeFragment : Fragment() {
     private fun setupRecyclerView() {
         postsAdapter = PostsGridAdapter(
             onPostClick = { post ->
-                // Check if it's a 'story' type placeholder before launching PostViewActivity
-                // A better approach might be to add a 'type' field to DownloadedPost
-                // For now, rely on postId format or fetch details if needed.
-                // Assuming PostViewActivity can handle posts identified by story-like IDs for now.
                 val intent = com.devson.vedinsta.PostViewActivity.createIntent(requireContext(), post)
                 startActivity(intent)
             },
             onPostLongClick = { post ->
-                // Use postId which could be a shortcode or a story item ID
                 val key = post.postId
                 showPostOptionsDialog(post, key)
             }
         )
 
         binding.rvPosts.apply {
-            layoutManager = GridLayoutManager(context, 3)
+            layoutManager = GridLayoutManager(context, currentColumnCount) // CHANGE FROM 3
             adapter = postsAdapter
             setHasFixedSize(true)
             setItemViewCacheSize(10)
+        }
+    }
+
+    fun showColumnSizeDialog() {
+        val dialog = ColumnSizeDialog(currentColumnCount) { newColumnCount ->
+            updateGridColumns(newColumnCount)
+        }
+        dialog.show(childFragmentManager, ColumnSizeDialog.TAG)
+    }
+
+    // ADD THIS METHOD
+    private fun updateGridColumns(columnCount: Int) {
+        if (currentColumnCount == columnCount) return
+
+        currentColumnCount = columnCount
+
+        // Smoothly update the grid with animation
+        binding.rvPosts.apply {
+            // Save scroll position
+            val layoutManager = layoutManager as? GridLayoutManager
+            val firstVisiblePosition = layoutManager?.findFirstVisibleItemPosition() ?: 0
+
+            // Apply fade animation
+            alpha = 0.7f
+            animate()
+                .alpha(1f)
+                .setDuration(200)
+                .start()
+
+            // Update span count
+            layoutManager?.spanCount = columnCount
+
+            // Restore scroll position (approximately)
+            post {
+                layoutManager?.scrollToPosition(firstVisiblePosition)
+            }
         }
     }
 
