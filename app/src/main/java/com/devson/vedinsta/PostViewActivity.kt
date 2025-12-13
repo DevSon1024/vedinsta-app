@@ -34,6 +34,8 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.abs
+import androidx.appcompat.app.AlertDialog
+
 import kotlin.math.roundToInt
 
 class PostViewActivity : AppCompatActivity() {
@@ -255,19 +257,142 @@ class PostViewActivity : AppCompatActivity() {
             shareCurrentMedia()
         }
 
-        // Replace the old delete button with a three-dot menu button
-        binding.btnOptions.setOnClickListener { // Change from btnDelete
+        // NEW: Copy Link button (replaces copy caption)
+        binding.btnCopyLink.setOnClickListener {
+            copyPostLink()
+        }
+
+        // NEW: Delete current media button
+        binding.btnDeleteMedia.setOnClickListener {
+            deleteCurrentMedia()
+        }
+
+        // Options menu (three dots)
+        binding.btnOptions.setOnClickListener {
             showOptionsMenu()
         }
 
-        // Keep copy caption button as is
-        binding.btnCopyCaption.setOnClickListener {
-            copyCaptionToClipboard()
-        }
-
+        // Keep caption long press for copying caption
         binding.tvPostCaption.setOnLongClickListener {
             copyCaptionToClipboard(true)
             true
+        }
+    }
+    private fun copyPostLink() {
+        val post = currentPost ?: run {
+            Toast.makeText(this, "Post data not loaded", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val postId = post.postId
+        val cleanUrl = "https://www.instagram.com/p/$postId/"
+
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = ClipData.newPlainText("post_link", cleanUrl)
+        clipboard.setPrimaryClip(clip)
+        Toast.makeText(this, "Link copied to clipboard", Toast.LENGTH_SHORT).show()
+    }
+
+    // NEW: Delete only the current visible media item
+    private fun deleteCurrentMedia() {
+        if (mediaFiles.isEmpty()) {
+            Toast.makeText(this, "No media to delete", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val post = currentPost ?: run {
+            Toast.makeText(this, "Post data not loaded", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val currentFile = mediaFiles[currentMediaPosition]
+        val totalFiles = mediaFiles.size
+
+        // If this is the last media item, show different message
+        if (totalFiles == 1) {
+            AlertDialog.Builder(this)
+                .setTitle("Delete Media")
+                .setMessage("This is the only media item. Deleting it will remove the entire post.")
+                .setPositiveButton("Delete Post") { _, _ ->
+                    showOptionsMenu() // Show options menu to delete entire post
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+            return
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Delete Media")
+            .setMessage("Delete this media item (${currentMediaPosition + 1} of $totalFiles)? This cannot be undone.")
+            .setPositiveButton("Delete") { _, _ ->
+                deleteMediaItem(currentFile, post)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    // NEW: Helper function to delete a single media item
+    private fun deleteMediaItem(fileToDelete: File, post: DownloadedPost) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                // Delete the physical file
+                var fileDeleted = false
+                if (fileToDelete.exists() && fileToDelete.delete()) {
+                    fileDeleted = true
+                    Log.d(TAG, "Deleted file: ${fileToDelete.absolutePath}")
+                }
+
+                // Update the database - remove this path from mediaPaths
+                val db = AppDatabase.getDatabase(applicationContext)
+                val updatedPaths = post.mediaPaths.filter { path ->
+                    path != fileToDelete.absolutePath
+                }
+
+                // Update post with new media paths list
+                val updatedPost = post.copy(
+                    mediaPaths = updatedPaths,
+                    totalImages = updatedPaths.size,
+                    // Update thumbnail if we deleted it
+                    thumbnailPath = if (post.thumbnailPath == fileToDelete.absolutePath && updatedPaths.isNotEmpty()) {
+                        updatedPaths[0]
+                    } else {
+                        post.thumbnailPath
+                    }
+                )
+
+                db.downloadedPostDao().update(updatedPost)
+
+                withContext(Dispatchers.Main) {
+                    if (fileDeleted) {
+                        Toast.makeText(this@PostViewActivity, "Media deleted successfully", Toast.LENGTH_SHORT).show()
+
+                        // Update local list and UI
+                        mediaFiles.remove(fileToDelete)
+                        currentPost = updatedPost
+
+                        // Adjust current position if needed
+                        if (currentMediaPosition >= mediaFiles.size && mediaFiles.isNotEmpty()) {
+                            currentMediaPosition = mediaFiles.size - 1
+                        }
+
+                        // Update UI
+                        updateUIWithFiles()
+
+                        // Check if we need to finish activity (no media left)
+                        if (mediaFiles.isEmpty()) {
+                            Toast.makeText(this@PostViewActivity, "No media left, closing...", Toast.LENGTH_SHORT).show()
+                            finish()
+                        }
+                    } else {
+                        Toast.makeText(this@PostViewActivity, "Failed to delete file", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error deleting media item", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@PostViewActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
     }
     private fun showOptionsMenu() {

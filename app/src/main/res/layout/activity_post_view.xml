@@ -115,31 +115,34 @@
                 android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:src="@drawable/ic_share_white"
-                android:layout_marginEnd="16dp"
+                android:layout_marginEnd="8dp"
                 android:contentDescription="Share" />
 
             <ImageButton
-                android:id="@+id/btnCopyCaption"
+                android:id="@+id/btnCopyLink"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                android:src="@drawable/ic_copy_white"
-                android:layout_marginEnd="16dp"
-                android:contentDescription="Copy Caption" />
+                android:src="@drawable/ic_link_white"
+                android:layout_marginEnd="8dp"
+                android:contentDescription="Copy Link" />
 
-            <!-- Replace the existing delete button with this -->
             <ImageButton
-                android:id="@+id/btn_options"
+                android:id="@+id/btnDeleteMedia"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
-                android:src="@drawable/ic_more_vert"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Options"
-                app:tint="@android:color/white"
-                app:layout_constraintTop_toTopOf="parent"
-                app:layout_constraintEnd_toEndOf="parent"
-                android:layout_margin="16dp" />
+                android:src="@drawable/ic_delete_white"
+                android:layout_marginEnd="8dp"
+                android:contentDescription="Delete Current Media" />
 
+            <ImageButton
+                android:id="@+id/btnOptions"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:src="@drawable/ic_more_vert_white"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Options" />
 
         </LinearLayout>
 

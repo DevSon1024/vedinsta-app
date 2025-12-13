@@ -2,14 +2,13 @@ package com.devson.vedinsta.database
 
 import androidx.lifecycle.LiveData
 import androidx.room.*
-
 @Dao
 interface DownloadedPostDao {
 
-    @Insert(onConflict = OnConflictStrategy.IGNORE)  // CHANGED: Use IGNORE instead of REPLACE
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(downloadedPost: DownloadedPost)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE) // Keep REPLACE for forced updates
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrReplace(downloadedPost: DownloadedPost)
 
     @Delete
@@ -53,6 +52,8 @@ interface DownloadedPostDao {
 
     @Query("SELECT * FROM downloaded_posts WHERE hasVideo = 0 ORDER BY downloadDate DESC")
     fun getImagePostsOnly(): LiveData<List<DownloadedPost>>
+    @Update
+    suspend fun update(downloadedPost: DownloadedPost)
 
     @Query("UPDATE downloaded_posts SET username = :username, caption = :caption WHERE postId = :postId AND mediaPaths != '[]'")
     suspend fun updatePostMetadataIfHasMedia(postId: String, username: String, caption: String?)
@@ -64,5 +65,6 @@ interface DownloadedPostDao {
         WHERE postId = :postId 
         AND (mediaPaths IS NULL OR mediaPaths = '[]' OR LENGTH(mediaPaths) <= 2)
     """)
+
     suspend fun updatePostMetadataOnlyIfEmpty(postId: String, username: String, caption: String?)
 }
