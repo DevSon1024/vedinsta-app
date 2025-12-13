@@ -38,6 +38,44 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- Shared Link Handler Activity -->
+        <activity
+            android:name=".SharedLinkHandlerActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:noHistory="true"
+            android:excludeFromRecents="true">
+
+            <!-- Handle shared text (from Share menu) -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+
+            <!-- Handle Instagram links opened directly -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="https" />
+                <data android:scheme="http" />
+                <data android:host="www.instagram.com" />
+                <data android:host="instagram.com" />
+                <data android:host="instagr.am" />
+                <data android:pathPrefix="/p/" />
+                <data android:pathPrefix="/reel/" />
+                <data android:pathPrefix="/tv/" />
+            </intent-filter>
+        </activity>
+
+        <!-- Shared Link Processing Service -->
+        <service
+            android:name=".service.SharedLinkProcessingService"
+            android:enabled="true"
+            android:exported="false" />
+
 
         <!-- Post View Activity -->
         <activity

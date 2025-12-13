@@ -20,7 +20,9 @@ import com.devson.vedinsta.database.NotificationPriority
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlin.random.Random // <-- Added Random import
+import kotlin.random.Random
+import com.devson.vedinsta.MediaSelectionActivity
+import com.devson.vedinsta.service.SharedLinkProcessingService
 
 class VedInstaNotificationManager private constructor(private val context: Context) {
 
@@ -29,6 +31,10 @@ class VedInstaNotificationManager private constructor(private val context: Conte
         const val CHANNEL_ID = "download_channel"
         const val CHANNEL_NAME = "Download Progress"
         const val CHANNEL_DESCRIPTION = "Shows download progress for Instagram media"
+
+        const val NOTIFICATION_ID_LINK_PROCESSING = 1001
+        const val NOTIFICATION_ID_MULTIPLE_CONTENT = 1002
+        const val NOTIFICATION_ID_BATCH_DOWNLOAD = 1003
 
         @Volatile
         private var INSTANCE: VedInstaNotificationManager? = null
@@ -61,16 +67,19 @@ class VedInstaNotificationManager private constructor(private val context: Conte
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 CHANNEL_NAME,
-                NotificationManager.IMPORTANCE_LOW
+                NotificationManager.IMPORTANCE_HIGH  // Changed to HIGH for heads-up
             ).apply {
                 description = CHANNEL_DESCRIPTION
-                setShowBadge(false)
+                setShowBadge(true)
+                enableVibration(true)
+                enableLights(true)
             }
             val systemNotificationManager =
                 context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             systemNotificationManager.createNotificationChannel(channel)
         }
     }
+
 
     fun showDownloadEnqueued(fileName: String, postUrl: String? = null): Int {
         val notificationId = Random.nextInt()
@@ -163,6 +172,209 @@ class VedInstaNotificationManager private constructor(private val context: Conte
             notificationManagerCompat.cancel(notificationId)
         } catch (e: Exception) {
             Log.e(TAG, "Error cancelling notification $notificationId", e)
+        }
+    }
+    fun showLinkProcessing() {
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentTitle("Processing link...")
+            .setProgress(0, 0, true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
+            .setAutoCancel(false)
+            .setOnlyAlertOnce(true)
+            .build()
+
+        try {
+            if (notificationManagerCompat.areNotificationsEnabled()) {
+                notificationManagerCompat.notify(NOTIFICATION_ID_LINK_PROCESSING, notification)
+            }
+        } catch (e: SecurityException) {
+            Log.e(TAG, "SecurityException", e)
+        }
+    }
+
+    fun cancelLinkProcessingNotification() {
+        try {
+            notificationManagerCompat.cancel(NOTIFICATION_ID_LINK_PROCESSING)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error cancelling link processing notification", e)
+        }
+    }
+
+    fun showMultipleContentOptions(url: String, itemCount: Int) {
+        val downloadAllIntent = Intent(context, SharedLinkProcessingService::class.java).apply {
+            action = SharedLinkProcessingService.ACTION_DOWNLOAD_ALL
+            putExtra(SharedLinkProcessingService.EXTRA_INSTAGRAM_URL, url)
+        }
+        val downloadAllPendingIntent = PendingIntent.getService(
+            context,
+            NOTIFICATION_ID_MULTIPLE_CONTENT,
+            downloadAllIntent,
+            pendingIntentFlags
+        )
+
+        val selectIntent = Intent(context, SharedLinkProcessingService::class.java).apply {
+            action = SharedLinkProcessingService.ACTION_SELECT_ITEMS
+            putExtra(SharedLinkProcessingService.EXTRA_INSTAGRAM_URL, url)
+        }
+        val selectPendingIntent = PendingIntent.getService(
+            context,
+            NOTIFICATION_ID_MULTIPLE_CONTENT + 1,
+            selectIntent,
+            pendingIntentFlags
+        )
+
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentTitle("$itemCount items found")
+            .setContentText("Choose an option")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)  // HIGH for heads-up
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)  // Message category
+            .setAutoCancel(true)
+            .setOnlyAlertOnce(false)  // Allow alert
+            .setDefaults(NotificationCompat.DEFAULT_ALL)  // Sound, vibration, lights
+            .addAction(
+                android.R.drawable.stat_sys_download_done,
+                "Download All",
+                downloadAllPendingIntent
+            )
+            .addAction(
+                android.R.drawable.ic_menu_view,
+                "Select Items",
+                selectPendingIntent
+            )
+            .build()
+
+        try {
+            if (notificationManagerCompat.areNotificationsEnabled()) {
+                notificationManagerCompat.notify(NOTIFICATION_ID_MULTIPLE_CONTENT, notification)
+            }
+        } catch (e: SecurityException) {
+            Log.e(TAG, "SecurityException", e)
+        }
+    }
+
+    fun showBatchDownloadProgress(current: Int, total: Int) {
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentTitle("Downloading")
+            .setContentText("$current of $total")
+            .setProgress(total, current, false)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
+            .setAutoCancel(false)
+            .setOnlyAlertOnce(true)
+            .build()
+
+        try {
+            if (notificationManagerCompat.areNotificationsEnabled()) {
+                notificationManagerCompat.notify(NOTIFICATION_ID_BATCH_DOWNLOAD, notification)
+            }
+        } catch (e: SecurityException) {
+            Log.e(TAG, "SecurityException", e)
+        }
+    }
+
+    fun showBatchDownloadComplete(totalFiles: Int) {
+        cancelBatchDownloadNotification()
+
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            System.currentTimeMillis().toInt(),
+            intent,
+            pendingIntentFlags
+        )
+
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_sys_download_done)
+            .setContentTitle("Download complete")
+            .setContentText("$totalFiles item(s) downloaded")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .setOnlyAlertOnce(false)
+            .build()
+
+        try {
+            if (notificationManagerCompat.areNotificationsEnabled()) {
+                notificationManagerCompat.notify(System.currentTimeMillis().toInt(), notification)
+            }
+        } catch (e: SecurityException) {
+            Log.e(TAG, "SecurityException", e)
+        }
+    }
+
+    fun cancelBatchDownloadNotification() {
+        try {
+            notificationManagerCompat.cancel(NOTIFICATION_ID_BATCH_DOWNLOAD)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error cancelling batch download notification", e)
+        }
+    }
+
+
+    fun cancelMultipleContentNotification() {
+        try {
+            notificationManagerCompat.cancel(NOTIFICATION_ID_MULTIPLE_CONTENT)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error cancelling multiple content notification", e)
+        }
+    }
+
+    fun showRestrictedPostError() {
+        cancelLinkProcessingNotification()
+
+        val notificationId = System.currentTimeMillis().toInt()
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_notify_error)
+            .setContentTitle("Restricted Content")
+            .setContentText("This post is private or restricted")
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+            .setStyle(
+                NotificationCompat.BigTextStyle()
+                    .bigText("This Instagram post is private or restricted.\n\nYou may need to:\n• Follow the account\n• Log in to Instagram\n• Check if the post still exists")
+            )
+            .build()
+
+        try {
+            if (notificationManagerCompat.areNotificationsEnabled()) {
+                notificationManagerCompat.notify(notificationId, notification)
+            } else {
+                Log.w(TAG, "Notifications disabled")
+            }
+        } catch (e: SecurityException) {
+            Log.e(TAG, "SecurityException showing restricted post error", e)
+        }
+    }
+
+    fun showLinkError(message: String) {
+        cancelLinkProcessingNotification()
+
+        val notificationId = System.currentTimeMillis().toInt()
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_notify_error)
+            .setContentTitle("Link Processing Failed")
+            .setContentText(message)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .build()
+
+        try {
+            if (notificationManagerCompat.areNotificationsEnabled()) {
+                notificationManagerCompat.notify(notificationId, notification)
+            } else {
+                Log.w(TAG, "Notifications disabled")
+            }
+        } catch (e: SecurityException) {
+            Log.e(TAG, "SecurityException showing link error", e)
         }
     }
 

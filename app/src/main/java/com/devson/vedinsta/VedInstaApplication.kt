@@ -22,9 +22,15 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import android.os.Environment
+import kotlinx.coroutines.withContext
 import java.util.UUID
+import com.devson.vedinsta.adapters.MediaSelectionAdapter
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.CopyOnWriteArrayList // Keep this import
+import java.util.concurrent.CopyOnWriteArrayList
+import org.json.JSONObject
+import android.content.Intent
+import com.devson.vedinsta.service.DownloadService
 
 class VedInstaApplication : Application() {
 
@@ -73,13 +79,211 @@ class VedInstaApplication : Application() {
             Log.d(TAG, "Removed cached metadata for key $key")
         }
     }
+    fun getPostInfo(url: String): JSONObject? {
+        return try {
+            Log.d("VedInstaApp", "Getting post info for: $url")
 
+            val python = Python.getInstance()
+            val module = python.getModule("insta_downloader")
+
+            // Call the correct method: get_media_urls (not get_post_info)
+            val result = module.callAttr("get_media_urls", url)
+            val resultString = result?.toString() ?: return null
+
+            Log.d("VedInstaApp", "Python result: $resultString")
+
+            val jsonResult = JSONObject(resultString)
+            val status = jsonResult.optString("status", "error")
+
+            when (status) {
+                "success" -> {
+                    // Post is accessible
+                    return jsonResult
+                }
+                "private" -> {
+                    // Post is private
+                    Log.w("VedInstaApp", "Post is private")
+                    return JSONObject().apply {
+                        put("is_private", true)
+                        put("media_count", 0)
+                    }
+                }
+                "login_required" -> {
+                    // Login required
+                    Log.w("VedInstaApp", "Login required for post")
+                    return JSONObject().apply {
+                        put("is_private", true)
+                        put("media_count", 0)
+                    }
+                }
+                "not_found" -> {
+                    // Post not found
+                    Log.w("VedInstaApp", "Post not found")
+                    return null
+                }
+                else -> {
+                    // Other error
+                    Log.e("VedInstaApp", "Error status: $status")
+                    return null
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("VedInstaApp", "Error getting post info", e)
+            null
+        }
+    }
+
+    suspend fun downloadSelectedMedia(
+        mediaItems: List<MediaSelectionAdapter.MediaItem>,
+        postUrl: String
+    ) {
+        withContext(Dispatchers.IO) {
+            try {
+                val notificationManager = VedInstaNotificationManager.getInstance(this@VedInstaApplication)
+                val totalItems = mediaItems.size
+
+                for ((index, mediaItem) in mediaItems.withIndex()) {
+                    try {
+                        // Show progress
+                        notificationManager.showBatchDownloadProgress(index + 1, totalItems)
+
+                        val username = extractUsernameFromUrl(postUrl)
+                        val timestamp = System.currentTimeMillis()
+                        val extension = if (mediaItem.type == "video") "mp4" else "jpg"
+                        val fileName = "vedinsta_${username}_${timestamp}_${mediaItem.index}.$extension"
+
+                        // Queue download
+                        queueDownload(mediaItem.url, fileName)
+
+                        // Small delay between downloads
+                        if (index < totalItems - 1) {
+                            kotlinx.coroutines.delay(500)
+                        }
+
+                    } catch (e: Exception) {
+                        Log.e("VedInstaApp", "Error downloading item ${index + 1}", e)
+                    }
+                }
+
+                // Show completion
+                notificationManager.showBatchDownloadComplete(totalItems)
+
+            } catch (e: Exception) {
+                Log.e("VedInstaApp", "Error in batch download", e)
+            }
+        }
+    }
+
+    suspend fun downloadPostFromUrl(url: String) {
+        withContext(Dispatchers.IO) {
+            try {
+                Log.d("VedInstaApp", "Starting download for: $url")
+
+                val python = Python.getInstance()
+                val module = python.getModule("insta_downloader")
+                val result = module.callAttr("get_media_urls", url)
+                val resultString = result?.toString() ?: throw Exception("No result from Python")
+
+                val postData = JSONObject(resultString)
+                val status = postData.optString("status", "error")
+
+                if (status != "success") {
+                    val message = postData.optString("message", "Unknown error")
+                    throw Exception(message)
+                }
+
+                val mediaArray = postData.optJSONArray("media")
+                if (mediaArray == null || mediaArray.length() == 0) {
+                    throw Exception("No media found in post")
+                }
+
+                val notificationManager = VedInstaNotificationManager.getInstance(this@VedInstaApplication)
+                val totalItems = mediaArray.length()
+
+                // Show initial progress
+                notificationManager.showBatchDownloadProgress(0, totalItems)
+
+                for (i in 0 until totalItems) {
+                    val mediaObj = mediaArray.getJSONObject(i)
+                    val downloadUrl = mediaObj.getString("url")
+                    val mediaType = mediaObj.optString("type", "image")
+                    val index = mediaObj.optInt("index", i + 1)
+
+                    val username = postData.optString("username", "unknown")
+                    val timestamp = System.currentTimeMillis()
+                    val extension = if (mediaType == "video") "mp4" else "jpg"
+                    val fileName = "vedinsta_${username}_${timestamp}_${index}.$extension"
+
+                    // Update progress
+                    notificationManager.showBatchDownloadProgress(i + 1, totalItems)
+
+                    // Queue download - this will save to same location as in-app downloads
+                    queueDownload(downloadUrl, fileName)
+
+                    // Small delay between queuing downloads
+                    if (i < totalItems - 1) {
+                        kotlinx.coroutines.delay(300)
+                    }
+                }
+
+                // Small delay before showing completion
+                kotlinx.coroutines.delay(500)
+
+                // Show completion notification
+                notificationManager.showBatchDownloadComplete(totalItems)
+
+            } catch (e: Exception) {
+                Log.e("VedInstaApp", "Error downloading post", e)
+                val notificationManager = VedInstaNotificationManager.getInstance(this@VedInstaApplication)
+                notificationManager.cancelBatchDownloadNotification()
+                notificationManager.showLinkError("Download failed: ${e.message}")
+            }
+        }
+    }
+
+    private fun extractUsernameFromUrl(url: String): String {
+        return try {
+            val regex = Regex("instagram\\.com/([^/]+)")
+            regex.find(url)?.groupValues?.get(1) ?: "unknown"
+        } catch (e: Exception) {
+            "unknown"
+        }
+    }
+    private fun queueDownload(url: String, fileName: String) {
+        try {
+            // Use the SAME download path as in-app downloads
+            val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            val vedInstaDir = File(downloadDir, "VedInsta")
+            vedInstaDir.mkdirs()
+            val filePath = File(vedInstaDir, fileName).absolutePath
+
+            Log.d("VedInstaApp", "Queueing download: $fileName to $filePath")
+
+            // Use your existing DownloadService to ensure consistency
+            val downloadIntent = Intent(this, DownloadService::class.java).apply {
+                putExtra(DownloadService.EXTRA_DOWNLOAD_URL, url)
+                putExtra(DownloadService.EXTRA_FILE_NAME, fileName)
+                putExtra(DownloadService.EXTRA_FILE_PATH, filePath)
+            }
+            startService(downloadIntent)
+
+        } catch (e: Exception) {
+            Log.e("VedInstaApp", "Error queueing download", e)
+        }
+    }
+
+    private fun getDownloadPath(fileName: String): String {
+        val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        val vedInstaDir = File(downloadDir, "VedInsta")
+        vedInstaDir.mkdirs()
+        return File(vedInstaDir, fileName).absolutePath
+    }
 
     fun enqueueMultipleDownloads(
         context: Context,
         filesToDownload: List<ImageCard>,
         postId: String?, // The actual Instagram post ID/shortcode, if available
-        postCaption: String? // Pass the fetched caption
+        postCaption: String?
     ): List<UUID> {
         Log.i(TAG, "Enqueueing multiple downloads (${filesToDownload.size}) for Post ID/Key: $postId")
 
@@ -358,6 +562,31 @@ class VedInstaApplication : Application() {
         }
     }
 
+    fun downloadSingleMedia(url: String, type: String, username: String, index: Int) {
+        try {
+            val timestamp = System.currentTimeMillis()
+            val extension = if (type == "video") "mp4" else "jpg"
+            val fileName = "vedinsta_${username}_${timestamp}_$index.$extension"
+
+            val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            val vedInstaDir = File(downloadDir, "VedInsta")
+            vedInstaDir.mkdirs()
+            val filePath = File(vedInstaDir, fileName).absolutePath
+
+            Log.d("VedInstaApp", "Downloading: $fileName")
+
+            // Use DownloadService
+            val downloadIntent = Intent(this, DownloadService::class.java).apply {
+                putExtra(DownloadService.EXTRA_DOWNLOAD_URL, url)
+                putExtra(DownloadService.EXTRA_FILE_NAME, fileName)
+                putExtra(DownloadService.EXTRA_FILE_PATH, filePath)
+            }
+            startService(downloadIntent)
+
+        } catch (e: Exception) {
+            Log.e("VedInstaApp", "Error downloading media", e)
+        }
+    }
 
     private fun observeWorkProgressByTag(
         context: Context,
