@@ -78,11 +78,38 @@ class DownloadActivity : AppCompatActivity() {
         setupClickListeners()
 
         val resultJson = intent.getStringExtra("RESULT_JSON")
+        postUrl = intent.getStringExtra("POST_URL")
         if (resultJson != null) {
             handlePythonResult(resultJson)
+        } else if (postUrl != null) {
+            // NEW: Handle URL-only launch (from Notification)
+            fetchDataFromUrl(postUrl!!)
         } else {
             Toast.makeText(this, "Error: No data received", Toast.LENGTH_SHORT).show()
             finish()
+        }
+    }
+    private fun fetchDataFromUrl(url: String) {
+        binding.dotsIndicator.visibility = View.GONE // Hide dots while loading
+        // Show a loading progress in UI if you have one, or a Toast
+        Toast.makeText(this, "Loading items...", Toast.LENGTH_SHORT).show()
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                // Re-use Python script to get JSON
+                val python = com.chaquo.python.Python.getInstance()
+                val module = python.getModule("insta_downloader")
+                val result = module.callAttr("get_media_urls", url).toString()
+
+                launch(Dispatchers.Main) {
+                    handlePythonResult(result)
+                }
+            } catch (e: Exception) {
+                launch(Dispatchers.Main) {
+                    Toast.makeText(this@DownloadActivity, "Failed to load: ${e.message}", Toast.LENGTH_LONG).show()
+                    finish()
+                }
+            }
         }
     }
 

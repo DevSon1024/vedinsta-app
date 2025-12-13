@@ -573,9 +573,9 @@ class VedInstaApplication : Application() {
             vedInstaDir.mkdirs()
             val filePath = File(vedInstaDir, fileName).absolutePath
 
-            Log.d("VedInstaApp", "Downloading: $fileName")
+            Log.d("VedInstaApp", "Downloading: $fileName to $filePath")
 
-            // Use DownloadService
+            // Start download service
             val downloadIntent = Intent(this, DownloadService::class.java).apply {
                 putExtra(DownloadService.EXTRA_DOWNLOAD_URL, url)
                 putExtra(DownloadService.EXTRA_FILE_NAME, fileName)
