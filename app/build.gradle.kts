@@ -1,6 +1,3 @@
-import java.io.FileInputStream
-import java.util.Properties
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -9,20 +6,9 @@ plugins {
     kotlin("kapt")
 }
 
-val keystorePropertiesFile = rootProject.file("keystore.properties")
-val keystoreProperties = Properties()
-if (keystorePropertiesFile.exists()) {
-    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
-}
-val splitApks = !project.hasProperty("noSplits") && !gradle.startParameter.taskNames.any {
-    it.contains("debug", ignoreCase = true)
-}
-
 android {
     namespace = "com.devson.vedinsta"
-    compileSdk {
-        version = release(36)
-    }
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.devson.vedinsta"
@@ -33,12 +19,6 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
-        }
-        if (!splitApks) {
-            // For debug builds - only include device ABI for faster builds
-            ndk {
-                abiFilters.add("arm64-v8a")
-            }
         }
 
     }
@@ -67,12 +47,7 @@ android {
     }
     signingConfigs {
         create("release") {
-            if (keystorePropertiesFile.exists()) {
-                keyAlias = keystoreProperties["keyAlias"] as String?
-                keyPassword = keystoreProperties["keyPassword"] as String?
-                storeFile = file(keystoreProperties["storeFile"] as String)
-                storePassword = keystoreProperties["storePassword"] as String?
-            }
+            // This is a placeholder for your signing configuration.
         }
     }
 
@@ -84,28 +59,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            if (keystorePropertiesFile.exists()) {
-                signingConfig = signingConfigs.getByName("release")
-            }
-        }
-        debug {
-            isMinifyEnabled = false
-            isDebuggable = true
-            applicationIdSuffix = ".debug"
+            signingConfig = signingConfigs.getByName("release")
         }
     }
-
-    if (splitApks) {
-        splits {
-            abi {
-                isEnable = true
-                reset()
-                include("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
-                isUniversalApk = false
-            }
-        }
-    }
-
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

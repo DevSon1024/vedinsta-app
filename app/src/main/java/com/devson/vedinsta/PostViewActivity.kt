@@ -52,12 +52,11 @@ class PostViewActivity : AppCompatActivity() {
 
     // Caption state
     private var isCaptionExpanded = false
-    private val maxCaptionLength = 100
+    private val maxCaptionLength = 25
 
     private var intentPostId: String? = null
 
     companion object {
-        // ... (Companion object remains the same) ...
         private const val TAG = "PostViewActivity"
         const val EXTRA_POST_ID = "post_id"
         // Keep other extras for initial display if needed, but DB is primary source
