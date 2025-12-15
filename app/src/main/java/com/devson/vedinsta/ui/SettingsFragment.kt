@@ -27,8 +27,6 @@ class SettingsFragment : Fragment() {
     private val binding get() = _binding!!
     private lateinit var settingsManager: SettingsManager
 
-    // ... (Launchers remain the same) ...
-    // Launcher for Image folder picker
     private val imageFolderPickerLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             if (result.resultCode == Activity.RESULT_OK) {
@@ -41,7 +39,6 @@ class SettingsFragment : Fragment() {
             }
         }
 
-    // Launcher for Video folder picker
     private val videoFolderPickerLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             if (result.resultCode == Activity.RESULT_OK) {
@@ -73,7 +70,6 @@ class SettingsFragment : Fragment() {
     }
 
     private fun setupClickListeners() {
-        // Storage Section
         binding.btnPickImageFolder.setOnClickListener {
             openFolderPicker(imageFolderPickerLauncher)
         }
@@ -84,26 +80,56 @@ class SettingsFragment : Fragment() {
             toggleStorageSection()
         }
 
-        // --- Clear Cache ---
         binding.llClearCache.setOnClickListener {
             showClearCacheConfirmation()
         }
-        // --- ---
 
-        // Privacy Policy
+        // NEW: Notification / Link Behavior Setting
+        binding.llNotificationSettings.setOnClickListener {
+            showLinkActionDialog()
+        }
+
         binding.llPrivacyPolicy.setOnClickListener {
             openPrivacyPolicy()
         }
 
-        // About - Changed to launch AboutActivity
         binding.llAbout.setOnClickListener {
-            // Use the standard way to launch AboutActivity
             val intent = Intent(requireContext(), com.devson.vedinsta.AboutActivity::class.java)
             startActivity(intent)
         }
     }
 
-    // ... (toggleStorageSection, openFolderPicker, takePersistablePermissions, updatePathLabels, openPrivacyPolicy remain the same) ...
+    private fun showLinkActionDialog() {
+        val options = arrayOf(
+            "Request Action (Default)",
+            "Download All Immediately",
+            "Open Media Selection"
+        )
+        // Map current setting to index
+        val currentSelection = when(settingsManager.defaultLinkAction) {
+            SettingsManager.ACTION_ASK_EVERY_TIME -> 0
+            SettingsManager.ACTION_DOWNLOAD_ALL -> 1
+            SettingsManager.ACTION_OPEN_SELECTION -> 2
+            else -> 0
+        }
+
+        AlertDialog.Builder(requireContext())
+            .setTitle("When sharing a link:")
+            .setSingleChoiceItems(options, currentSelection) { dialog, which ->
+                val newAction = when(which) {
+                    0 -> SettingsManager.ACTION_ASK_EVERY_TIME
+                    1 -> SettingsManager.ACTION_DOWNLOAD_ALL
+                    2 -> SettingsManager.ACTION_OPEN_SELECTION
+                    else -> SettingsManager.ACTION_ASK_EVERY_TIME
+                }
+                settingsManager.defaultLinkAction = newAction
+                updatePathLabels() // Refresh label
+                dialog.dismiss()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
     private fun toggleStorageSection() {
         if (binding.storageDetails.visibility == View.VISIBLE) {
             binding.storageDetails.visibility = View.GONE
@@ -115,10 +141,7 @@ class SettingsFragment : Fragment() {
     }
 
     private fun openFolderPicker(launcher: androidx.activity.result.ActivityResultLauncher<Intent>) {
-        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
-            // Optionally add initial URI if needed
-            // putExtra(DocumentsContract.EXTRA_INITIAL_URI, ...)
-        }
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
         try {
             launcher.launch(intent)
         } catch (e: Exception) {
@@ -127,47 +150,39 @@ class SettingsFragment : Fragment() {
         }
     }
 
-
     private fun takePersistablePermissions(uri: Uri) {
         try {
             val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION or
                     Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             requireContext().contentResolver.takePersistableUriPermission(uri, takeFlags)
-            Log.d("SettingsFragment", "Persistable permissions taken for URI: $uri")
         } catch (e: SecurityException) {
-            Log.e("SettingsFragment", "Failed to take persistable permissions for $uri", e)
-            Toast.makeText(requireContext(), "Failed to grant access. Please try again.", Toast.LENGTH_LONG).show()
+            Log.e("SettingsFragment", "Failed to take persistable permissions", e)
         }
     }
-
 
     private fun updatePathLabels() {
         binding.tvImagePath.text = settingsManager.getImagePathLabel()
         binding.tvVideoPath.text = settingsManager.getVideoPathLabel()
+        // New: Update link action status text
+        binding.tvLinkActionStatus.text = settingsManager.getDefaultActionLabel()
     }
 
     private fun openPrivacyPolicy() {
         val intent = Intent(Intent.ACTION_VIEW).apply {
-            data = Uri.parse("https://github.com/DevSon1024/vedinsta-app/blob/main/PRIVACY_POLICY.md") // Ensure this URL is correct
+            data = Uri.parse("https://github.com/DevSon1024/vedinsta-app/blob/main/PRIVACY_POLICY.md")
         }
         try {
             startActivity(intent)
         } catch (e: Exception) {
-            Toast.makeText(requireContext(), "No browser app found to open link", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), "No browser app found", Toast.LENGTH_SHORT).show()
         }
     }
 
-
-    // Removed showAboutDialog, using AboutActivity now
-
-    // --- Clear Cache Implementation ---
     private fun showClearCacheConfirmation() {
-        // Ensure fragment is added before showing dialog
         if (!isAdded) return
-
         AlertDialog.Builder(requireContext())
             .setTitle("Clear Cache")
-            .setMessage("This will remove temporary files and cached images. Downloaded media will not be affected. Continue?")
+            .setMessage("This will remove temporary files. Downloads remain safe. Continue?")
             .setPositiveButton("Clear") { _, _ ->
                 clearApplicationCache()
             }
@@ -176,79 +191,38 @@ class SettingsFragment : Fragment() {
     }
 
     private fun clearApplicationCache() {
-        // Check fragment state again before launching coroutine
         if (!isAdded) return
-
-        Log.d("SettingsFragment", "Clearing application cache...")
-        val context = requireContext().applicationContext // Use application context safely
-
-        // Use lifecycleScope tied to the fragment's view lifecycle
+        val context = requireContext().applicationContext
         viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
-            var cacheCleared = false
-            var coilCleared = false
             try {
-                // Clear app's internal cache directory
                 context.cacheDir?.let { deleteDir(it) }
-                // Clear app's external cache directory (if used)
                 context.externalCacheDir?.let { deleteDir(it) }
-                cacheCleared = true
-                Log.d("SettingsFragment", "System cache directories cleared.")
-
-                // Clear Coil's cache
                 val imageLoader = Coil.imageLoader(context)
-                // These might need Dispatchers.Main if they interact with UI thread internally
                 withContext(Dispatchers.Main) {
-                    imageLoader.memoryCache?.clear() // Clear memory cache (Main thread safe)
+                    imageLoader.memoryCache?.clear()
                 }
-                imageLoader.diskCache?.clear()   // Clear disk cache (runs IO, already on IO thread)
-                coilCleared = true
-                Log.d("SettingsFragment", "Coil memory and disk cache cleared.")
-
+                imageLoader.diskCache?.clear()
                 withContext(Dispatchers.Main) {
-                    // Check if fragment is still added before showing Toast
-                    if (isAdded) {
-                        Toast.makeText(context, "Cache cleared successfully", Toast.LENGTH_SHORT).show()
-                    }
+                    if (isAdded) Toast.makeText(context, "Cache cleared", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 Log.e("SettingsFragment", "Error clearing cache", e)
-                withContext(Dispatchers.Main) {
-                    // Check if fragment is still added before showing Toast
-                    if (isAdded) {
-                        val message = when {
-                            !cacheCleared -> "Failed to clear system cache"
-                            !coilCleared -> "Failed to clear image cache"
-                            else -> "An error occurred while clearing cache"
-                        }
-                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
-                    }
-                }
             }
         }
     }
 
-    // Recursive function to delete directory contents
     private fun deleteDir(dir: File?): Boolean {
         if (dir != null && dir.isDirectory) {
-            val children = dir.list() ?: return false // Check if list() returns null
+            val children = dir.list() ?: return false
             for (i in children.indices) {
-                // Check for cancellation before deleting each child
-                // No easy way to check lifecycleScope cancellation here directly
-                // Rely on the outer scope being cancelled if the fragment is destroyed
-                val success = deleteDir(File(dir, children[i]))
-                if (!success) {
-                    Log.w("SettingsFragment", "Failed to delete file/subdir: ${children[i]}")
-                    // Continue trying to delete others
-                }
+                deleteDir(File(dir, children[i]))
             }
         }
-        // The directory is now empty or it's a file
         return dir?.delete() ?: false
     }
-    // --- ---
 
     override fun onDestroyView() {
         super.onDestroyView()
-        _binding = null // Important for preventing memory leaks
+        _binding = null
     }
 }

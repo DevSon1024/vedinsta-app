@@ -60,7 +60,6 @@
             android:paddingTop="16dp"
             android:paddingEnd="16dp"
             android:paddingBottom="16dp">
-
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -145,6 +144,63 @@
                     android:text="Choose" />
 
             </LinearLayout>
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@android:color/darker_gray"
+            android:alpha="0.3" />
+
+        <LinearLayout
+            android:id="@+id/ll_notification_settings"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true"
+            android:orientation="horizontal"
+            android:padding="16dp">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:layout_gravity="center_vertical"
+                android:layout_marginEnd="16dp"
+                android:src="@drawable/ic_notifications"
+                app:tint="?android:attr/textColorPrimary"
+                android:contentDescription="Notifications" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:layout_gravity="center_vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Link Processing Action"
+                    android:textAppearance="@style/TextAppearance.Material3.BodyLarge"
+                    android:textColor="@android:color/black" />
+
+                <TextView
+                    android:id="@+id/tv_link_action_status"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Ask every time"
+                    android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+                    android:textColor="@android:color/darker_gray" />
+
+            </LinearLayout>
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:layout_gravity="center_vertical"
+                android:src="@drawable/ic_chevron_right"
+                android:contentDescription="Expand" />
 
         </LinearLayout>
 
@@ -189,7 +245,6 @@
             android:layout_height="1dp"
             android:background="@android:color/darker_gray"
             android:alpha="0.3" />
-
 
         <LinearLayout
             android:id="@+id/ll_privacy_policy"
@@ -274,7 +329,6 @@
             android:layout_height="1dp"
             android:background="@android:color/darker_gray"
             android:alpha="0.3" />
-
 
     </LinearLayout>
 

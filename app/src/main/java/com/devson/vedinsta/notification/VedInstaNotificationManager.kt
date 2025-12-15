@@ -10,7 +10,7 @@ import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import com.devson.vedinsta.DownloadActivity // Added missing import
+import com.devson.vedinsta.DownloadActivity
 import com.devson.vedinsta.MainActivity
 import com.devson.vedinsta.R
 import com.devson.vedinsta.database.AppDatabase
@@ -24,13 +24,14 @@ class VedInstaNotificationManager private constructor(private val context: Conte
 
     companion object {
         private const val TAG = "VedInstaNotificationMgr"
-        const val CHANNEL_ID = "download_channel"
+        // CHANGE: Updated ID to force Android to apply new Importance settings (Popup)
+        const val CHANNEL_ID = "download_channel_v3"
         const val CHANNEL_NAME = "Download Progress"
         const val CHANNEL_DESCRIPTION = "Shows download progress for Instagram media"
 
         const val NOTIFICATION_ID_LINK_PROCESSING = 1001
         const val NOTIFICATION_ID_MULTIPLE_CONTENT = 1002
-        const val NOTIFICATION_ID_BATCH_DOWNLOAD = 1003 // Restored constant
+        const val NOTIFICATION_ID_BATCH_DOWNLOAD = 1003
 
         @Volatile
         private var INSTANCE: VedInstaNotificationManager? = null
@@ -43,7 +44,7 @@ class VedInstaNotificationManager private constructor(private val context: Conte
     }
 
     private val notificationManagerCompat = NotificationManagerCompat.from(context)
-    private val database = AppDatabase.getDatabase(context) // Restored property
+    private val database = AppDatabase.getDatabase(context)
 
     private val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
@@ -60,12 +61,13 @@ class VedInstaNotificationManager private constructor(private val context: Conte
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 CHANNEL_NAME,
-                NotificationManager.IMPORTANCE_HIGH
+                NotificationManager.IMPORTANCE_HIGH // CRITICAL: Enables Heads-up Popup
             ).apply {
                 description = CHANNEL_DESCRIPTION
                 setShowBadge(true)
                 enableVibration(true)
                 enableLights(true)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
             val systemNotificationManager =
                 context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -76,12 +78,12 @@ class VedInstaNotificationManager private constructor(private val context: Conte
     fun showLinkProcessing() {
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle("Processing link...")
+            .setContentTitle("VedInsta")
+            .setContentText("Processing link...")
             .setProgress(0, 0, true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
             .setAutoCancel(false)
-            .setOnlyAlertOnce(true)
             .build()
 
         notify(NOTIFICATION_ID_LINK_PROCESSING, notification)
@@ -95,7 +97,7 @@ class VedInstaNotificationManager private constructor(private val context: Conte
         }
     }
 
-    fun showMultipleContentOptions(url: String, itemCount: Int) {
+    fun showMultipleContentOptions(url: String, itemCount: Int, autoOpenSelection: Boolean = false) {
         // Option 1: Download All (Handled by Service)
         val downloadAllIntent = Intent(context, SharedLinkProcessingService::class.java).apply {
             action = SharedLinkProcessingService.ACTION_DOWNLOAD_ALL
@@ -108,11 +110,18 @@ class VedInstaNotificationManager private constructor(private val context: Conte
             pendingIntentFlags
         )
 
-        // Option 2: Select Items (Handled by Activity DIRECTLY)
-        // Fixed: Use explicit Intent with correctly imported DownloadActivity
+        // Option 2: Select Items (Opens Activity)
         val selectIntent = Intent(context, DownloadActivity::class.java).apply {
             putExtra("POST_URL", url)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+
+        // If auto-open requested, start activity immediately
+        if (autoOpenSelection) {
+            context.startActivity(selectIntent)
+            // Even if auto-opening, we might want to clear any existing notification
+            cancelMultipleContentNotification()
+            return
         }
 
         val selectPendingIntent = PendingIntent.getActivity(
@@ -123,14 +132,15 @@ class VedInstaNotificationManager private constructor(private val context: Conte
         )
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_download) // Ensure icon exists
-            .setContentTitle("$itemCount items found")
-            .setContentText("Choose an option")
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setSmallIcon(R.drawable.ic_multiple_images) // Ensure icon exists
+            .setContentTitle("Found $itemCount items")
+            .setContentText("Tap to Select or Download All")
+            .setPriority(NotificationCompat.PRIORITY_HIGH) // Popup
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE) // Heads-up behavior
             .setAutoCancel(true)
             .setOnlyAlertOnce(false)
-            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setDefaults(NotificationCompat.DEFAULT_ALL) // Sound + Vibrate
+            .setContentIntent(selectPendingIntent) // Tapping notification body opens selection
             .addAction(
                 android.R.drawable.stat_sys_download_done,
                 "Download All",
@@ -138,7 +148,7 @@ class VedInstaNotificationManager private constructor(private val context: Conte
             )
             .addAction(
                 android.R.drawable.ic_menu_view,
-                "Select Items",
+                "Select",
                 selectPendingIntent
             )
             .build()
@@ -229,7 +239,7 @@ class VedInstaNotificationManager private constructor(private val context: Conte
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
-        val pendingIntent: PendingIntent = PendingIntent.getActivity(
+        val pendingIntent = PendingIntent.getActivity(
             context,
             notificationId,
             intent,
@@ -239,8 +249,9 @@ class VedInstaNotificationManager private constructor(private val context: Conte
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
             .setContentTitle("Download Completed")
-            .setContentText("Successfully downloaded $totalFiles file(s) for $fileName")
+            .setContentText("Saved $totalFiles file(s) for $fileName")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .build()

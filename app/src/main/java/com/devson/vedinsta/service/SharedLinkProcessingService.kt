@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.IBinder
 import android.util.Log
 import com.devson.vedinsta.ImageCard
+import com.devson.vedinsta.SettingsManager
 import com.devson.vedinsta.VedInstaApplication
 import com.devson.vedinsta.notification.VedInstaNotificationManager
 import kotlinx.coroutines.*
@@ -14,6 +15,7 @@ class SharedLinkProcessingService : Service() {
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private lateinit var notificationManager: VedInstaNotificationManager
+    private lateinit var settingsManager: SettingsManager
 
     companion object {
         private const val TAG = "SharedLinkService"
@@ -24,6 +26,7 @@ class SharedLinkProcessingService : Service() {
     override fun onCreate() {
         super.onCreate()
         notificationManager = VedInstaNotificationManager.getInstance(this)
+        settingsManager = SettingsManager(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -49,6 +52,7 @@ class SharedLinkProcessingService : Service() {
 
     private fun processSharedLink(url: String, startId: Int) {
         serviceScope.launch {
+            var shouldStopSelf = true
             try {
                 notificationManager.showLinkProcessing()
 
@@ -69,45 +73,55 @@ class SharedLinkProcessingService : Service() {
 
                 notificationManager.cancelLinkProcessingNotification()
 
-                when {
-                    mediaCount > 1 -> {
-                        // Show options for multiple items
-                        notificationManager.showMultipleContentOptions(url, mediaCount)
-                    }
-                    mediaCount == 1 -> {
-                        // SINGLE POST: Auto-download silently
-                        val mediaObj = mediaArray!!.getJSONObject(0)
-                        val downloadUrl = mediaObj.getString("url")
-                        val mediaType = mediaObj.getString("type")
-                        val itemId = mediaObj.optString("story_item_id", postData.optString("shortcode", url))
+                // Check media count and settings
+                if (mediaCount == 1) {
+                    // SINGLE POST: Always Auto-download silently
+                    val mediaObj = mediaArray!!.getJSONObject(0)
+                    val downloadUrl = mediaObj.getString("url")
+                    val mediaType = mediaObj.getString("type")
+                    val itemId = mediaObj.optString("story_item_id", postData.optString("shortcode", url))
 
-                        (application as VedInstaApplication).enqueueSingleDownload(
-                            applicationContext,
-                            downloadUrl,
-                            mediaType,
-                            username,
-                            itemId,
-                            caption
-                        )
+                    (application as VedInstaApplication).enqueueSingleDownload(
+                        applicationContext,
+                        downloadUrl,
+                        mediaType,
+                        username,
+                        itemId,
+                        caption
+                    )
+                } else if (mediaCount > 1) {
+                    // MULTIPLE CONTENT: Check Settings
+                    when (settingsManager.defaultLinkAction) {
+                        SettingsManager.ACTION_DOWNLOAD_ALL -> {
+                            handleDownloadAll(url, -1)
+                            shouldStopSelf = false
+                        }
+                        SettingsManager.ACTION_OPEN_SELECTION -> {
+                            notificationManager.showMultipleContentOptions(url, mediaCount, autoOpenSelection = true)
+                        }
+                        else -> {
+                            notificationManager.showMultipleContentOptions(url, mediaCount)
+                        }
                     }
-                    else -> {
-                        notificationManager.showLinkError("No media found in link.")
-                    }
+                } else {
+                    notificationManager.showLinkError("No media found in link.")
                 }
 
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing link", e)
                 notificationManager.showLinkError("Error: ${e.message}")
             } finally {
-                // Always stop service after processing the link logic
-                stopSelfResult(startId)
+                // Only stop if we are not delegating to download all via setting
+                if (shouldStopSelf) {
+                    stopSelfResult(startId)
+                }
             }
         }
     }
 
     private fun handleDownloadAll(url: String?, startId: Int) {
         if (url.isNullOrEmpty()) {
-            stopSelfResult(startId)
+            if (startId != -1) stopSelfResult(startId)
             return
         }
 
@@ -116,6 +130,7 @@ class SharedLinkProcessingService : Service() {
                 notificationManager.cancelMultipleContentNotification()
 
                 val postDataJson = fetchPostData(url)
+
                 if (postDataJson == null) {
                     notificationManager.showLinkError("Failed to fetch post data")
                     return@launch
@@ -141,6 +156,7 @@ class SharedLinkProcessingService : Service() {
                     )
                 }
 
+                // Enqueue batch download
                 (application as VedInstaApplication).enqueueMultipleDownloads(
                     applicationContext,
                     itemsToDownload,
@@ -152,7 +168,7 @@ class SharedLinkProcessingService : Service() {
                 Log.e(TAG, "Error in download all", e)
                 notificationManager.showLinkError("Batch download failed")
             } finally {
-                stopSelfResult(startId)
+                if (startId != -1) stopSelfResult(startId)
             }
         }
     }

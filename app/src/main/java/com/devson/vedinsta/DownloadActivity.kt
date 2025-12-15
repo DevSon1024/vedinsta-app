@@ -16,7 +16,6 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.PagerSnapHelper
 import androidx.recyclerview.widget.RecyclerView
-import com.devson.vedinsta.database.DownloadedPost
 import com.devson.vedinsta.databinding.ActivityDownloadBinding
 import com.devson.vedinsta.notification.VedInstaNotificationManager
 import com.devson.vedinsta.viewmodel.MainViewModel
@@ -40,12 +39,10 @@ class DownloadActivity : AppCompatActivity() {
     private var workRequestIds: List<UUID> = emptyList()
     private val selectedItems = mutableSetOf<Int>()
 
-    // Position tracking for real-time updates
     private var currentPosition = 0
     private var lastReportedPage = -1
     private var isUserFlinging = false
 
-    // Get data from intent
     private var postUrl: String? = null
     private var postId: String? = null
     private var postCaption: String? = null
@@ -61,42 +58,37 @@ class DownloadActivity : AppCompatActivity() {
         binding = ActivityDownloadBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Initialize components
         viewModel = ViewModelProvider(this)[MainViewModel::class.java]
         notificationManager = VedInstaNotificationManager.getInstance(this)
 
-        // Request notification permission for Android 13+
+        // FIX: Clear the "Select Options" notification if it exists
+        notificationManager.cancelMultipleContentNotification()
+
         requestNotificationPermission()
 
-        // Get data from intent
         postUrl = intent.getStringExtra("POST_URL")
         postId = intent.getStringExtra("POST_ID")
-
-        Log.d(TAG, "DownloadActivity started for postId: $postId")
 
         setupRecyclerView()
         setupClickListeners()
 
         val resultJson = intent.getStringExtra("RESULT_JSON")
-        postUrl = intent.getStringExtra("POST_URL")
         if (resultJson != null) {
             handlePythonResult(resultJson)
         } else if (postUrl != null) {
-            // NEW: Handle URL-only launch (from Notification)
             fetchDataFromUrl(postUrl!!)
         } else {
             Toast.makeText(this, "Error: No data received", Toast.LENGTH_SHORT).show()
             finish()
         }
     }
+
     private fun fetchDataFromUrl(url: String) {
-        binding.dotsIndicator.visibility = View.GONE // Hide dots while loading
-        // Show a loading progress in UI if you have one, or a Toast
+        binding.dotsIndicator.visibility = View.GONE
         Toast.makeText(this, "Loading items...", Toast.LENGTH_SHORT).show()
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                // Re-use Python script to get JSON
                 val python = com.chaquo.python.Python.getInstance()
                 val module = python.getModule("insta_downloader")
                 val result = module.callAttr("get_media_urls", url).toString()
@@ -129,8 +121,6 @@ class DownloadActivity : AppCompatActivity() {
     }
 
     private fun setupRecyclerView() {
-        Log.d(TAG, "Setting up RecyclerView with real-time dots indicator")
-
         imageAdapter = ImageAdapter(
             mediaList = mediaList,
             selectedItems = selectedItems,
@@ -150,24 +140,21 @@ class DownloadActivity : AppCompatActivity() {
         binding.recyclerViewImages.apply {
             adapter = imageAdapter
             this.layoutManager = layoutManager
-            itemAnimator = null // Remove default item animation for snappier updates
+            itemAnimator = null
         }
 
         val snapHelper = PagerSnapHelper()
         snapHelper.attachToRecyclerView(binding.recyclerViewImages)
 
-        // Ensure dots prepare once sizes are laid out
         binding.recyclerViewImages.doOnNextLayout {
             setupDotsIndicator()
         }
 
-        // High-frequency, real-time updates using onScrolled
         binding.recyclerViewImages.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
                 isUserFlinging = newState == RecyclerView.SCROLL_STATE_SETTLING
 
                 if (newState == RecyclerView.SCROLL_STATE_IDLE) {
-                    // Snap settled, finalize the selected page instantly without animation
                     val page = findCurrentPageFast(layoutManager)
                     setSelectedPage(page, animate = false)
                 }
@@ -176,27 +163,20 @@ class DownloadActivity : AppCompatActivity() {
             override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
                 if (mediaList.isEmpty()) return
 
-                // Compute fractional page based on the first visible child offset
                 val fractionalPosition = computeFractionalPosition(layoutManager)
-
-                // Drive the dots smoothly with fractional position
                 binding.dotsIndicator.updatePositionSmooth(fractionalPosition)
 
-                // Update current position when integer page changes
                 val currentPage = fractionalPosition.roundToInt().coerceIn(0, mediaList.lastIndex)
                 if (currentPage != lastReportedPage) {
                     lastReportedPage = currentPage
                     currentPosition = currentPage
                 }
 
-                // If the user is flinging fast, also preemptively set selected without animation
                 if (isUserFlinging) {
                     binding.dotsIndicator.setSelectedPosition(currentPage, animate = false)
                 }
             }
         })
-
-        Log.d(TAG, "RecyclerView setup complete")
     }
 
     private fun computeFractionalPosition(layoutManager: LinearLayoutManager): Float {
@@ -204,11 +184,8 @@ class DownloadActivity : AppCompatActivity() {
         if (firstPos == RecyclerView.NO_POSITION) return currentPosition.toFloat()
 
         val firstView = layoutManager.findViewByPosition(firstPos) ?: return firstPos.toFloat()
-
         val recyclerViewWidth = binding.recyclerViewImages.width.takeIf { it > 0 } ?: return firstPos.toFloat()
         val childWidth = firstView.width.takeIf { it > 0 } ?: recyclerViewWidth
-
-        // In a horizontal list, view.left goes negative as we scroll left -> right
         val offsetPx = -firstView.left.toFloat()
         val fraction = (offsetPx / childWidth).coerceIn(0f, 1f)
 
@@ -216,7 +193,6 @@ class DownloadActivity : AppCompatActivity() {
     }
 
     private fun findCurrentPageFast(layoutManager: LinearLayoutManager): Int {
-        // Prefer completely visible if available, else center-most visible
         val completelyVisible = layoutManager.findFirstCompletelyVisibleItemPosition()
         if (completelyVisible != RecyclerView.NO_POSITION) return completelyVisible
 
@@ -226,7 +202,6 @@ class DownloadActivity : AppCompatActivity() {
             return currentPosition
         }
 
-        // Pick the view whose center is closest to RecyclerView center
         val recyclerViewCenter = binding.recyclerViewImages.width / 2
         var bestPosition = first
         var bestDistance = Int.MAX_VALUE
@@ -253,12 +228,10 @@ class DownloadActivity : AppCompatActivity() {
     }
 
     private fun setupClickListeners() {
-        // Select All button
         binding.btnSelectAll.setOnClickListener {
             toggleSelectAll()
         }
 
-        // Download button
         binding.btnDownload.setOnClickListener {
             startSelectedDownload()
         }
@@ -266,10 +239,8 @@ class DownloadActivity : AppCompatActivity() {
 
     private fun toggleSelectAll() {
         if (selectedItems.size == mediaList.size) {
-            // Deselect all
             selectedItems.clear()
         } else {
-            // Select all
             selectedItems.clear()
             selectedItems.addAll(0 until mediaList.size)
         }
@@ -294,11 +265,8 @@ class DownloadActivity : AppCompatActivity() {
         } else {
             binding.dotsIndicator.visibility = View.VISIBLE
             binding.dotsIndicator.setDotCount(mediaCount)
-            // Initialize immediately at current position with no animation
             binding.dotsIndicator.setSelectedPosition(currentPosition, animate = false)
         }
-
-        Log.d(TAG, "Dots indicator setup complete for $mediaCount items")
     }
 
     private fun updateDownloadButton() {
@@ -320,22 +288,17 @@ class DownloadActivity : AppCompatActivity() {
         val selectedMediaList = selectedItems.map { mediaList[it] }
 
         if (selectedMediaList.isNotEmpty()) {
-            Log.d(TAG, "Enqueueing download for ${selectedMediaList.size} selected items for Post ID: $postId") // Log postId
-
-            // Disable button immediately
             binding.btnDownload.isEnabled = false
             binding.btnDownload.alpha = 0.6f
             binding.btnDownload.text = "ENQUEUED..."
 
-            // Use Application context for WorkManager
             val applicationContext = this.applicationContext
 
-            // Enqueue work using the application method, passing the caption
             workRequestIds = (application as VedInstaApplication).enqueueMultipleDownloads(
                 applicationContext,
                 selectedMediaList,
-                postId, // Pass the postId (or key) obtained from intent
-                postCaption // Pass the fetched caption
+                postId ?: postUrl,
+                postCaption
             )
 
             if (workRequestIds.isNotEmpty()) {
@@ -343,7 +306,7 @@ class DownloadActivity : AppCompatActivity() {
                 finish()
             } else {
                 Toast.makeText(this, "Failed to start downloads", Toast.LENGTH_SHORT).show()
-                updateDownloadButton() // Reset button state based on selection
+                updateDownloadButton()
             }
 
         } else {
@@ -351,54 +314,20 @@ class DownloadActivity : AppCompatActivity() {
         }
     }
 
-    private fun observeCombinedWorkProgress(workIds: List<UUID>) {
-        val workManager = WorkManager.getInstance(this)
-        workManager.getWorkInfosForUniqueWorkLiveData(postId ?: VedInstaApplication.UNIQUE_DOWNLOAD_WORK_NAME)
-            .observe(this) { workInfos ->
-                if (workInfos == null || workInfos.isEmpty()) return@observe
-
-                val relevantWorkInfos = workInfos.filter { it.id in workIds }
-                if (relevantWorkInfos.isEmpty()) return@observe
-
-                var completedCount = 0
-                var totalProgress = 0
-                var runningCount = 0
-
-                relevantWorkInfos.forEach { workInfo ->
-                    if (workInfo.state.isFinished) {
-                        completedCount++
-                    } else if (workInfo.state == WorkInfo.State.RUNNING) {
-                        runningCount++
-                        totalProgress += workInfo.progress.getInt(EnhancedDownloadManager.PROGRESS, 0)
-                    }
-                    // Handle other states if needed (FAILED, CANCELLED)
-                }
-
-                val averageProgress = if (runningCount > 0) totalProgress / runningCount else 0
-
-                // Update UI - e.g., show overall progress if desired
-                // binding.someProgressBar.progress = averageProgress
-                // binding.someTextView.text = "Downloading $runningCount files ($averageProgress%)... $completedCount completed."
-
-                if (completedCount == workIds.size) {
-                    // All finished
-                    Log.d(TAG, "All downloads completed for this batch.")
-                    // Can potentially finish activity here if not already done
-                    // finish()
-                }
-            }
-    }
-
     private fun handlePythonResult(jsonString: String) {
         try {
             val result = JSONObject(jsonString)
             when (result.getString("status")) {
                 "success" -> {
-                    postUsername = result.getString("username") // Store username
-                    postCaption = result.optString("caption", null) // Store caption, default to null
+                    postUsername = result.optString("username", "unknown")
+                    postCaption = result.optString("caption", null)
+
+                    if (postId == null) {
+                        postId = result.optString("shortcode", null)
+                    }
+
                     val mediaArray = result.getJSONArray("media")
 
-                    Log.d(TAG, "Processing ${mediaArray.length()} media items. User: $postUsername, Caption: ${postCaption?.take(20)}...")
                     binding.tvUsername.text = "@$postUsername"
 
                     mediaList.clear()
@@ -408,26 +337,22 @@ class DownloadActivity : AppCompatActivity() {
                             ImageCard(
                                 url = mediaObject.getString("url"),
                                 type = mediaObject.getString("type"),
-                                username = postUsername // Pass username to ImageCard
+                                username = postUsername
                             )
                         )
                     }
 
-                    // Select all items by default when the activity opens
                     selectedItems.clear()
                     selectedItems.addAll(0 until mediaList.size)
 
-                    // Setup dots indicator
                     setupDotsIndicator()
 
-                    imageAdapter.notifyDataSetChanged() // Notify after populating and selecting
+                    imageAdapter.notifyDataSetChanged()
                     updateDownloadButton()
                     updateSelectAllButton()
-
-                    Log.d(TAG, "Successfully processed ${mediaList.size} media items")
                 }
                 else -> {
-                    val message = result.getString("message")
+                    val message = result.optString("message", "Unknown error")
                     Toast.makeText(this, "Error: $message", Toast.LENGTH_LONG).show()
                     finish()
                 }
