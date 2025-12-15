@@ -61,6 +61,11 @@ android {
             )
             signingConfig = signingConfigs.getByName("release")
         }
+        debug {
+            isMinifyEnabled = false
+            isDebuggable = true
+            applicationIdSuffix = ".debug"
+        }
     }
 
     compileOptions {
