@@ -24,10 +24,14 @@ class VedInstaNotificationManager private constructor(private val context: Conte
 
     companion object {
         private const val TAG = "VedInstaNotificationMgr"
-        // CHANGE: Updated ID to force Android to apply new Importance settings (Popup)
-        const val CHANNEL_ID = "download_channel_v3"
-        const val CHANNEL_NAME = "Download Progress"
-        const val CHANNEL_DESCRIPTION = "Shows download progress for Instagram media"
+
+        // Channel for Background tasks (Loading, Progress, Completion) - No Sound/Popup
+        const val CHANNEL_ID_SILENT = "download_channel_silent_v4"
+        const val CHANNEL_NAME_SILENT = "Download Progress (Silent)"
+
+        // Channel for User Actions (Selection, Errors) - Sound + Popup
+        const val CHANNEL_ID_ALERT = "download_channel_alert_v4"
+        const val CHANNEL_NAME_ALERT = "Download Actions"
 
         const val NOTIFICATION_ID_LINK_PROCESSING = 1001
         const val NOTIFICATION_ID_MULTIPLE_CONTENT = 1002
@@ -53,30 +57,46 @@ class VedInstaNotificationManager private constructor(private val context: Conte
     }
 
     init {
-        createNotificationChannel()
+        createNotificationChannels()
     }
 
-    private fun createNotificationChannel() {
+    private fun createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                CHANNEL_NAME,
-                NotificationManager.IMPORTANCE_HIGH // CRITICAL: Enables Heads-up Popup
+            val systemNotificationManager =
+                context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+            // 1. Silent Channel (Low Importance)
+            val silentChannel = NotificationChannel(
+                CHANNEL_ID_SILENT,
+                CHANNEL_NAME_SILENT,
+                NotificationManager.IMPORTANCE_LOW // No sound, no popup
             ).apply {
-                description = CHANNEL_DESCRIPTION
+                description = "Shows active downloads and completion silently"
+                setShowBadge(false)
+            }
+
+            // 2. Alert Channel (High Importance)
+            val alertChannel = NotificationChannel(
+                CHANNEL_ID_ALERT,
+                CHANNEL_NAME_ALERT,
+                NotificationManager.IMPORTANCE_HIGH // Sound + Popup
+            ).apply {
+                description = "Shows actions required and errors"
                 setShowBadge(true)
                 enableVibration(true)
                 enableLights(true)
                 lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
-            val systemNotificationManager =
-                context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            systemNotificationManager.createNotificationChannel(channel)
+
+            systemNotificationManager.createNotificationChannels(listOf(silentChannel, alertChannel))
         }
     }
 
+    // --- Silent Notifications ---
+
     fun showLinkProcessing() {
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+        // SILENT CHANNEL
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID_SILENT)
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setContentTitle("VedInsta")
             .setContentText("Processing link...")
@@ -89,83 +109,9 @@ class VedInstaNotificationManager private constructor(private val context: Conte
         notify(NOTIFICATION_ID_LINK_PROCESSING, notification)
     }
 
-    fun cancelLinkProcessingNotification() {
-        try {
-            notificationManagerCompat.cancel(NOTIFICATION_ID_LINK_PROCESSING)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error cancelling link processing notification", e)
-        }
-    }
-
-    fun showMultipleContentOptions(url: String, itemCount: Int, autoOpenSelection: Boolean = false) {
-        // Option 1: Download All (Handled by Service)
-        val downloadAllIntent = Intent(context, SharedLinkProcessingService::class.java).apply {
-            action = SharedLinkProcessingService.ACTION_DOWNLOAD_ALL
-            putExtra(SharedLinkProcessingService.EXTRA_INSTAGRAM_URL, url)
-        }
-        val downloadAllPendingIntent = PendingIntent.getService(
-            context,
-            NOTIFICATION_ID_MULTIPLE_CONTENT,
-            downloadAllIntent,
-            pendingIntentFlags
-        )
-
-        // Option 2: Select Items (Opens Activity)
-        val selectIntent = Intent(context, DownloadActivity::class.java).apply {
-            putExtra("POST_URL", url)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-
-        // If auto-open requested, start activity immediately
-        if (autoOpenSelection) {
-            context.startActivity(selectIntent)
-            // Even if auto-opening, we might want to clear any existing notification
-            cancelMultipleContentNotification()
-            return
-        }
-
-        val selectPendingIntent = PendingIntent.getActivity(
-            context,
-            NOTIFICATION_ID_MULTIPLE_CONTENT + 1,
-            selectIntent,
-            pendingIntentFlags
-        )
-
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_multiple_images) // Ensure icon exists
-            .setContentTitle("Found $itemCount items")
-            .setContentText("Tap to Select or Download All")
-            .setPriority(NotificationCompat.PRIORITY_HIGH) // Popup
-            .setCategory(NotificationCompat.CATEGORY_MESSAGE) // Heads-up behavior
-            .setAutoCancel(true)
-            .setOnlyAlertOnce(false)
-            .setDefaults(NotificationCompat.DEFAULT_ALL) // Sound + Vibrate
-            .setContentIntent(selectPendingIntent) // Tapping notification body opens selection
-            .addAction(
-                android.R.drawable.stat_sys_download_done,
-                "Download All",
-                downloadAllPendingIntent
-            )
-            .addAction(
-                android.R.drawable.ic_menu_view,
-                "Select",
-                selectPendingIntent
-            )
-            .build()
-
-        notify(NOTIFICATION_ID_MULTIPLE_CONTENT, notification)
-    }
-
-    fun cancelMultipleContentNotification() {
-        try {
-            notificationManagerCompat.cancel(NOTIFICATION_ID_MULTIPLE_CONTENT)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error cancelling multiple content notification", e)
-        }
-    }
-
     fun showBatchDownloadProgress(current: Int, total: Int) {
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+        // SILENT CHANNEL
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID_SILENT)
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setContentTitle("Downloading")
             .setContentText("$current of $total")
@@ -192,46 +138,19 @@ class VedInstaNotificationManager private constructor(private val context: Conte
             pendingIntentFlags
         )
 
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+        // SILENT CHANNEL (As requested)
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID_SILENT)
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
-            .setContentTitle("Download complete")
-            .setContentText("$totalFiles item(s) downloaded")
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setContentTitle("Download Complete")
+            .setContentText("Saved $totalFiles file(s)")
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setDefaults(0) // No sound/vibrate
             .setCategory(NotificationCompat.CATEGORY_STATUS)
-            .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
-            .setOnlyAlertOnce(false)
             .build()
 
         notify(System.currentTimeMillis().toInt(), notification)
-    }
-
-    fun cancelBatchDownloadNotification() {
-        try {
-            notificationManagerCompat.cancel(NOTIFICATION_ID_BATCH_DOWNLOAD)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error cancelling batch download notification", e)
-        }
-    }
-
-    fun showDownloadError(fileName: String, error: String, postUrl: String? = null) {
-        val notificationId = System.currentTimeMillis().toInt()
-        val intent = Intent(context, MainActivity::class.java)
-        val pendingIntent: PendingIntent = PendingIntent.getActivity(
-            context, notificationId, intent, pendingIntentFlags
-        )
-
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_notify_error)
-            .setContentTitle("Download Failed")
-            .setContentText("Error downloading $fileName")
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .setAutoCancel(true)
-            .setContentIntent(pendingIntent)
-            .setStyle(NotificationCompat.BigTextStyle().bigText("Error downloading $fileName: $error"))
-            .build()
-        notify(notificationId, notification)
     }
 
     fun showDownloadCompleted(fileName: String, totalFiles: Int, postUrl: String? = null, filePaths: List<String> = emptyList()) {
@@ -246,12 +165,13 @@ class VedInstaNotificationManager private constructor(private val context: Conte
             pendingIntentFlags
         )
 
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+        // SILENT CHANNEL
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID_SILENT)
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
             .setContentTitle("Download Completed")
-            .setContentText("Saved $totalFiles file(s) for $fileName")
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setContentText("Saved: $fileName")
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setDefaults(0)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .build()
@@ -259,25 +179,155 @@ class VedInstaNotificationManager private constructor(private val context: Conte
         notify(notificationId, notification)
     }
 
+    // --- Alert/Popup Notifications ---
+
+    fun showMultipleContentOptions(url: String, itemCount: Int, autoOpenSelection: Boolean = false) {
+        val downloadAllIntent = Intent(context, SharedLinkProcessingService::class.java).apply {
+            action = SharedLinkProcessingService.ACTION_DOWNLOAD_ALL
+            putExtra(SharedLinkProcessingService.EXTRA_INSTAGRAM_URL, url)
+        }
+        val downloadAllPendingIntent = PendingIntent.getService(
+            context,
+            NOTIFICATION_ID_MULTIPLE_CONTENT,
+            downloadAllIntent,
+            pendingIntentFlags
+        )
+
+        val selectIntent = Intent(context, DownloadActivity::class.java).apply {
+            putExtra("POST_URL", url)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+
+        if (autoOpenSelection) {
+            context.startActivity(selectIntent)
+            cancelMultipleContentNotification()
+            return
+        }
+
+        val selectPendingIntent = PendingIntent.getActivity(
+            context,
+            NOTIFICATION_ID_MULTIPLE_CONTENT + 1,
+            selectIntent,
+            pendingIntentFlags
+        )
+
+        // ALERT CHANNEL (Heads-up)
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID_ALERT)
+            .setSmallIcon(R.drawable.ic_multiple_images)
+            .setContentTitle("Found $itemCount items")
+            .setContentText("Tap to Select or Download All")
+            .setPriority(NotificationCompat.PRIORITY_HIGH) // Popup
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setAutoCancel(true)
+            .setOnlyAlertOnce(false)
+            .setDefaults(NotificationCompat.DEFAULT_ALL) // Sound + Vibrate
+            .setContentIntent(selectPendingIntent)
+            .addAction(
+                android.R.drawable.stat_sys_download_done,
+                "Download All",
+                downloadAllPendingIntent
+            )
+            .addAction(
+                android.R.drawable.ic_menu_view,
+                "Select",
+                selectPendingIntent
+            )
+            .build()
+
+        notify(NOTIFICATION_ID_MULTIPLE_CONTENT, notification)
+    }
+
     fun showRestrictedPostError() {
         cancelLinkProcessingNotification()
-        showLinkError("This post is private or restricted")
+
+        val notificationId = System.currentTimeMillis().toInt()
+
+        // ALERT CHANNEL (Heads-up for Restricted Post)
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID_ALERT)
+            .setSmallIcon(android.R.drawable.stat_notify_error)
+            .setContentTitle("Restricted Content")
+            .setContentText("This post is private or restricted")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setAutoCancel(true)
+            .setStyle(NotificationCompat.BigTextStyle().bigText("This Instagram post is private, restricted, or requires a login to view."))
+            .build()
+
+        notify(notificationId, notification)
     }
 
     fun showLinkError(message: String) {
         cancelLinkProcessingNotification()
 
         val notificationId = System.currentTimeMillis().toInt()
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+
+        // ALERT CHANNEL (Heads-up for Errors)
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID_ALERT)
             .setSmallIcon(android.R.drawable.stat_notify_error)
-            .setContentTitle("Link Processing Failed")
+            .setContentTitle("Download Failed")
             .setContentText(message)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setAutoCancel(true)
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))
             .build()
 
         notify(notificationId, notification)
+    }
+
+    fun showDownloadError(fileName: String, error: String, postUrl: String? = null) {
+        val notificationId = System.currentTimeMillis().toInt()
+        val intent = Intent(context, MainActivity::class.java)
+        val pendingIntent: PendingIntent = PendingIntent.getActivity(
+            context, notificationId, intent, pendingIntentFlags
+        )
+
+        // ALERT CHANNEL (Heads-up for Download Errors)
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID_ALERT)
+            .setSmallIcon(android.R.drawable.stat_notify_error)
+            .setContentTitle("Download Failed")
+            .setContentText("Error downloading $fileName")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+            .setStyle(NotificationCompat.BigTextStyle().bigText("Error downloading $fileName: $error"))
+            .build()
+        notify(notificationId, notification)
+    }
+
+    // --- Helpers ---
+
+    fun cancelLinkProcessingNotification() {
+        try {
+            notificationManagerCompat.cancel(NOTIFICATION_ID_LINK_PROCESSING)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error cancelling link processing notification", e)
+        }
+    }
+
+    fun cancelMultipleContentNotification() {
+        try {
+            notificationManagerCompat.cancel(NOTIFICATION_ID_MULTIPLE_CONTENT)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error cancelling multiple content notification", e)
+        }
+    }
+
+    fun cancelBatchDownloadNotification() {
+        try {
+            notificationManagerCompat.cancel(NOTIFICATION_ID_BATCH_DOWNLOAD)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error cancelling batch download notification", e)
+        }
+    }
+
+    fun cancelDownloadNotification(notificationId: Int) {
+        try {
+            notificationManagerCompat.cancel(notificationId)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error cancelling notification $notificationId", e)
+        }
     }
 
     suspend fun addCustomNotification(title: String, message: String, type: NotificationType, priority: NotificationPriority = NotificationPriority.NORMAL) {
@@ -289,14 +339,6 @@ class VedInstaNotificationManager private constructor(private val context: Conte
             )
         } catch (e: Exception) {
             Log.e(TAG, "Error adding custom notification to DB", e)
-        }
-    }
-
-    fun cancelDownloadNotification(notificationId: Int) {
-        try {
-            notificationManagerCompat.cancel(notificationId)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error cancelling notification $notificationId", e)
         }
     }
 

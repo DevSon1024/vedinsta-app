@@ -30,13 +30,13 @@ class EnhancedDownloadManager(
     companion object {
         private const val TAG = "EnhancedDownloadManager"
         const val KEY_MEDIA_URL = "media_url"
-        const val KEY_FILE_PATH = "file_path" // Input and Output key
+        const val KEY_FILE_PATH = "file_path"
         const val KEY_FILE_NAME = "file_name"
         const val KEY_POST_ID = "post_id"
         const val KEY_MEDIA_TYPE = "media_type"
         const val PROGRESS = "Progress"
         private const val NOTIFICATION_ID_OFFSET = 1000
-        private const val NOTIFICATION_UPDATE_INTERVAL_MS = 1500L // Update notification max every 1.5 seconds
+        private const val NOTIFICATION_UPDATE_INTERVAL_MS = 1500L
     }
 
     private val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -67,12 +67,11 @@ class EnhancedDownloadManager(
             val success = downloadWithProgress(mediaUrl, filePath, fileName, notificationId)
             if (success) {
                 Log.d(TAG, "Download finished successfully: $filePath")
-                // *** Create Output Data containing the file path ***
                 val outputData = workDataOf(
                     PROGRESS to 100,
-                    KEY_FILE_PATH to filePath // Include file path in output
+                    KEY_FILE_PATH to filePath
                 )
-                Result.success(outputData) // Pass output data
+                Result.success(outputData)
             } else {
                 Log.w(TAG, "Download failed or cancelled for: $filePath")
                 Result.failure()
@@ -94,7 +93,7 @@ class EnhancedDownloadManager(
         var file: File? = null
         var currentTotalBytesRead = 0L
         var contentLength = -1L
-        var lastNotificationUpdateTime = 0L // Throttle notifications
+        var lastNotificationUpdateTime = 0L
 
         try {
             file = File(filePath)
@@ -130,12 +129,10 @@ class EnhancedDownloadManager(
                             val now = System.currentTimeMillis()
                             val progress = if (contentLength > 0) ((currentTotalBytesRead * 100) / contentLength).toInt() else -1
 
-                            // Update WorkManager progress frequently
-                            if (progress != lastProgress && progress >= -1) { // Allow -1 for indeterminate
+                            if (progress != lastProgress && progress >= -1) {
                                 setProgress(workDataOf(PROGRESS to progress))
                                 lastProgress = progress
 
-                                // *** Throttle Notification Updates ***
                                 if (now - lastNotificationUpdateTime >= NOTIFICATION_UPDATE_INTERVAL_MS || progress == 100 || progress == -1 && lastNotificationUpdateTime == 0L) {
                                     val notification = createProgressNotification(fileName, progress)
                                     try {
@@ -143,30 +140,24 @@ class EnhancedDownloadManager(
                                         lastNotificationUpdateTime = now
                                     } catch (e: SecurityException) {
                                         Log.w(TAG, "Permission denied updating notification")
-                                        // Avoid continuous logging if permission denied
-                                        lastNotificationUpdateTime = Long.MAX_VALUE // Stop trying to update
+                                        lastNotificationUpdateTime = Long.MAX_VALUE
                                     }
                                 }
                             }
-                        } // End while loop
-                    } // FileOutputStream closed
-                } // InputStream closed
-            } // HTTP Response closed
+                        }
+                    }
+                }
+            }
 
-            // Validation
             if (contentLength <= 0 && currentTotalBytesRead == 0L && file.exists() && file.length() == 0L) {
                 Log.w(TAG, "Downloaded zero-byte file (unknown or zero size): $filePath")
             } else if (contentLength > 0 && currentTotalBytesRead != contentLength) {
                 Log.e(TAG, "Size mismatch: Expected=$contentLength, Got=$currentTotalBytesRead for $filePath")
                 runCatching { file.delete() }
-                return@withContext false // Treat mismatch as failure
+                return@withContext false
             }
 
-            // Ensure final notification shows 100% if needed (optional, as observer handles completion)
-            // val finalNotification = createProgressNotification(fileName, 100)
-            // try { notificationManagerCompat.notify(notificationId, finalNotification) } catch (e: SecurityException) {}
-
-            return@withContext true // Success
+            return@withContext true
         } catch (e: IOException) {
             Log.e(TAG, "IOException during download for $filePath", e)
             runCatching { file?.delete() }
@@ -197,7 +188,8 @@ class EnhancedDownloadManager(
         val cancelPendingIntent: PendingIntent = WorkManager.getInstance(applicationContext)
             .createCancelPendingIntent(id)
 
-        return NotificationCompat.Builder(applicationContext, VedInstaNotificationManager.CHANNEL_ID)
+        // USE SILENT CHANNEL FOR PROGRESS
+        return NotificationCompat.Builder(applicationContext, VedInstaNotificationManager.CHANNEL_ID_SILENT)
             .setContentTitle(title)
             .setTicker(title)
             .setContentText(contentText)
@@ -205,14 +197,13 @@ class EnhancedDownloadManager(
             .setOngoing(true)
             .setAutoCancel(false)
             .setOnlyAlertOnce(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setPriority(NotificationCompat.PRIORITY_LOW) // Silent
             .setProgress(100, if (indeterminate) 0 else progress, indeterminate)
             .setContentIntent(contentPendingIntent)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Cancel", cancelPendingIntent)
             .build()
     }
 
-    // --- OkHttpClient and Request creation remain unchanged ---
     private fun createEnhancedOkHttpClient(): OkHttpClient {
         return OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
