@@ -8,6 +8,41 @@ def load_cookies(cookie_file: str) -> dict:
     return {c.name: c.value for c in jar if "instagram.com" in c.domain}
 
 
+def get_logged_in_username(cookie_file: str) -> str:
+    if not Path(cookie_file).exists():
+        return ""
+    try:
+        cookies = load_cookies(cookie_file)
+        if "sessionid" not in cookies:
+            return ""
+        
+        session = requests.Session()
+        session.cookies.update(cookies)
+        session.headers.update({
+            "User-Agent": "Instagram 319.0.0.28.119 Android",
+            "X-IG-App-ID": "567067343352427",
+            "X-CSRFToken": cookies.get("csrftoken", ""),
+            "Referer": "https://www.instagram.com/",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept": "*/*",
+        })
+        
+        ds_user_id = cookies.get("ds_user_id")
+        if not ds_user_id:
+            return ""
+            
+        r = session.get(
+            f"https://i.instagram.com/api/v1/users/{ds_user_id}/info/",
+            timeout=15
+        )
+        if r.status_code == 200:
+            data = r.json()
+            return data.get("user", {}).get("username", "")
+    except Exception as e:
+        print(f"Error fetching username: {e}", file=sys.stderr)
+    return ""
+
+
 def shortcode_to_id(sc: str) -> str:
     alpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
     n = 0

@@ -13,6 +13,7 @@ class SecurePreferences(private val context: Context) {
         private const val KEY_SESSION_ID = "ig_sessionid"
         private const val KEY_CSRF_TOKEN = "ig_csrftoken"
         private const val KEY_DS_USER_ID = "ig_ds_user_id"
+        private const val KEY_USERNAME = "ig_username"
         private const val TAG = "SecurePreferences"
     }
 
@@ -63,15 +64,24 @@ class SecurePreferences(private val context: Context) {
         }
     }
 
+    fun saveUsername(username: String) {
+        sharedPrefs?.edit()?.apply {
+            putString(KEY_USERNAME, username)
+            apply()
+        }
+    }
+
     fun getSessionId(): String? = sharedPrefs?.getString(KEY_SESSION_ID, null)
     fun getCsrfToken(): String? = sharedPrefs?.getString(KEY_CSRF_TOKEN, null)
     fun getDsUserId(): String? = sharedPrefs?.getString(KEY_DS_USER_ID, null)
+    fun getUsername(): String? = sharedPrefs?.getString(KEY_USERNAME, null)
 
     fun clearAuth() {
         sharedPrefs?.edit()?.apply {
             remove(KEY_SESSION_ID)
             remove(KEY_CSRF_TOKEN)
             remove(KEY_DS_USER_ID)
+            remove(KEY_USERNAME)
             apply()
         }
     }

@@ -9,9 +9,12 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
@@ -32,6 +35,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import kotlinx.coroutines.launch
 import com.devson.vedinsta.model.MediaResult
 import com.devson.vedinsta.viewmodel.ExtractionState
 import com.devson.vedinsta.viewmodel.InstagramAuthState
@@ -52,6 +56,15 @@ fun MediaSelectionScreen(
     val chosenQualities by extractionViewModel.chosenQualities.collectAsState()
 
     var instagramUrl by remember { mutableStateOf("") }
+
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(extractionState) {
+        if (extractionState is ExtractionState.Success) {
+            snackbarHostState.showSnackbar("Media extracted")
+        }
+    }
 
     // Instagram gradient brush
     val instagramGradient = remember {
@@ -80,6 +93,7 @@ fun MediaSelectionScreen(
                 modifier = Modifier.background(instagramGradient)
             )
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         Column(
@@ -88,146 +102,183 @@ fun MediaSelectionScreen(
                 .padding(paddingValues)
                 .padding(16.dp)
         ) {
-            // 1. Session Status Indicator Card
-            SessionStatusCard(
-                authState = authState,
-                onLogout = { authViewModel.logout() },
-                onLogin = onNavigateToLogin
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // 2. Link Input & Paste Box
-            LinkInputSection(
-                url = instagramUrl,
-                onUrlChange = { instagramUrl = it },
-                onPasteClick = {
-                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    val text = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
-                    instagramUrl = text
-                },
-                onExtractClick = {
-                    extractionViewModel.extractMedia(instagramUrl, authViewModel)
-                },
-                isEnabled = authState is InstagramAuthState.LoggedIn
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // 3. Media Extraction Content
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                contentAlignment = Alignment.Center
-            ) {
-                when (val state = extractionState) {
-                    is ExtractionState.Idle -> {
-                        Text(
-                            "Paste an Instagram link above and click Extract to fetch posts/reels.",
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(24.dp)
+            if (extractionState is ExtractionState.Success && (extractionState as ExtractionState.Success).mediaList.isNotEmpty()) {
+                val successState = extractionState as ExtractionState.Success
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        SessionStatusCard(
+                            authState = authState,
+                            onLogout = { authViewModel.logout() },
+                            onLogin = onNavigateToLogin
                         )
                     }
-                    is ExtractionState.Loading -> {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text("Running python extractor...", color = MaterialTheme.colorScheme.onBackground)
-                        }
+
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        LinkInputSection(
+                            url = instagramUrl,
+                            onUrlChange = { instagramUrl = it },
+                            onPasteClick = {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                val text = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
+                                instagramUrl = text
+                            },
+                            onExtractClick = {
+                                extractionViewModel.extractMedia(instagramUrl, authViewModel)
+                            },
+                            isEnabled = authState is InstagramAuthState.LoggedIn
+                        )
                     }
-                    is ExtractionState.Error -> {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.padding(24.dp)
+
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Warning,
-                                contentDescription = "Error",
-                                tint = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.size(48.dp)
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = state.message,
-                                color = MaterialTheme.colorScheme.error,
-                                textAlign = TextAlign.Center,
-                                fontWeight = FontWeight.SemiBold
+                                "${successState.mediaList.size} media items found",
+                                color = MaterialTheme.colorScheme.onBackground,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Row {
+                                TextButton(onClick = { extractionViewModel.selectAll(successState.mediaList) }) {
+                                    Text("Select All", color = MaterialTheme.colorScheme.primary)
+                                }
+                                TextButton(onClick = { extractionViewModel.selectNone() }) {
+                                    Text("Select None", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                                }
+                            }
+                        }
+                    }
+
+                    items(successState.mediaList, key = { it.index ?: 0 }) { item ->
+                        val idx = item.index ?: 1
+                        MediaItemCard(
+                            item = item,
+                            isSelected = selectedIndexes.contains(idx),
+                            chosenUrl = chosenQualities[idx],
+                            onToggleSelect = { extractionViewModel.toggleSelection(idx) },
+                            onQualityChange = { newUrl -> extractionViewModel.changeQuality(idx, newUrl) }
+                        )
+                    }
+
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Button(
+                            onClick = {
+                                val selectedItems = successState.mediaList.filter { selectedIndexes.contains(it.index ?: -1) }
+                                val containsVideo = selectedItems.any { it.type == "video" }
+                                val isReel = instagramUrl.contains("/reel/", ignoreCase = true) || instagramUrl.contains("/reels/", ignoreCase = true) || containsVideo
+                                
+                                val snackbarMessage = if (isReel) {
+                                    "Started Reels Downloading"
+                                } else {
+                                    val count = selectedItems.size
+                                    "$count ${if (count == 1) "Image" else "Images"} Download Started"
+                                }
+                                
+                                scope.launch {
+                                    snackbarHostState.showSnackbar(snackbarMessage)
+                                }
+                                
+                                extractionViewModel.downloadSelected(successState.mediaList, instagramUrl)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = selectedIndexes.isNotEmpty(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary,
+                                disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+                                disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                            ),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                "Download Selected (${selectedIndexes.size})",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
                             )
                         }
                     }
-                    is ExtractionState.Success -> {
-                        if (state.mediaList.isEmpty()) {
-                            Text("No media found in this post.", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
-                        } else {
-                            Column(modifier = Modifier.fillMaxSize()) {
-                                // Selection control headers
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                }
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    SessionStatusCard(
+                        authState = authState,
+                        onLogout = { authViewModel.logout() },
+                        onLogin = onNavigateToLogin
+                    )
+
+                    LinkInputSection(
+                        url = instagramUrl,
+                        onUrlChange = { instagramUrl = it },
+                        onPasteClick = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val text = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
+                            instagramUrl = text
+                        },
+                        onExtractClick = {
+                            extractionViewModel.extractMedia(instagramUrl, authViewModel)
+                        },
+                        isEnabled = authState is InstagramAuthState.LoggedIn
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        when (val state = extractionState) {
+                            is ExtractionState.Idle -> {
+                                Text(
+                                    "Paste an Instagram link above and click Extract to fetch posts/reels.",
+                                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(24.dp)
+                                )
+                            }
+                            is ExtractionState.Loading -> {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Text("Running python extractor...", color = MaterialTheme.colorScheme.onBackground)
+                                }
+                            }
+                            is ExtractionState.Error -> {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.padding(24.dp)
                                 ) {
-                                    Text(
-                                        "${state.mediaList.size} media items found",
-                                        color = MaterialTheme.colorScheme.onBackground,
-                                        fontWeight = FontWeight.Bold
+                                    Icon(
+                                        imageVector = Icons.Default.Warning,
+                                        contentDescription = "Error",
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(48.dp)
                                     )
-                                    Row {
-                                        TextButton(onClick = { extractionViewModel.selectAll(state.mediaList) }) {
-                                            Text("Select All", color = MaterialTheme.colorScheme.primary)
-                                        }
-                                        TextButton(onClick = { extractionViewModel.selectNone() }) {
-                                            Text("Select None", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
-                                        }
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                // Media Grid
-                                LazyVerticalGrid(
-                                    columns = GridCells.Fixed(2),
-                                    modifier = Modifier.weight(1f),
-                                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                ) {
-                                    items(state.mediaList, key = { it.index ?: 0 }) { item ->
-                                        val idx = item.index ?: 1
-                                        MediaItemCard(
-                                            item = item,
-                                            isSelected = selectedIndexes.contains(idx),
-                                            chosenUrl = chosenQualities[idx],
-                                            onToggleSelect = { extractionViewModel.toggleSelection(idx) },
-                                            onQualityChange = { newUrl -> extractionViewModel.changeQuality(idx, newUrl) }
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(16.dp))
-
-                                // Download Action Button
-                                Button(
-                                    onClick = {
-                                        extractionViewModel.downloadSelected(state.mediaList, instagramUrl)
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    enabled = selectedIndexes.isNotEmpty(),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = MaterialTheme.colorScheme.primary,
-                                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                                        disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
-                                        disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                                    ),
-                                    shape = RoundedCornerShape(8.dp)
-                                ) {
+                                    Spacer(modifier = Modifier.height(8.dp))
                                     Text(
-                                        "Download Selected (${selectedIndexes.size})",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 16.sp
+                                        text = state.message,
+                                        color = MaterialTheme.colorScheme.error,
+                                        textAlign = TextAlign.Center,
+                                        fontWeight = FontWeight.SemiBold
                                     )
                                 }
                             }
+                            else -> {}
                         }
                     }
                 }
@@ -291,7 +342,7 @@ fun SessionStatusCard(
                     when (authState) {
                         is InstagramAuthState.LoggedIn -> {
                             Text(
-                                "Active (Logged in as: ${authState.dsUserId})",
+                                "Active (Logged in as: ${authState.username.ifEmpty { authState.dsUserId }})",
                                 color = textColor,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp
@@ -299,7 +350,7 @@ fun SessionStatusCard(
                         }
                         is InstagramAuthState.SessionExpired -> {
                             Text(
-                                "Session Expired (ID: ${authState.dsUserId})",
+                                "Session Expired (ID: ${authState.username.ifEmpty { authState.dsUserId }})",
                                 color = textColor,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp
@@ -604,12 +655,12 @@ fun MediaItemCard(
                     ) {
                         if (qualities.isEmpty()) {
                             DropdownMenuItem(
-                                text = { Text("Default", color = MaterialTheme.colorScheme.onSurface) },
+                                text = { Text("Original (${item.width}x${item.height})", color = MaterialTheme.colorScheme.onSurface) },
                                 onClick = { showQualityMenu = false }
                             )
                         } else {
                             qualities.forEachIndexed { i, q ->
-                                val label = if (i == 0) "${q.width}x${q.height} (High)" else "${q.width}x${q.height}"
+                                val label = if (i == 0) "${q.width}x${q.height} (Original/High)" else "${q.width}x${q.height}"
                                 DropdownMenuItem(
                                     text = { Text(label, color = MaterialTheme.colorScheme.onSurface) },
                                     onClick = {

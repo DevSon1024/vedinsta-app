@@ -8,6 +8,7 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
 
 class MediaFetcherRepository(private val context: Context) {
 
@@ -25,75 +26,36 @@ class MediaFetcherRepository(private val context: Context) {
             }
 
             val python = Python.getInstance()
-            val sys = python.getModule("sys")
+            val mo3Module = python.getModule("mo3")
             
-            // Set the sys.argv so that mo3.py reads sys.argv[1] as the shortcode
-            sys.put("argv", arrayOf("mo3.py", urlOrShortcode))
+            // Get absolute path to the cookies file
+            val cookieFile = File(context.filesDir, "instagram_cookies.txt")
             
-            // Change the Python process's working directory to context.filesDir
-            // this ensures mo3.py finds "instagram_cookies.txt" under context.filesDir
-            val os = python.getModule("os")
-            os.callAttr("chdir", context.filesDir.absolutePath)
-            
-            // Setup stdout redirection to capture the printed JSON output
-            val io = python.getModule("io")
-            val stringIO = io.callAttr("StringIO")
-            val originalStdout = sys.get("stdout")
-            sys.put("stdout", stringIO)
-            
-            try {
-                val builtins = python.getModule("builtins")
-                
-                // Define the Python execution script that reloads mo3 and runs the extraction logic
-                val execCode = """
-                    import sys, json, os, importlib
-                    import mo3
-                    
-                    # Reload the module to force execution of clean logic with the new argv
-                    importlib.reload(mo3)
-                    
-                    sc = sys.argv[1]
-                    
-                    # If a full URL is passed, extract the shortcode
-                    if "instagram.com/" in sc:
-                        for segment in ["/p/", "/reel/", "/reels/", "/tv/"]:
-                            if segment in sc:
-                                sc = sc.split(segment)[1].strip("/").split("/")[0].split("?")[0]
-                                break
-                    
-                    # Call extract_instagram with the shortcode
-                    results = mo3.extract_instagram(sc)
-                    
-                    # Print results to stdout as JSON so Kotlin can capture it
-                    print(json.dumps(results))
-                """.trimIndent()
-                
-                builtins.callAttr("exec", execCode)
-                
-                // Read captured stdout
-                val output = stringIO.callAttr("getvalue").toString().trim()
-                Log.d("MediaFetcherRepository", "Raw Python Output: $output")
-                
-                if (output.isEmpty()) {
-                    throw Exception("No output received from Python script.")
-                }
-                
-                val listType = object : TypeToken<List<MediaResult>>() {}.type
-                val results: List<MediaResult> = gson.fromJson(output, listType)
-                
-                // If the script returned an error inside the JSON list, throw it
-                val firstError = results.firstOrNull()?.error
-                if (firstError != null) {
-                    throw Exception(firstError)
-                }
-                
-                results
-            } finally {
-                // Always restore original stdout
-                sys.put("stdout", originalStdout)
+            // Call the get_media_urls method on mo3 directly
+            val resultJson = mo3Module.callAttr("get_media_urls", urlOrShortcode, cookieFile.absolutePath).toString()
+            Log.d("MediaFetcherRepository", "mo3.get_media_urls returned: $resultJson")
+
+            val responseType = object : TypeToken<Map<String, Any>>() {}.type
+            val responseMap: Map<String, Any> = gson.fromJson(resultJson, responseType)
+
+            val status = responseMap["status"] as? String ?: "error"
+            if (status != "success") {
+                val message = responseMap["message"] as? String ?: "Unknown error"
+                throw Exception(message)
             }
+
+            val mediaJson = gson.toJson(responseMap["media"])
+            val listType = object : TypeToken<List<MediaResult>>() {}.type
+            val results: List<MediaResult> = gson.fromJson(mediaJson, listType)
+
+            val firstError = results.firstOrNull()?.error
+            if (firstError != null) {
+                throw Exception(firstError)
+            }
+
+            results
         } catch (e: Exception) {
-            Log.e("MediaFetcherRepository", "Error executing mo3.py via Python", e)
+            Log.e("MediaFetcherRepository", "Error fetching media via mo3.py direct call", e)
             throw e
         }
     }

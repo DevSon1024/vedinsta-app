@@ -90,7 +90,7 @@ fun SessionsScreen(
                     when (val state = authState) {
                         is InstagramAuthState.LoggedIn -> {
                             Text(
-                                text = "@${state.dsUserId}",
+                                text = "@${state.username.ifEmpty { state.dsUserId }}",
                                 color = textColor,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 24.sp

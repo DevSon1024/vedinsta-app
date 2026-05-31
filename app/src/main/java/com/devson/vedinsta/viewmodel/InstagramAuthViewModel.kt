@@ -1,11 +1,14 @@
 package com.devson.vedinsta.viewmodel
 
 import android.app.Application
+import android.util.Log
 import android.webkit.CookieManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.chaquo.python.Python
 import com.devson.vedinsta.repository.CookieFileWriter
 import com.devson.vedinsta.repository.SecurePreferences
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -15,8 +18,8 @@ sealed class InstagramAuthState {
     object Idle : InstagramAuthState()
     object Checking : InstagramAuthState()
     object LoggedOut : InstagramAuthState()
-    data class LoggedIn(val dsUserId: String) : InstagramAuthState()
-    data class SessionExpired(val dsUserId: String, val reason: String) : InstagramAuthState()
+    data class LoggedIn(val dsUserId: String, val username: String) : InstagramAuthState()
+    data class SessionExpired(val dsUserId: String, val username: String, val reason: String) : InstagramAuthState()
     data class Error(val message: String) : InstagramAuthState()
 }
 
@@ -41,11 +44,15 @@ class InstagramAuthViewModel(application: Application) : AndroidViewModel(applic
             val sessionId = securePrefs.getSessionId()
             val csrfToken = securePrefs.getCsrfToken()
             val dsUserId = securePrefs.getDsUserId()
+            val cachedUsername = securePrefs.getUsername() ?: dsUserId ?: ""
 
             if (!sessionId.isNullOrEmpty() && !csrfToken.isNullOrEmpty() && !dsUserId.isNullOrEmpty()) {
                 // Keep Netscape cookie file updated
                 CookieFileWriter.writeCookies(context, sessionId, csrfToken, dsUserId)
-                _authState.value = InstagramAuthState.LoggedIn(dsUserId)
+                _authState.value = InstagramAuthState.LoggedIn(dsUserId, cachedUsername)
+                
+                // Fetch real username in background
+                fetchRealUsernameInBackground(dsUserId)
             } else {
                 _authState.value = InstagramAuthState.LoggedOut
             }
@@ -63,6 +70,7 @@ class InstagramAuthViewModel(application: Application) : AndroidViewModel(applic
             val sessionId = cookies["sessionid"]
             val csrfToken = cookies["csrftoken"]
             val dsUserId = cookies["ds_user_id"]
+            val cachedUsername = securePrefs.getUsername() ?: dsUserId ?: ""
 
             if (!sessionId.isNullOrEmpty() && !csrfToken.isNullOrEmpty() && !dsUserId.isNullOrEmpty()) {
                 // Save to secure preferences
@@ -71,7 +79,39 @@ class InstagramAuthViewModel(application: Application) : AndroidViewModel(applic
                 // Write cookie file in filesDir
                 CookieFileWriter.writeCookies(context, sessionId, csrfToken, dsUserId, cookies)
                 
-                _authState.value = InstagramAuthState.LoggedIn(dsUserId)
+                _authState.value = InstagramAuthState.LoggedIn(dsUserId, cachedUsername)
+                
+                // Fetch real username in background
+                fetchRealUsernameInBackground(dsUserId)
+            }
+        }
+    }
+
+    /**
+     * Fetches username of logged-in user in background and updates UI/cache.
+     */
+    private fun fetchRealUsernameInBackground(dsUserId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                if (Python.isStarted()) {
+                    val python = Python.getInstance()
+                    val mo3Module = python.getModule("mo3")
+                    val cookieFile = java.io.File(context.filesDir, "instagram_cookies.txt")
+                    val usernamePy = mo3Module.callAttr("get_logged_in_username", cookieFile.absolutePath)
+                    val realUsername = usernamePy?.toString()?.trim() ?: ""
+                    
+                    if (realUsername.isNotEmpty()) {
+                        securePrefs.saveUsername(realUsername)
+                        
+                        // Update state to use new username if currently LoggedIn
+                        val currentState = _authState.value
+                        if (currentState is InstagramAuthState.LoggedIn && currentState.dsUserId == dsUserId) {
+                            _authState.value = InstagramAuthState.LoggedIn(dsUserId, realUsername)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("InstagramAuthViewModel", "Failed to fetch username in background", e)
             }
         }
     }
@@ -81,7 +121,8 @@ class InstagramAuthViewModel(application: Application) : AndroidViewModel(applic
      */
     fun notifySessionExpired(reason: String) {
         val dsUserId = securePrefs.getDsUserId() ?: "unknown"
-        _authState.value = InstagramAuthState.SessionExpired(dsUserId, reason)
+        val username = securePrefs.getUsername() ?: dsUserId
+        _authState.value = InstagramAuthState.SessionExpired(dsUserId, username, reason)
     }
 
     /**
