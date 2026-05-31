@@ -136,7 +136,10 @@ class VedInstaApplication : Application() {
 
     suspend fun downloadSelectedMedia(
         mediaItems: List<MediaItem>,
-        postUrl: String
+        postUrl: String,
+        username: String,
+        caption: String?,
+        postId: String
     ) {
         withContext(Dispatchers.IO) {
             try {
@@ -148,13 +151,21 @@ class VedInstaApplication : Application() {
                         // Show progress
                         notificationManager.showBatchDownloadProgress(index + 1, totalItems)
 
-                        val username = extractUsernameFromUrl(postUrl)
                         val timestamp = System.currentTimeMillis()
                         val extension = if (mediaItem.type == "video") "mp4" else "jpg"
-                        val fileName = "vedinsta_${username}_${timestamp}_${mediaItem.index}.$extension"
+                        val fileName = "${username}_${timestamp + index}.$extension"
 
                         // Queue download
-                        queueDownload(mediaItem.url, fileName)
+                        queueDownload(
+                            url = mediaItem.url,
+                            fileName = fileName,
+                            postId = postId,
+                            postUrl = postUrl,
+                            username = username,
+                            caption = caption,
+                            totalImages = totalItems,
+                            hasVideo = mediaItem.type == "video"
+                        )
 
                         // Small delay between downloads
                         if (index < totalItems - 1) {
@@ -214,13 +225,22 @@ class VedInstaApplication : Application() {
                     val username = postData.optString("username", "unknown")
                     val timestamp = System.currentTimeMillis()
                     val extension = if (mediaType == "video") "mp4" else "jpg"
-                    val fileName = "vedinsta_${username}_${timestamp}_${index}.$extension"
+                    val fileName = "${username}_${timestamp + i}.$extension"
 
                     // Update progress
                     notificationManager.showBatchDownloadProgress(i + 1, totalItems)
 
                     // Queue download - this will save to same location as in-app downloads
-                    queueDownload(downloadUrl, fileName)
+                    queueDownload(
+                        url = downloadUrl,
+                        fileName = fileName,
+                        postId = postData.optString("shortcode", "unknown"),
+                        postUrl = url,
+                        username = username,
+                        caption = postData.optString("caption", ""),
+                        totalImages = totalItems,
+                        hasVideo = mediaType == "video"
+                    )
 
                     // Small delay between queuing downloads
                     if (i < totalItems - 1) {
@@ -251,7 +271,16 @@ class VedInstaApplication : Application() {
             "unknown"
         }
     }
-    private fun queueDownload(url: String, fileName: String) {
+    private fun queueDownload(
+        url: String,
+        fileName: String,
+        postId: String?,
+        postUrl: String?,
+        username: String?,
+        caption: String?,
+        totalImages: Int,
+        hasVideo: Boolean
+    ) {
         try {
             // Use the SAME download path as in-app downloads
             val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
@@ -266,6 +295,12 @@ class VedInstaApplication : Application() {
                 putExtra(DownloadService.EXTRA_DOWNLOAD_URL, url)
                 putExtra(DownloadService.EXTRA_FILE_NAME, fileName)
                 putExtra(DownloadService.EXTRA_FILE_PATH, filePath)
+                putExtra(DownloadService.EXTRA_POST_ID, postId)
+                putExtra(DownloadService.EXTRA_POST_URL, postUrl)
+                putExtra(DownloadService.EXTRA_USERNAME, username)
+                putExtra(DownloadService.EXTRA_CAPTION, caption)
+                putExtra(DownloadService.EXTRA_TOTAL_IMAGES, totalImages)
+                putExtra(DownloadService.EXTRA_HAS_VIDEO, hasVideo)
             }
             startService(downloadIntent)
 
@@ -568,7 +603,7 @@ class VedInstaApplication : Application() {
         try {
             val timestamp = System.currentTimeMillis()
             val extension = if (type == "video") "mp4" else "jpg"
-            val fileName = "vedinsta_${username}_${timestamp}_$index.$extension"
+            val fileName = "${username}_${timestamp + index}.$extension"
 
             val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
             val vedInstaDir = File(downloadDir, "VedInsta")
@@ -582,6 +617,9 @@ class VedInstaApplication : Application() {
                 putExtra(DownloadService.EXTRA_DOWNLOAD_URL, url)
                 putExtra(DownloadService.EXTRA_FILE_NAME, fileName)
                 putExtra(DownloadService.EXTRA_FILE_PATH, filePath)
+                putExtra(DownloadService.EXTRA_USERNAME, username)
+                putExtra(DownloadService.EXTRA_TOTAL_IMAGES, 1)
+                putExtra(DownloadService.EXTRA_HAS_VIDEO, type == "video")
             }
             startService(downloadIntent)
 

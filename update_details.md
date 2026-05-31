@@ -49,4 +49,13 @@
   3. Configured the download button's click handler to post a snackbar message specifying either `"Started Reels Downloading"` (if the download includes reels or videos) or `"{count} Images Download Started"` as the download queues.
   4. Resolved build issues by importing `kotlinx.coroutines.launch` in [MediaSelectionScreen.kt](file:///c:/Android/vedinsta/app/src/main/java/com/devson/vedinsta/ui/MediaSelectionScreen.kt).
   5. Verified the project compiles successfully using `.\gradlew.bat assembleDebug`.
+- **Type of Details:** New Update & Refactor
+- **Description:** 
+  1. Fixed the history screen not displaying downloaded posts by passing extraction metadata (postId, postUrl, username, caption, media count, and type) inside Intent Extras from the download queue in [VedInstaApplication.kt](file:///c:/Android/vedinsta/app/src/main/java/com/devson/vedinsta/VedInstaApplication.kt) down to [DownloadService.kt](file:///c:/Android/vedinsta/app/src/main/java/com/devson/vedinsta/service/DownloadService.kt).
+  2. Implemented `saveDownloadedPostToDb` inside [DownloadService.kt](file:///c:/Android/vedinsta/app/src/main/java/com/devson/vedinsta/service/DownloadService.kt) using a coroutine-safe `Mutex` lock to serialize writes and persist completed downloads safely into the Room database.
+  3. Enforced the filename naming convention `{username}_{timestamp_in_ms}.ext` across all download triggers (selected downloads, single downloads, background downloads) inside [VedInstaApplication.kt](file:///c:/Android/vedinsta/app/src/main/java/com/devson/vedinsta/VedInstaApplication.kt).
+  4. Removed the redundant `SessionStatusCard` from [MediaSelectionScreen.kt](file:///c:/Android/vedinsta/app/src/main/java/com/devson/vedinsta/ui/MediaSelectionScreen.kt) to ensure active account session status is only displayed on the `SessionsScreen` tab.
+  5. Implemented full edge-to-edge system bar rendering by calling `enableEdgeToEdge()` in [MainActivity.kt](file:///c:/Android/vedinsta/app/src/main/java/com/devson/vedinsta/MainActivity.kt) and setting a dynamic `SideEffect` in [Theme.kt](file:///c:/Android/vedinsta/app/src/main/java/com/devson/vedinsta/ui/theme/Theme.kt) to handle status/navigation bar transparency and icon color modes.
+  6. Wrapped [InstagramLoginScreen.kt](file:///c:/Android/vedinsta/app/src/main/java/com/devson/vedinsta/ui/InstagramLoginScreen.kt) root layout in a `Scaffold` to automatically apply inset padding for the login screen's app bar.
+  7. Verified the project compiles successfully using `.\gradlew.bat clean assembleDebug`.
 - **End Marker:** ---

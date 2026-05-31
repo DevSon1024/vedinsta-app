@@ -102,7 +102,7 @@ fun MediaSelectionScreen(
                 .padding(paddingValues)
                 .padding(16.dp)
         ) {
-            if (extractionState is ExtractionState.Success && (extractionState as ExtractionState.Success).mediaList.isNotEmpty()) {
+            if (extractionState is ExtractionState.Success && (extractionState as ExtractionState.Success).extractedPost.mediaList.isNotEmpty()) {
                 val successState = extractionState as ExtractionState.Success
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(2),
@@ -110,14 +110,6 @@ fun MediaSelectionScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        SessionStatusCard(
-                            authState = authState,
-                            onLogout = { authViewModel.logout() },
-                            onLogin = onNavigateToLogin
-                        )
-                    }
-
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         LinkInputSection(
                             url = instagramUrl,
@@ -141,12 +133,12 @@ fun MediaSelectionScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                "${successState.mediaList.size} media items found",
+                                "${successState.extractedPost.mediaList.size} media items found",
                                 color = MaterialTheme.colorScheme.onBackground,
                                 fontWeight = FontWeight.Bold
                             )
                             Row {
-                                TextButton(onClick = { extractionViewModel.selectAll(successState.mediaList) }) {
+                                TextButton(onClick = { extractionViewModel.selectAll(successState.extractedPost.mediaList) }) {
                                     Text("Select All", color = MaterialTheme.colorScheme.primary)
                                 }
                                 TextButton(onClick = { extractionViewModel.selectNone() }) {
@@ -156,7 +148,7 @@ fun MediaSelectionScreen(
                         }
                     }
 
-                    items(successState.mediaList, key = { it.index ?: 0 }) { item ->
+                    items(successState.extractedPost.mediaList, key = { it.index ?: 0 }) { item ->
                         val idx = item.index ?: 1
                         MediaItemCard(
                             item = item,
@@ -174,7 +166,7 @@ fun MediaSelectionScreen(
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         Button(
                             onClick = {
-                                val selectedItems = successState.mediaList.filter { selectedIndexes.contains(it.index ?: -1) }
+                                val selectedItems = successState.extractedPost.mediaList.filter { selectedIndexes.contains(it.index ?: -1) }
                                 val containsVideo = selectedItems.any { it.type == "video" }
                                 val isReel = instagramUrl.contains("/reel/", ignoreCase = true) || instagramUrl.contains("/reels/", ignoreCase = true) || containsVideo
                                 
@@ -189,7 +181,7 @@ fun MediaSelectionScreen(
                                     snackbarHostState.showSnackbar(snackbarMessage)
                                 }
                                 
-                                extractionViewModel.downloadSelected(successState.mediaList, instagramUrl)
+                                extractionViewModel.downloadSelected(successState.extractedPost, instagramUrl)
                             },
                             modifier = Modifier.fillMaxWidth(),
                             enabled = selectedIndexes.isNotEmpty(),
@@ -216,12 +208,6 @@ fun MediaSelectionScreen(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    SessionStatusCard(
-                        authState = authState,
-                        onLogout = { authViewModel.logout() },
-                        onLogin = onNavigateToLogin
-                    )
-
                     LinkInputSection(
                         url = instagramUrl,
                         onUrlChange = { instagramUrl = it },
@@ -287,171 +273,6 @@ fun MediaSelectionScreen(
     }
 }
 
-@Composable
-fun SessionStatusCard(
-    authState: InstagramAuthState,
-    onLogout: () -> Unit,
-    onLogin: () -> Unit
-) {
-    // Check if the current theme is dark to adjust status card colors properly
-    val isDark = MaterialTheme.colorScheme.background.let { it.red + it.green + it.blue } < 1.5f
-
-    val cardColor = when (authState) {
-        is InstagramAuthState.LoggedIn -> if (isDark) Color(0xFF1E3A1E) else Color(0xFFE8F5E9) // Slate Green vs Light Green
-        is InstagramAuthState.SessionExpired -> if (isDark) Color(0xFF3D1D1D) else Color(0xFFFFEBEE) // Slate Red vs Light Red
-        else -> MaterialTheme.colorScheme.surfaceVariant
-    }
-
-    val borderColor = when (authState) {
-        is InstagramAuthState.LoggedIn -> Color(0xFF4CAF50)
-        is InstagramAuthState.SessionExpired -> Color(0xFFF44336)
-        else -> MaterialTheme.colorScheme.outline
-    }
-
-    val textColor = when (authState) {
-        is InstagramAuthState.LoggedIn -> if (isDark) Color(0xFF81C784) else Color(0xFF2E7D32)
-        is InstagramAuthState.SessionExpired -> if (isDark) Color(0xFFE57373) else Color(0xFFC62828)
-        else -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, borderColor, RoundedCornerShape(12.dp)),
-        colors = CardDefaults.cardColors(containerColor = cardColor),
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth()
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        "Session Status",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    when (authState) {
-                        is InstagramAuthState.LoggedIn -> {
-                            Text(
-                                "Active (Logged in as: ${authState.username.ifEmpty { authState.dsUserId }})",
-                                color = textColor,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp
-                            )
-                        }
-                        is InstagramAuthState.SessionExpired -> {
-                            Text(
-                                "Session Expired (ID: ${authState.username.ifEmpty { authState.dsUserId }})",
-                                color = textColor,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp
-                            )
-                        }
-                        is InstagramAuthState.Checking -> {
-                            Text(
-                                "Checking session...",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp
-                            )
-                        }
-                        else -> {
-                            Text(
-                                "No Session / Logged Out",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(12.dp))
-
-                when (authState) {
-                    is InstagramAuthState.LoggedIn -> {
-                        Button(
-                            onClick = onLogout,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.error,
-                                contentColor = MaterialTheme.colorScheme.onError
-                            ),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("Logout", fontSize = 12.sp)
-                        }
-                    }
-                    is InstagramAuthState.SessionExpired -> {
-                        Button(
-                            onClick = onLogin,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary
-                            ),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("Re-login", fontSize = 12.sp)
-                        }
-                    }
-                    is InstagramAuthState.Checking -> {
-                        // Empty/Loading
-                    }
-                    else -> {
-                        Button(
-                            onClick = onLogin,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary
-                            ),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("Login", fontSize = 12.sp)
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-            HorizontalDivider(color = borderColor.copy(alpha = 0.3f))
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = "Used securely by Python engine (mo3.py) via netscape format file inside app's private filesDir to fetch posts and reels at full resolution.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                fontSize = 11.sp,
-                lineHeight = 14.sp
-            )
-
-            if (authState is InstagramAuthState.SessionExpired) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Warning,
-                        contentDescription = "Warning",
-                        tint = textColor,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "Features restricted. Please log in again.",
-                        color = textColor,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-        }
-    }
-}
 
 @Composable
 fun LinkInputSection(

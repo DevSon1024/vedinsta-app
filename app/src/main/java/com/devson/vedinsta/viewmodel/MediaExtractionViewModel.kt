@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.devson.vedinsta.VedInstaApplication
 import com.devson.vedinsta.model.MediaItem
 import com.devson.vedinsta.model.MediaResult
+import com.devson.vedinsta.model.ExtractedPost
 import com.devson.vedinsta.repository.MediaFetcherRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -16,7 +17,7 @@ import kotlinx.coroutines.launch
 sealed class ExtractionState {
     object Idle : ExtractionState()
     object Loading : ExtractionState()
-    data class Success(val mediaList: List<MediaResult>) : ExtractionState()
+    data class Success(val extractedPost: ExtractedPost) : ExtractionState()
     data class Error(val message: String) : ExtractionState()
 }
 
@@ -50,15 +51,15 @@ class MediaExtractionViewModel(application: Application) : AndroidViewModel(appl
             _selectedIndexes.value = emptySet()
             _chosenQualities.value = emptyMap()
             try {
-                val results = repository.fetchMedia(urlOrShortcode)
-                _extractionState.value = ExtractionState.Success(results)
+                val extractedPost = repository.fetchMedia(urlOrShortcode)
+                _extractionState.value = ExtractionState.Success(extractedPost)
                 
                 // Select all extracted item indexes by default
-                val defaultIndexes = results.mapNotNull { it.index }.toSet()
+                val defaultIndexes = extractedPost.mediaList.mapNotNull { it.index }.toSet()
                 _selectedIndexes.value = defaultIndexes
                 
                 // Populate default chosen qualities to highest resolution url
-                val defaultQualities = results.associate { item ->
+                val defaultQualities = extractedPost.mediaList.associate { item ->
                     val defaultUrl = item.qualities?.firstOrNull()?.url ?: item.url ?: ""
                     (item.index ?: 1) to defaultUrl
                 }
@@ -107,11 +108,11 @@ class MediaExtractionViewModel(application: Application) : AndroidViewModel(appl
     /**
      * Map selected results to MediaSelectionAdapter.MediaItem and download them.
      */
-    fun downloadSelected(mediaList: List<MediaResult>, postUrl: String) {
+    fun downloadSelected(extractedPost: ExtractedPost, postUrl: String) {
         val selectedIdxs = _selectedIndexes.value
         val chosenUrls = _chosenQualities.value
         
-        val itemsToDownload = mediaList.filter { selectedIdxs.contains(it.index ?: -1) }.map { result ->
+        val itemsToDownload = extractedPost.mediaList.filter { selectedIdxs.contains(it.index ?: -1) }.map { result ->
             val index = result.index ?: 1
             val chosenUrl = chosenUrls[index] ?: result.url ?: ""
             MediaItem(
@@ -128,7 +129,13 @@ class MediaExtractionViewModel(application: Application) : AndroidViewModel(appl
 
         viewModelScope.launch {
             try {
-                app.downloadSelectedMedia(itemsToDownload, postUrl)
+                app.downloadSelectedMedia(
+                    mediaItems = itemsToDownload,
+                    postUrl = postUrl,
+                    username = extractedPost.username,
+                    caption = extractedPost.caption,
+                    postId = extractedPost.postId
+                )
             } catch (e: Exception) {
                 Log.e("MediaExtractionVM", "Failed to start download of selected media", e)
             }

@@ -61,6 +61,18 @@ fun VedinstaTheme(
         else -> LightColorScheme
     }
 
+    val view = androidx.compose.ui.platform.LocalView.current
+    if (!view.isInEditMode) {
+        androidx.compose.runtime.SideEffect {
+            val window = (view.context as android.app.Activity).window
+            window.statusBarColor = android.graphics.Color.TRANSPARENT
+            window.navigationBarColor = android.graphics.Color.TRANSPARENT
+            val insetsController = androidx.core.view.WindowCompat.getInsetsController(window, view)
+            insetsController.isAppearanceLightStatusBars = !darkTheme
+            insetsController.isAppearanceLightNavigationBars = !darkTheme
+        }
+    }
+
     MaterialTheme(
         colorScheme = colorScheme,
         typography = Typography,

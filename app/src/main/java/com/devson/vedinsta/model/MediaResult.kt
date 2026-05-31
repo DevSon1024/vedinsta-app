@@ -18,3 +18,11 @@ data class MediaResult(
     @SerializedName("error") val error: String? = null,
     @SerializedName("qualities") val qualities: List<QualityOption>? = null
 ) : Serializable
+
+data class ExtractedPost(
+    val mediaList: List<MediaResult>,
+    val username: String,
+    val caption: String?,
+    val postId: String
+) : Serializable
+

@@ -18,7 +18,7 @@ class MediaFetcherRepository(private val context: Context) {
      * Executes mo3.py using Chaquopy and returns the list of MediaResult objects.
      * Throws exception if Python execution fails or the script reports an error.
      */
-    suspend fun fetchMedia(urlOrShortcode: String): List<MediaResult> = withContext(Dispatchers.IO) {
+    suspend fun fetchMedia(urlOrShortcode: String): com.devson.vedinsta.model.ExtractedPost = withContext(Dispatchers.IO) {
         try {
             // Ensure Python is initialized
             if (!Python.isStarted()) {
@@ -44,6 +44,10 @@ class MediaFetcherRepository(private val context: Context) {
                 throw Exception(message)
             }
 
+            val username = responseMap["username"] as? String ?: "unknown"
+            val caption = responseMap["caption"] as? String
+            val postId = responseMap["shortcode"] as? String ?: "unknown"
+
             val mediaJson = gson.toJson(responseMap["media"])
             val listType = object : TypeToken<List<MediaResult>>() {}.type
             val results: List<MediaResult> = gson.fromJson(mediaJson, listType)
@@ -53,7 +57,12 @@ class MediaFetcherRepository(private val context: Context) {
                 throw Exception(firstError)
             }
 
-            results
+            com.devson.vedinsta.model.ExtractedPost(
+                mediaList = results,
+                username = username,
+                caption = caption,
+                postId = postId
+            )
         } catch (e: Exception) {
             Log.e("MediaFetcherRepository", "Error fetching media via mo3.py direct call", e)
             throw e

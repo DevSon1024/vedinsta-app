@@ -9,6 +9,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
@@ -67,6 +68,7 @@ class MainActivity : ComponentActivity() {
     private var pendingUrlAction: ((String) -> Unit)? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
         val settingsManager = SettingsManager(this)

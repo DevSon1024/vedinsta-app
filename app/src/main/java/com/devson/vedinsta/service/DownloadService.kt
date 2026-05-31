@@ -8,6 +8,8 @@ import androidx.core.app.ServiceCompat
 import androidx.core.app.NotificationCompat
 import com.devson.vedinsta.notification.VedInstaNotificationManager
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -31,6 +33,14 @@ class DownloadService : Service() {
         const val EXTRA_DOWNLOAD_URL = "download_url"
         const val EXTRA_FILE_PATH = "file_path"
         const val EXTRA_FILE_NAME = "file_name"
+        const val EXTRA_POST_ID = "post_id"
+        const val EXTRA_POST_URL = "post_url"
+        const val EXTRA_USERNAME = "username"
+        const val EXTRA_CAPTION = "caption"
+        const val EXTRA_TOTAL_IMAGES = "total_images"
+        const val EXTRA_HAS_VIDEO = "has_video"
+
+        private val dbMutex = Mutex()
         private const val TAG = "DownloadService"
         private const val USER_AGENT = "Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.193 Mobile Safari/537.36 Instagram 314.0.0.19.113 Android (34/14; 450dpi; 1440x3088; samsung; SM-S918B; dm3q; qcom; en_US; 557876543)"
     }
@@ -45,6 +55,12 @@ class DownloadService : Service() {
             val url = it.getStringExtra(EXTRA_DOWNLOAD_URL)
             val filePath = it.getStringExtra(EXTRA_FILE_PATH)
             val fileName = it.getStringExtra(EXTRA_FILE_NAME)
+            val postId = it.getStringExtra(EXTRA_POST_ID)
+            val postUrl = it.getStringExtra(EXTRA_POST_URL)
+            val username = it.getStringExtra(EXTRA_USERNAME)
+            val caption = it.getStringExtra(EXTRA_CAPTION)
+            val totalImages = it.getIntExtra(EXTRA_TOTAL_IMAGES, 1)
+            val hasVideo = it.getBooleanExtra(EXTRA_HAS_VIDEO, false)
 
             if (url != null && filePath != null && fileName != null) {
                 val notificationId = System.currentTimeMillis().toInt()
@@ -70,7 +86,18 @@ class DownloadService : Service() {
 
                 serviceScope.launch {
                     try {
-                        downloadFile(url, filePath, fileName, notificationId)
+                        downloadFile(
+                            url = url,
+                            filePath = filePath,
+                            fileName = fileName,
+                            notificationId = notificationId,
+                            postId = postId,
+                            postUrl = postUrl,
+                            username = username,
+                            caption = caption,
+                            totalImages = totalImages,
+                            hasVideo = hasVideo
+                        )
                     } finally {
                         val remaining = activeTasks.decrementAndGet()
                         if (remaining <= 0) {
@@ -98,7 +125,18 @@ class DownloadService : Service() {
             .setOngoing(true)
             .build()
 
-    private suspend fun downloadFile(url: String, filePath: String, fileName: String, notificationId: Int) {
+    private suspend fun downloadFile(
+        url: String,
+        filePath: String,
+        fileName: String,
+        notificationId: Int,
+        postId: String?,
+        postUrl: String?,
+        username: String?,
+        caption: String?,
+        totalImages: Int,
+        hasVideo: Boolean
+    ) {
         try {
             val request = Request.Builder()
                 .url(url)
@@ -134,9 +172,104 @@ class DownloadService : Service() {
             // Index file in MediaStore so it displays in native gallery immediately
             scanFileWithMediaScanner(filePath)
 
+            // Save to Room DB if postId is provided
+            if (postId != null && postUrl != null) {
+                saveDownloadedPostToDb(
+                    postId = postId,
+                    postUrl = postUrl,
+                    downloadedFiles = listOf(filePath),
+                    hasVideo = hasVideo,
+                    username = username ?: "unknown",
+                    caption = caption
+                )
+            }
+
         } catch (e: Exception) {
             Log.e(TAG, "Failed to download $fileName", e)
             notificationManager.showDownloadError(fileName, e.message ?: "Unknown error")
+        }
+    }
+
+    private suspend fun saveDownloadedPostToDb(
+        postId: String,
+        postUrl: String,
+        downloadedFiles: List<String>,
+        hasVideo: Boolean,
+        username: String,
+        caption: String?
+    ) {
+        if (downloadedFiles.isEmpty()) return
+        try {
+            dbMutex.withLock {
+                withContext(Dispatchers.IO) {
+                    val db = com.devson.vedinsta.database.AppDatabase.getDatabase(applicationContext)
+                    val dao = db.downloadedPostDao()
+                    val existingPost = dao.getPostById(postId)
+
+                    if (existingPost != null) {
+                        val updatedPaths = (existingPost.mediaPaths + downloadedFiles).distinct()
+                        
+                        val isVideo = { path: String ->
+                            val ext = path.substringAfterLast('.', "").lowercase()
+                            ext in listOf("mp4", "mov", "avi", "mkv", "webm")
+                        }
+                        val newFirstImagePath = downloadedFiles.firstOrNull { !isVideo(it) }
+                        val newFirstVideoPath = downloadedFiles.firstOrNull { isVideo(it) }
+                        val currentThumbnailValid = existingPost.thumbnailPath.isNotBlank() && File(existingPost.thumbnailPath).exists()
+
+                        val updatedThumbnailPath = when {
+                            newFirstImagePath != null -> newFirstImagePath
+                            currentThumbnailValid -> existingPost.thumbnailPath
+                            newFirstVideoPath != null -> newFirstVideoPath
+                            else -> ""
+                        }
+
+                        val updatedUsername = if (existingPost.username == "unknown" || existingPost.username == "downloading...") {
+                            username
+                        } else {
+                            existingPost.username
+                        }
+
+                        val updatedCaption = existingPost.caption.takeIf { !it.isNullOrBlank() } ?: caption
+
+                        val updatedPost = existingPost.copy(
+                            mediaPaths = updatedPaths,
+                            totalImages = updatedPaths.size,
+                            downloadDate = System.currentTimeMillis(),
+                            thumbnailPath = updatedThumbnailPath,
+                            username = updatedUsername,
+                            caption = updatedCaption,
+                            hasVideo = existingPost.hasVideo || hasVideo
+                        )
+                        dao.insertOrReplace(updatedPost)
+                        Log.d(TAG, "Updated existing post $postId in DB. Total media: ${updatedPaths.size}")
+                    } else {
+                        val isVideo = { path: String ->
+                            val ext = path.substringAfterLast('.', "").lowercase()
+                            ext in listOf("mp4", "mov", "avi", "mkv", "webm")
+                        }
+                        val firstImagePath = downloadedFiles.firstOrNull { !isVideo(it) }
+                        val firstVideoPath = downloadedFiles.firstOrNull { isVideo(it) }
+                        val thumbnailPath = firstImagePath ?: firstVideoPath ?: ""
+
+                        val newPost = com.devson.vedinsta.database.DownloadedPost(
+                            postId = postId,
+                            postUrl = postUrl,
+                            thumbnailPath = thumbnailPath,
+                            totalImages = downloadedFiles.size,
+                            downloadDate = System.currentTimeMillis(),
+                            hasVideo = hasVideo,
+                            username = username,
+                            caption = caption,
+                            mediaPaths = downloadedFiles.distinct()
+                        )
+                        dao.insert(newPost)
+                        Log.d(TAG, "Inserted new post $postId in DB with ${downloadedFiles.size} media.")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "DATABASE SAVE/UPDATE ERROR for key $postId", e)
         }
     }
 
