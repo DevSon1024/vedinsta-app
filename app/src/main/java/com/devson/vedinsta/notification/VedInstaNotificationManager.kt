@@ -10,7 +10,6 @@ import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import com.devson.vedinsta.DownloadActivity
 import com.devson.vedinsta.MainActivity
 import com.devson.vedinsta.R
 import com.devson.vedinsta.database.AppDatabase
@@ -193,7 +192,7 @@ class VedInstaNotificationManager private constructor(private val context: Conte
             pendingIntentFlags
         )
 
-        val selectIntent = Intent(context, DownloadActivity::class.java).apply {
+        val selectIntent = Intent(context, MainActivity::class.java).apply {
             putExtra("POST_URL", url)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }

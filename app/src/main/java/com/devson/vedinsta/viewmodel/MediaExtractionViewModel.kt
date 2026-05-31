@@ -5,7 +5,7 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.devson.vedinsta.VedInstaApplication
-import com.devson.vedinsta.adapters.MediaSelectionAdapter
+import com.devson.vedinsta.model.MediaItem
 import com.devson.vedinsta.model.MediaResult
 import com.devson.vedinsta.repository.MediaFetcherRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,9 +28,13 @@ class MediaExtractionViewModel(application: Application) : AndroidViewModel(appl
     private val _extractionState = MutableStateFlow<ExtractionState>(ExtractionState.Idle)
     val extractionState: StateFlow<ExtractionState> = _extractionState.asStateFlow()
 
-    // Holds set of selected media URLs
-    private val _selectedItems = MutableStateFlow<Set<String>>(emptySet())
-    val selectedItems: StateFlow<Set<String>> = _selectedItems.asStateFlow()
+    // Holds set of selected media item indexes
+    private val _selectedIndexes = MutableStateFlow<Set<Int>>(emptySet())
+    val selectedIndexes: StateFlow<Set<Int>> = _selectedIndexes.asStateFlow()
+
+    // Holds chosen quality URL for each item index
+    private val _chosenQualities = MutableStateFlow<Map<Int, String>>(emptyMap())
+    val chosenQualities: StateFlow<Map<Int, String>> = _chosenQualities.asStateFlow()
 
     /**
      * Triggers the Python media extraction script and updates flow states.
@@ -43,12 +47,22 @@ class MediaExtractionViewModel(application: Application) : AndroidViewModel(appl
 
         viewModelScope.launch {
             _extractionState.value = ExtractionState.Loading
-            _selectedItems.value = emptySet()
+            _selectedIndexes.value = emptySet()
+            _chosenQualities.value = emptyMap()
             try {
                 val results = repository.fetchMedia(urlOrShortcode)
                 _extractionState.value = ExtractionState.Success(results)
-                // Select all extracted items by default
-                _selectedItems.value = results.mapNotNull { it.url }.toSet()
+                
+                // Select all extracted item indexes by default
+                val defaultIndexes = results.mapNotNull { it.index }.toSet()
+                _selectedIndexes.value = defaultIndexes
+                
+                // Populate default chosen qualities to highest resolution url
+                val defaultQualities = results.associate { item ->
+                    val defaultUrl = item.qualities?.firstOrNull()?.url ?: item.url ?: ""
+                    (item.index ?: 1) to defaultUrl
+                }
+                _chosenQualities.value = defaultQualities
             } catch (e: Exception) {
                 val errorMessage = e.message ?: "Extraction failed"
                 _extractionState.value = ExtractionState.Error(errorMessage)
@@ -66,34 +80,44 @@ class MediaExtractionViewModel(application: Application) : AndroidViewModel(appl
         }
     }
 
-    fun toggleSelection(url: String) {
-        val current = _selectedItems.value.toMutableSet()
-        if (current.contains(url)) {
-            current.remove(url)
+    fun toggleSelection(index: Int) {
+        val current = _selectedIndexes.value.toMutableSet()
+        if (current.contains(index)) {
+            current.remove(index)
         } else {
-            current.add(url)
+            current.add(index)
         }
-        _selectedItems.value = current
+        _selectedIndexes.value = current
+    }
+
+    fun changeQuality(index: Int, newUrl: String) {
+        val current = _chosenQualities.value.toMutableMap()
+        current[index] = newUrl
+        _chosenQualities.value = current
     }
 
     fun selectAll(mediaList: List<MediaResult>) {
-        _selectedItems.value = mediaList.mapNotNull { it.url }.toSet()
+        _selectedIndexes.value = mediaList.mapNotNull { it.index }.toSet()
     }
 
     fun selectNone() {
-        _selectedItems.value = emptySet()
+        _selectedIndexes.value = emptySet()
     }
 
     /**
      * Map selected results to MediaSelectionAdapter.MediaItem and download them.
      */
     fun downloadSelected(mediaList: List<MediaResult>, postUrl: String) {
-        val selectedUrls = _selectedItems.value
-        val itemsToDownload = mediaList.filter { selectedUrls.contains(it.url) }.map { result ->
-            MediaSelectionAdapter.MediaItem(
-                url = result.url ?: "",
+        val selectedIdxs = _selectedIndexes.value
+        val chosenUrls = _chosenQualities.value
+        
+        val itemsToDownload = mediaList.filter { selectedIdxs.contains(it.index ?: -1) }.map { result ->
+            val index = result.index ?: 1
+            val chosenUrl = chosenUrls[index] ?: result.url ?: ""
+            MediaItem(
+                url = chosenUrl,
                 type = result.type ?: "image",
-                index = result.index ?: 1,
+                index = index,
                 isSelected = true
             )
         }

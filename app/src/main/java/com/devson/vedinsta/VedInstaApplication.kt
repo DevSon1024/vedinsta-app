@@ -25,7 +25,7 @@ import java.io.File
 import android.os.Environment
 import kotlinx.coroutines.withContext
 import java.util.UUID
-import com.devson.vedinsta.adapters.MediaSelectionAdapter
+import com.devson.vedinsta.model.MediaItem
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import org.json.JSONObject
@@ -84,10 +84,11 @@ class VedInstaApplication : Application() {
             Log.d("VedInstaApp", "Getting post info for: $url")
 
             val python = Python.getInstance()
-            val module = python.getModule("insta_downloader")
+            val module = python.getModule("mo3")
+            val cookieFile = File(filesDir, "instagram_cookies.txt").absolutePath
 
-            // Call the correct method: get_media_urls (not get_post_info)
-            val result = module.callAttr("get_media_urls", url)
+            // Call the correct method: get_media_urls on mo3
+            val result = module.callAttr("get_media_urls", url, cookieFile)
             val resultString = result?.toString() ?: return null
 
             Log.d("VedInstaApp", "Python result: $resultString")
@@ -134,7 +135,7 @@ class VedInstaApplication : Application() {
     }
 
     suspend fun downloadSelectedMedia(
-        mediaItems: List<MediaSelectionAdapter.MediaItem>,
+        mediaItems: List<MediaItem>,
         postUrl: String
     ) {
         withContext(Dispatchers.IO) {
@@ -180,8 +181,9 @@ class VedInstaApplication : Application() {
                 Log.d("VedInstaApp", "Starting download for: $url")
 
                 val python = Python.getInstance()
-                val module = python.getModule("insta_downloader")
-                val result = module.callAttr("get_media_urls", url)
+                val module = python.getModule("mo3")
+                val cookieFile = File(filesDir, "instagram_cookies.txt").absolutePath
+                val result = module.callAttr("get_media_urls", url, cookieFile)
                 val resultString = result?.toString() ?: throw Exception("No result from Python")
 
                 val postData = JSONObject(resultString)

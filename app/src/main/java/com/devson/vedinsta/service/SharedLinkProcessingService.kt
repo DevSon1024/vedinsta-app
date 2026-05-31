@@ -9,6 +9,7 @@ import com.devson.vedinsta.SettingsManager
 import com.devson.vedinsta.VedInstaApplication
 import com.devson.vedinsta.notification.VedInstaNotificationManager
 import kotlinx.coroutines.*
+import java.io.File
 import org.json.JSONObject
 
 class SharedLinkProcessingService : Service() {
@@ -177,8 +178,9 @@ class SharedLinkProcessingService : Service() {
         return withContext(Dispatchers.IO) {
             try {
                 val python = com.chaquo.python.Python.getInstance()
-                val module = python.getModule("insta_downloader")
-                val result = module.callAttr("get_media_urls", url)
+                val module = python.getModule("mo3")
+                val cookieFile = File(filesDir, "instagram_cookies.txt").absolutePath
+                val result = module.callAttr("get_media_urls", url, cookieFile)
                 val resultString = result?.toString()
 
                 if (resultString != null) {

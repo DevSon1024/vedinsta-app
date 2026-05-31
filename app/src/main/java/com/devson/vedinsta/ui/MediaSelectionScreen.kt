@@ -48,7 +48,8 @@ fun MediaSelectionScreen(
     val context = LocalContext.current
     val authState by authViewModel.authState.collectAsState()
     val extractionState by extractionViewModel.extractionState.collectAsState()
-    val selectedItems by extractionViewModel.selectedItems.collectAsState()
+    val selectedIndexes by extractionViewModel.selectedIndexes.collectAsState()
+    val chosenQualities by extractionViewModel.chosenQualities.collectAsState()
 
     var instagramUrl by remember { mutableStateOf("") }
 
@@ -74,12 +75,12 @@ fun MediaSelectionScreen(
                     )
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = Color(0xFF121212)
+                    containerColor = Color.Transparent
                 ),
                 modifier = Modifier.background(instagramGradient)
             )
         },
-        containerColor = Color(0xFF1A1A1A)
+        containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -124,16 +125,16 @@ fun MediaSelectionScreen(
                     is ExtractionState.Idle -> {
                         Text(
                             "Paste an Instagram link above and click Extract to fetch posts/reels.",
-                            color = Color.Gray,
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
                             textAlign = TextAlign.Center,
                             modifier = Modifier.padding(24.dp)
                         )
                     }
                     is ExtractionState.Loading -> {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator(color = Color(0xFFFD1D1D))
+                            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                             Spacer(modifier = Modifier.height(12.dp))
-                            Text("Running python extractor...", color = Color.White)
+                            Text("Running python extractor...", color = MaterialTheme.colorScheme.onBackground)
                         }
                     }
                     is ExtractionState.Error -> {
@@ -158,7 +159,7 @@ fun MediaSelectionScreen(
                     }
                     is ExtractionState.Success -> {
                         if (state.mediaList.isEmpty()) {
-                            Text("No media found in this post.", color = Color.Gray)
+                            Text("No media found in this post.", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
                         } else {
                             Column(modifier = Modifier.fillMaxSize()) {
                                 // Selection control headers
@@ -169,15 +170,15 @@ fun MediaSelectionScreen(
                                 ) {
                                     Text(
                                         "${state.mediaList.size} media items found",
-                                        color = Color.White,
+                                        color = MaterialTheme.colorScheme.onBackground,
                                         fontWeight = FontWeight.Bold
                                     )
                                     Row {
                                         TextButton(onClick = { extractionViewModel.selectAll(state.mediaList) }) {
-                                            Text("Select All", color = Color(0xFFF77737))
+                                            Text("Select All", color = MaterialTheme.colorScheme.primary)
                                         }
                                         TextButton(onClick = { extractionViewModel.selectNone() }) {
-                                            Text("Select None", color = Color.Gray)
+                                            Text("Select None", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
                                         }
                                     }
                                 }
@@ -191,11 +192,14 @@ fun MediaSelectionScreen(
                                     verticalArrangement = Arrangement.spacedBy(12.dp),
                                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
-                                    items(state.mediaList) { item ->
+                                    items(state.mediaList, key = { it.index ?: 0 }) { item ->
+                                        val idx = item.index ?: 1
                                         MediaItemCard(
                                             item = item,
-                                            isSelected = selectedItems.contains(item.url),
-                                            onToggleSelect = { item.url?.let { url -> extractionViewModel.toggleSelection(url) } }
+                                            isSelected = selectedIndexes.contains(idx),
+                                            chosenUrl = chosenQualities[idx],
+                                            onToggleSelect = { extractionViewModel.toggleSelection(idx) },
+                                            onQualityChange = { newUrl -> extractionViewModel.changeQuality(idx, newUrl) }
                                         )
                                     }
                                 }
@@ -208,15 +212,17 @@ fun MediaSelectionScreen(
                                         extractionViewModel.downloadSelected(state.mediaList, instagramUrl)
                                     },
                                     modifier = Modifier.fillMaxWidth(),
-                                    enabled = selectedItems.isNotEmpty(),
+                                    enabled = selectedIndexes.isNotEmpty(),
                                     colors = ButtonDefaults.buttonColors(
-                                        containerColor = Color(0xFFFD1D1D),
-                                        disabledContainerColor = Color.Gray
+                                        containerColor = MaterialTheme.colorScheme.primary,
+                                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                                        disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+                                        disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
                                     ),
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
                                     Text(
-                                        "Download Selected (${selectedItems.size})",
+                                        "Download Selected (${selectedIndexes.size})",
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 16.sp
                                     )
@@ -236,16 +242,25 @@ fun SessionStatusCard(
     onLogout: () -> Unit,
     onLogin: () -> Unit
 ) {
+    // Check if the current theme is dark to adjust status card colors properly
+    val isDark = MaterialTheme.colorScheme.background.let { it.red + it.green + it.blue } < 1.5f
+
     val cardColor = when (authState) {
-        is InstagramAuthState.LoggedIn -> Color(0xFF1E3A1E) // Sleek Dark Green
-        is InstagramAuthState.SessionExpired -> Color(0xFF3D1D1D) // Sleek Dark Red
-        else -> Color(0xFF2D2D2D) // Dark Grey
+        is InstagramAuthState.LoggedIn -> if (isDark) Color(0xFF1E3A1E) else Color(0xFFE8F5E9) // Slate Green vs Light Green
+        is InstagramAuthState.SessionExpired -> if (isDark) Color(0xFF3D1D1D) else Color(0xFFFFEBEE) // Slate Red vs Light Red
+        else -> MaterialTheme.colorScheme.surfaceVariant
     }
 
     val borderColor = when (authState) {
         is InstagramAuthState.LoggedIn -> Color(0xFF4CAF50)
         is InstagramAuthState.SessionExpired -> Color(0xFFF44336)
-        else -> Color(0xFF555555)
+        else -> MaterialTheme.colorScheme.outline
+    }
+
+    val textColor = when (authState) {
+        is InstagramAuthState.LoggedIn -> if (isDark) Color(0xFF81C784) else Color(0xFF2E7D32)
+        is InstagramAuthState.SessionExpired -> if (isDark) Color(0xFFE57373) else Color(0xFFC62828)
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 
     Card(
@@ -268,7 +283,7 @@ fun SessionStatusCard(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         "Session Status",
-                        color = Color.Gray,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium
                     )
@@ -277,7 +292,7 @@ fun SessionStatusCard(
                         is InstagramAuthState.LoggedIn -> {
                             Text(
                                 "Active (Logged in as: ${authState.dsUserId})",
-                                color = Color(0xFF81C784),
+                                color = textColor,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp
                             )
@@ -285,7 +300,7 @@ fun SessionStatusCard(
                         is InstagramAuthState.SessionExpired -> {
                             Text(
                                 "Session Expired (ID: ${authState.dsUserId})",
-                                color = Color(0xFFE57373),
+                                color = textColor,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp
                             )
@@ -293,7 +308,7 @@ fun SessionStatusCard(
                         is InstagramAuthState.Checking -> {
                             Text(
                                 "Checking session...",
-                                color = Color.White,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp
                             )
@@ -301,7 +316,7 @@ fun SessionStatusCard(
                         else -> {
                             Text(
                                 "No Session / Logged Out",
-                                color = Color.White,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp
                             )
@@ -315,7 +330,10 @@ fun SessionStatusCard(
                     is InstagramAuthState.LoggedIn -> {
                         Button(
                             onClick = onLogout,
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFD1D1D)),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.error,
+                                contentColor = MaterialTheme.colorScheme.onError
+                            ),
                             shape = RoundedCornerShape(8.dp)
                         ) {
                             Text("Logout", fontSize = 12.sp)
@@ -324,7 +342,10 @@ fun SessionStatusCard(
                     is InstagramAuthState.SessionExpired -> {
                         Button(
                             onClick = onLogin,
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFD1D1D)),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            ),
                             shape = RoundedCornerShape(8.dp)
                         ) {
                             Text("Re-login", fontSize = 12.sp)
@@ -336,7 +357,10 @@ fun SessionStatusCard(
                     else -> {
                         Button(
                             onClick = onLogin,
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF833AB4)),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            ),
                             shape = RoundedCornerShape(8.dp)
                         ) {
                             Text("Login", fontSize = 12.sp)
@@ -346,12 +370,12 @@ fun SessionStatusCard(
             }
 
             Spacer(modifier = Modifier.height(8.dp))
-            Divider(color = borderColor.copy(alpha = 0.3f))
+            HorizontalDivider(color = borderColor.copy(alpha = 0.3f))
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
                 text = "Used securely by Python engine (mo3.py) via netscape format file inside app's private filesDir to fetch posts and reels at full resolution.",
-                color = Color.LightGray,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                 fontSize = 11.sp,
                 lineHeight = 14.sp
             )
@@ -362,13 +386,13 @@ fun SessionStatusCard(
                     Icon(
                         imageVector = Icons.Default.Warning,
                         contentDescription = "Warning",
-                        tint = Color(0xFFE57373),
+                        tint = textColor,
                         modifier = Modifier.size(14.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
                         text = "Features restricted. Please log in again.",
-                        color = Color(0xFFE57373),
+                        color = textColor,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -388,7 +412,7 @@ fun LinkInputSection(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF222222)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         shape = RoundedCornerShape(12.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -406,12 +430,12 @@ fun LinkInputSection(
                     }
                 },
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = Color(0xFFFD1D1D),
-                    unfocusedBorderColor = Color.Gray,
-                    focusedLabelColor = Color(0xFFFD1D1D),
-                    unfocusedLabelColor = Color.Gray,
-                    focusedTextColor = Color.White,
-                    unfocusedTextColor = Color.White
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                    focusedLabelColor = MaterialTheme.colorScheme.primary,
+                    unfocusedLabelColor = MaterialTheme.colorScheme.outline,
+                    focusedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    unfocusedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                 ),
                 singleLine = true,
                 enabled = isEnabled
@@ -424,8 +448,8 @@ fun LinkInputSection(
                     onClick = onPasteClick,
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                    border = BorderStroke(1.dp, Color.Gray),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
                     enabled = isEnabled
                 ) {
                     Text("Paste URL")
@@ -438,8 +462,10 @@ fun LinkInputSection(
                     modifier = Modifier.weight(1.5f),
                     shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFFD1D1D),
-                        disabledContainerColor = Color.Gray
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                        disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+                        disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
                     ),
                     enabled = isEnabled && url.isNotBlank()
                 ) {
@@ -454,9 +480,12 @@ fun LinkInputSection(
 fun MediaItemCard(
     item: MediaResult,
     isSelected: Boolean,
-    onToggleSelect: () -> Unit
+    chosenUrl: String?,
+    onToggleSelect: () -> Unit,
+    onQualityChange: (String) -> Unit
 ) {
-    val borderColor = if (isSelected) Color(0xFFFD1D1D) else Color.Transparent
+    val borderColor = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent
+    var showQualityMenu by remember { mutableStateOf(false) }
 
     Card(
         modifier = Modifier
@@ -465,12 +494,12 @@ fun MediaItemCard(
             .border(2.dp, borderColor, RoundedCornerShape(12.dp))
             .clickable { onToggleSelect() },
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF222222))
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            // Media Preview Image
+            // Media Preview Image (Load from chosen quality URL or fallback)
             AsyncImage(
-                model = item.url,
+                model = chosenUrl ?: item.url,
                 contentDescription = "Media Preview",
                 modifier = Modifier
                     .fillMaxSize()
@@ -490,14 +519,14 @@ fun MediaItemCard(
                     )
             )
 
-            // Checkbox overlay at Top-Right
+            // Checkbox overlay at Top-Right (always styled with white check/border over image overlay)
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(8.dp)
                     .size(24.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(if (isSelected) Color(0xFFFD1D1D) else Color.Black.copy(alpha = 0.6f))
+                    .background(if (isSelected) MaterialTheme.colorScheme.primary else Color.Black.copy(alpha = 0.6f))
                     .border(1.5.dp, Color.White, RoundedCornerShape(12.dp)),
                 contentAlignment = Alignment.Center
             ) {
@@ -511,7 +540,7 @@ fun MediaItemCard(
                 }
             }
 
-            // Media Info at Bottom
+            // Media Info at Bottom (rendered over dark gradient, so text is white for legibility)
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
@@ -523,7 +552,7 @@ fun MediaItemCard(
                     modifier = Modifier
                         .clip(RoundedCornerShape(4.dp))
                         .background(
-                            if (item.type == "video") Color(0xFFFD1D1D) else Color(0xFF833AB4)
+                            if (item.type == "video") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary
                         )
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
@@ -546,15 +575,52 @@ fun MediaItemCard(
 
                 Spacer(modifier = Modifier.height(4.dp))
 
-                // Resolution text
-                val width = item.width ?: 0
-                val height = item.height ?: 0
-                Text(
-                    text = if (width > 0 && height > 0) "${width}x${height}" else "Resolution unknown",
-                    color = Color.White,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
+                // Resolution Selection Pill
+                val qualities = item.qualities ?: emptyList()
+                val currentQuality = qualities.find { it.url == chosenUrl }
+                val width = currentQuality?.width ?: item.width ?: 0
+                val height = currentQuality?.height ?: item.height ?: 0
+                val resolutionText = if (width > 0 && height > 0) "${width}x${height}" else "Default Quality"
+
+                Box {
+                    Surface(
+                        modifier = Modifier.clickable { showQualityMenu = true },
+                        shape = RoundedCornerShape(4.dp),
+                        color = Color.Black.copy(alpha = 0.5f)
+                    ) {
+                        Text(
+                            text = "$resolutionText ▾",
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = showQualityMenu,
+                        onDismissRequest = { showQualityMenu = false },
+                        modifier = Modifier.background(MaterialTheme.colorScheme.surface)
+                    ) {
+                        if (qualities.isEmpty()) {
+                            DropdownMenuItem(
+                                text = { Text("Default", color = MaterialTheme.colorScheme.onSurface) },
+                                onClick = { showQualityMenu = false }
+                            )
+                        } else {
+                            qualities.forEachIndexed { i, q ->
+                                val label = if (i == 0) "${q.width}x${q.height} (High)" else "${q.width}x${q.height}"
+                                DropdownMenuItem(
+                                    text = { Text(label, color = MaterialTheme.colorScheme.onSurface) },
+                                    onClick = {
+                                        q.url?.let(onQualityChange)
+                                        showQualityMenu = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
 
                 // Item index info
                 Text(

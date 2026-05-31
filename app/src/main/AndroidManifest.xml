@@ -77,29 +77,7 @@
             android:exported="false" />
 
 
-        <!-- Post View Activity -->
-        <activity
-            android:name=".PostViewActivity"
-            android:exported="false"
-            android:screenOrientation="unspecified"
-            android:theme="@style/Theme.Vedinsta.Fullscreen" />
 
-        <activity
-            android:name=".AboutActivity"
-            android:exported="false"
-            android:parentActivityName=".MainActivity" />
-
-        <activity
-            android:name=".DownloadActivity"
-            android:exported="false" />
-        <activity
-            android:name=".InstagramComposeActivity"
-            android:exported="false"
-            android:theme="@style/Theme.Vedinsta" />
-        <activity
-            android:name=".NotificationActivity"
-            android:exported="false"
-            android:parentActivityName=".MainActivity" />
 
         <!-- Download Service -->
         <service

@@ -38,6 +38,10 @@ class SettingsManager(private val context: Context) {
         get() = prefs.getInt(KEY_DEFAULT_LINK_ACTION, ACTION_ASK_EVERY_TIME)
         set(value) = prefs.edit().putInt(KEY_DEFAULT_LINK_ACTION, value).apply()
 
+    var appTheme: Int
+        get() = prefs.getInt("app_theme", 0) // 0 = System, 1 = Light, 2 = Dark
+        set(value) = prefs.edit().putInt("app_theme", value).apply()
+
     fun getImagePathLabel(): String {
         return imageDirectoryUri?.let { uriString ->
             DocumentFile.fromTreeUri(context, Uri.parse(uriString))?.name
@@ -56,5 +60,20 @@ class SettingsManager(private val context: Context) {
             ACTION_OPEN_SELECTION -> "Open Selection Screen"
             else -> "Ask Every Time (Notification)"
         }
+    }
+
+    fun isFavorite(postId: String): Boolean {
+        val favorites = prefs.getStringSet("favorite_post_ids", emptySet()) ?: emptySet()
+        return favorites.contains(postId)
+    }
+
+    fun toggleFavorite(postId: String) {
+        val favorites = prefs.getStringSet("favorite_post_ids", emptySet())?.toMutableSet() ?: mutableSetOf()
+        if (favorites.contains(postId)) {
+            favorites.remove(postId)
+        } else {
+            favorites.add(postId)
+        }
+        prefs.edit().putStringSet("favorite_post_ids", favorites).apply()
     }
 }
