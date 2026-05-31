@@ -54,6 +54,7 @@ sealed class Screen {
     data class PostView(val post: DownloadedPost) : Screen()
     object About : Screen()
     object Notifications : Screen()
+    object Login : Screen()
 }
 
 class MainActivity : ComponentActivity() {
@@ -129,7 +130,7 @@ class MainActivity : ComponentActivity() {
 
                 Scaffold(
                     topBar = {
-                        if (currentScreen !is Screen.PostView) {
+                        if (currentScreen !is Screen.PostView && currentScreen !is Screen.Login) {
                             CenterAlignedTopAppBar(
                                 title = {
                                     Text(
@@ -299,7 +300,7 @@ class MainActivity : ComponentActivity() {
                                 MediaSelectionScreen(
                                     authViewModel = authViewModel,
                                     extractionViewModel = extractionViewModel,
-                                    onNavigateToLogin = { navigateTo(Screen.Sessions) }
+                                    onNavigateToLogin = { navigateTo(Screen.Login) }
                                 )
                             }
                             is Screen.History -> {
@@ -328,25 +329,22 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                             is Screen.Sessions -> {
-                                var currentSubScreen by remember { mutableStateOf("sessions") }
-
-                                if (currentSubScreen == "login") {
-                                    InstagramLoginScreen(
-                                        authViewModel = authViewModel,
-                                        onBackClick = { currentSubScreen = "sessions" }
-                                    )
-                                    // Navigate back on login completion
-                                    val authState by authViewModel.authState.collectAsState()
-                                    LaunchedEffect(authState) {
-                                        if (authState is InstagramAuthState.LoggedIn) {
-                                            currentSubScreen = "sessions"
-                                        }
+                                SessionsScreen(
+                                    authViewModel = authViewModel,
+                                    onNavigateToLogin = { navigateTo(Screen.Login) }
+                                )
+                            }
+                            is Screen.Login -> {
+                                InstagramLoginScreen(
+                                    authViewModel = authViewModel,
+                                    onBackClick = { navigateBack() }
+                                )
+                                // Navigate back automatically on login completion
+                                val authState by authViewModel.authState.collectAsState()
+                                LaunchedEffect(authState) {
+                                    if (authState is InstagramAuthState.LoggedIn) {
+                                        navigateBack()
                                     }
-                                } else {
-                                    SessionsScreen(
-                                        authViewModel = authViewModel,
-                                        onNavigateToLogin = { currentSubScreen = "login" }
-                                    )
                                 }
                             }
                             is Screen.Settings -> {

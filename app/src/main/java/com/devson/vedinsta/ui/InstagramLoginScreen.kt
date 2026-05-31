@@ -1,7 +1,11 @@
 package com.devson.vedinsta.ui
 
 import android.graphics.Bitmap
+import android.util.Log
+import android.webkit.ConsoleMessage
 import android.webkit.CookieManager
+import android.webkit.WebChromeClient
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.Box
@@ -48,6 +52,7 @@ fun InstagramLoginScreen(
                 factory = { context ->
                     WebView(context).apply {
                         webViewInstance = this
+                        val webView = this
                         
                         // Configure WebView settings for Instagram Web
                         settings.apply {
@@ -56,7 +61,22 @@ fun InstagramLoginScreen(
                             databaseEnabled = true
                             useWideViewPort = true
                             loadWithOverviewMode = true
-                            userAgentString = "Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.181 Mobile Safari/537.36"
+                            cacheMode = WebSettings.LOAD_NO_CACHE
+                            userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                        }
+                        
+                        // Configure CookieManager to accept cookies and third-party cookies
+                        val cookieManager = CookieManager.getInstance().apply {
+                            setAcceptCookie(true)
+                            setAcceptThirdPartyCookies(webView, true)
+                        }
+                        
+                        // Attach WebChromeClient for console logging and debugging
+                        webChromeClient = object : WebChromeClient() {
+                            override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
+                                Log.d("InstagramLoginWebView", "[Console] ${consoleMessage?.message()} at ${consoleMessage?.sourceId()}:${consoleMessage?.lineNumber()}")
+                                return true
+                            }
                         }
                         
                         webViewClient = object : WebViewClient() {
@@ -76,7 +96,6 @@ fun InstagramLoginScreen(
                                         currentUrl.contains("instagram.com/accounts/onetap") ||
                                         (!currentUrl.contains("accounts/login") && currentUrl.startsWith("https://www.instagram.com/"))
                                     ) {
-                                        val cookieManager = CookieManager.getInstance()
                                         val cookies = cookieManager.getCookie("https://www.instagram.com")
                                         
                                         if (!cookies.isNullOrEmpty() && cookies.contains("sessionid")) {
@@ -87,12 +106,13 @@ fun InstagramLoginScreen(
                             }
                         }
                         
-                        // Clear WebView cookies/cache before presenting login page to avoid automatic invalid redirects
-                        val cookieManager = CookieManager.getInstance()
-                        cookieManager.removeAllCookies(null)
-                        cookieManager.flush()
-                        
-                        loadUrl("https://www.instagram.com/accounts/login/")
+                        // Clear WebView cookies/cache asynchronously before presenting login page to avoid redirects
+                        cookieManager.removeAllCookies {
+                            cookieManager.flush()
+                            post {
+                                loadUrl("https://www.instagram.com/accounts/login/")
+                            }
+                        }
                     }
                 },
                 update = {

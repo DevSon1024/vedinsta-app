@@ -9,3 +9,15 @@
   7. Resolved compilation issues by adding missing imports for `BorderStroke` in `MainActivity.kt` and `File` in `SharedLinkProcessingService.kt`.
   8. Verified the project compiles successfully using `.\gradlew assembleDebug`.
 - **End Marker:** ---
+
+- **Type of Details:** Error Solving & Refactor
+- **Description:** 
+  1. Fixed the Instagram WebView login screen not loading or failing to create login sessions.
+  2. Labeled and scoped the `WebView` instance in `InstagramLoginScreen.kt` to ensure `CookieManager.setAcceptThirdPartyCookies` gets the correct `WebView` argument.
+  3. Configured `CookieManager` to accept all cookies and third-party cookies, which are required for Instagram session creation.
+  4. Labeled and verified `removeAllCookies` runs asynchronously before `loadUrl` to avoid race conditions.
+  5. Configured the User Agent to a modern Desktop Chrome string (`Chrome/120.0.0.0 Safari/537.36`) and set cache mode to `LOAD_NO_CACHE` to bypass mobile redirect challenges and resolve blank page crashes after the splash screen is shown.
+  6. Refactored navigation in `MainActivity.kt` to declare `Screen.Login` as a top-level route in the navigation stack, ensuring back clicks pop the screen correctly and successful login pops the screen automatically.
+  7. Adjusted default TopAppBar visibility in `MainActivity.kt` to prevent rendering over the login screen's app bar.
+  8. Verified the project compiles successfully using `.\gradlew assembleDebug`.
+- **End Marker:** ---
