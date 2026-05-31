@@ -26,6 +26,7 @@ class DownloadService : Service() {
         const val EXTRA_DOWNLOAD_URL = "download_url"
         const val EXTRA_FILE_PATH = "file_path"
         const val EXTRA_FILE_NAME = "file_name"
+        private const val USER_AGENT = "Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.193 Mobile Safari/537.36 Instagram 314.0.0.19.113 Android (34/14; 450dpi; 1440x3088; samsung; SM-S918B; dm3q; qcom; en_US; 557876543)"
     }
 
     override fun onCreate() {
@@ -69,31 +70,31 @@ class DownloadService : Service() {
         try {
             val request = Request.Builder()
                 .url(url)
-                .header("User-Agent", "Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36")
+                .header("User-Agent", USER_AGENT)
                 .build()
 
-            val response = httpClient.newCall(request).execute()
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    notificationManager.showDownloadError(fileName, "HTTP ${response.code}")
+                    return
+                }
 
-            if (!response.isSuccessful) {
-                notificationManager.showDownloadError(fileName, "HTTP ${response.code}")
-                return
-            }
+                val body = response.body ?: throw IOException("Empty response body")
+                val contentLength = body.contentLength()
 
-            val body = response.body ?: throw IOException("Empty response body")
-            val contentLength = body.contentLength()
+                val file = File(filePath)
+                file.parentFile?.mkdirs()
 
-            val file = File(filePath)
-            file.parentFile?.mkdirs()
+                body.byteStream().use { inputStream ->
+                    FileOutputStream(file).use { outputStream ->
+                        val buffer = ByteArray(8192)
+                        var bytesRead: Int
+                        var totalBytesRead = 0L
 
-            body.byteStream().use { inputStream ->
-                FileOutputStream(file).use { outputStream ->
-                    val buffer = ByteArray(8192)
-                    var bytesRead: Int
-                    var totalBytesRead = 0L
-
-                    while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                        outputStream.write(buffer, 0, bytesRead)
-                        totalBytesRead += bytesRead
+                        while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                            outputStream.write(buffer, 0, bytesRead)
+                            totalBytesRead += bytesRead
+                        }
                     }
                 }
             }

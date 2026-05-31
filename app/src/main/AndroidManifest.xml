@@ -93,6 +93,10 @@
             android:name=".DownloadActivity"
             android:exported="false" />
         <activity
+            android:name=".InstagramComposeActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Vedinsta" />
+        <activity
             android:name=".NotificationActivity"
             android:exported="false"
             android:parentActivityName=".MainActivity" />

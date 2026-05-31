@@ -8,10 +8,14 @@ import time
 import random
 from datetime import datetime, timedelta, timezone
 
-def setup_instaloader():
-    """Setup Instaloader with session management"""
+# Dynamic exception resolution for compatibility across instaloader versions
+RateLimitException = getattr(instaloader.exceptions, 'RateLimitException', instaloader.exceptions.ConnectionException)
+TooManyRequestsException = getattr(instaloader.exceptions, 'TooManyRequestsException', instaloader.exceptions.ConnectionException)
+
+def setup_instaloader(session_username=None, session_file_path=None):
+    """Setup Instaloader with session management and unified modern User-Agent"""
     try:
-        # Updated User Agent to reduce 403 blocks (Samsung S23 Ultra / Android 14)
+        # Unified User Agent to reduce 403 blocks (Samsung S23 Ultra / Android 14)
         user_agent = 'Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.193 Mobile Safari/537.36 Instagram 314.0.0.19.113 Android (34/14; 450dpi; 1440x3088; samsung; SM-S918B; dm3q; qcom; en_US; 557876543)'
 
         L = instaloader.Instaloader(
@@ -26,19 +30,29 @@ def setup_instaloader():
             quiet=True,
             user_agent=user_agent
         )
+
+        # Load session if credentials and file path are provided from Kotlin
+        if session_username and session_file_path:
+            try:
+                L.load_session_from_file(session_username, filename=session_file_path)
+            except Exception as e:
+                # Log to stderr and fall back to anonymous scraping if session loading fails
+                print(f"Warning: Failed to load session for {session_username} from {session_file_path}: {e}", file=sys.stderr)
+
         return L
     except Exception as e:
         print(json.dumps({"status": "error", "message": f"Failed to setup Instaloader: {str(e)[:100]}"}))
         sys.exit(1)
 
 
-def get_media_urls(url_or_username):
+def get_media_urls(url_or_username, session_username=None, session_file_path=None):
     """
     Fetches media URLs from an Instagram post/reel/story URL or username (for stories).
     Returns JSON string with status, media details, or error information.
+    Supports optional session management parameter inputs.
     """
     start_time = time.time()
-    L = setup_instaloader()
+    L = setup_instaloader(session_username, session_file_path)
 
     try:
         url_or_username = url_or_username.strip()
@@ -135,18 +149,22 @@ def fetch_post_or_reel(L, post_url, start_time):
     post = None
     max_retries = 3 # Increased retries
 
-    # Retry logic for 403/Connection errors
+    # Retry logic for 403/Connection errors with exponential backoff
     for attempt in range(max_retries + 1):
         try:
             post = instaloader.Post.from_shortcode(L.context, shortcode)
             break
         except instaloader.exceptions.LoginRequiredException:
              return json.dumps({"status": "login_required", "message": "Login required for this post"})
-        except (instaloader.exceptions.ConnectionException, instaloader.exceptions.RateLimitException) as e:
+        except (instaloader.exceptions.ConnectionException, RateLimitException, TooManyRequestsException) as e:
              if attempt < max_retries:
-                  time.sleep(random.uniform(2, 5)) # Wait before retry
+                  # Exponential backoff algorithm: base delay * 2^attempt + random jitter
+                  base_delay = 2.0
+                  jitter = random.uniform(0.5, 1.5)
+                  delay = (base_delay * (2 ** attempt)) + jitter
+                  time.sleep(delay)
                   continue
-             return json.dumps({"status": "error", "message": "Connection failed after retries (likely 403 Forbidden)."})
+             return json.dumps({"status": "error", "message": "Connection failed after retries (likely 403 Forbidden or Rate Limited)."})
         except Exception as e:
             if "404" in str(e):
                  return json.dumps({"status": "not_found", "message": "Post not found or deleted."})
@@ -196,5 +214,5 @@ def extract_shortcode_from_url(url):
     return match.group(1) if match else None
 
 # Keep legacy function name if used elsewhere
-def get_meida_urls(url_or_username):
-    return get_media_urls(url_or_username)
+def get_meida_urls(url_or_username, session_username=None, session_file_path=None):
+    return get_media_urls(url_or_username, session_username, session_file_path)
