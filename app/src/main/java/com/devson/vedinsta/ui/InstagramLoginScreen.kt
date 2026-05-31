@@ -28,20 +28,10 @@ fun InstagramLoginScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Instagram Sign In") },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back"
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                )
+            VedInstaTopAppBar(
+                title = "Instagram Sign In",
+                showBackButton = true,
+                onBackClick = onBackClick
             )
         }
     ) { paddingValues ->

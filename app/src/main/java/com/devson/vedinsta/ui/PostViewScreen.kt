@@ -68,8 +68,9 @@ fun PostViewScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
+            VedInstaTopAppBar(
+                title = "",
+                titleContent = {
                     Column {
                         Text(
                             text = "@${post.username}",
@@ -88,15 +89,8 @@ fun PostViewScreen(
                         )
                     }
                 },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                },
+                showBackButton = true,
+                onBackClick = onBackClick,
                 actions = {
                     // Copy Link
                     IconButton(onClick = {
@@ -145,8 +139,7 @@ fun PostViewScreen(
                             tint = MaterialTheme.colorScheme.error
                         )
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                }
             )
         },
         containerColor = MaterialTheme.colorScheme.background

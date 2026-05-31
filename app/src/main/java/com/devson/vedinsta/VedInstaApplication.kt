@@ -30,6 +30,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import org.json.JSONObject
 import android.content.Intent
+import com.devson.vedinsta.model.ImageCard
 import com.devson.vedinsta.service.DownloadService
 
 class VedInstaApplication : Application() {

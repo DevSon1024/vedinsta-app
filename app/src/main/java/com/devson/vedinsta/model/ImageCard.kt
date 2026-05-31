@@ -1,4 +1,4 @@
-package com.devson.vedinsta
+package com.devson.vedinsta.model
 
 data class ImageCard(
     val url: String,

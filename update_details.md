@@ -59,3 +59,34 @@
   6. Wrapped [InstagramLoginScreen.kt](file:///c:/Android/vedinsta/app/src/main/java/com/devson/vedinsta/ui/InstagramLoginScreen.kt) root layout in a `Scaffold` to automatically apply inset padding for the login screen's app bar.
   7. Verified the project compiles successfully using `.\gradlew.bat clean assembleDebug`.
 - **End Marker:** ---
+- **Type of Details:** New Update & Refactor
+- **Description:** 
+  1. Created a dedicated landing `HomeScreen.kt` under the `com.devson.vedinsta.ui` package.
+  2. Implemented a beautiful gradient-styled welcome header showcasing dynamic time-based greetings (Good Morning/Afternoon/Evening) and active download statistics.
+  3. Integrated interactive shortcut navigation cards linking directly to the Downloader and Favorites screens.
+  4. Constructed a highly aesthetic uncontained horizontal carousel using `LazyRow` showcasing the top 8 recent downloads, complete with uploader usernames, play overlays for video media, and click redirection to post detail viewers.
+  5. Implemented an elegant empty state card when no media has been downloaded yet, displaying a CTA button to get started.
+  6. Refactored `MainActivity.kt` to extract the `AboutScreen` and `NotificationsScreen` composables into dedicated, self-contained files under the `ui/` folder, cleaning up activity orchestration.
+  7. Updated the sealed class navigation destinations and configured `Screen.Home` as the starting route.
+  8. Redesigned the `NavigationBar` bottom tab bar to clean up and display five core screens (Home, Downloader, History, Favorites, and Sessions), and re-routed the Settings screen to a dedicated icon button inside the `TopAppBar`.
+  9. Verified the project compiles successfully using `.\gradlew.bat clean assembleDebug` with zero errors.
+- **End Marker:** ---
+- **Type of Details:** New Update & Refactor
+- **Description:** 
+  1. Created a reusable custom `@Composable` top app bar `VedInstaTopAppBar.kt` to unify styling, title types, and actions.
+  2. Integrated `VedInstaTopAppBar` into the Scaffold definitions of `MainActivity.kt`, `PostViewScreen.kt`, and `InstagramLoginScreen.kt`.
+  3. Re-configured navigation flows so that clicking the back arrow from any sub-screen redirects the user directly back to the Home Screen (`Screen.Home`).
+  4. Integrated Compose `BackHandler` on all sub-screens to automatically hook physical back gestures to Home redirection.
+  5. Configured the Settings and Notifications badge buttons to display exclusively on the Home Screen's TopAppBar actions block.
+  6. Added a global Floating Action Button (FAB) featuring a download icon that routes users instantly to the Downloader screen, visible on all primary screens and automatically hidden on Downloader, Login, and PostView.
+  7. Verified the project compiles successfully using `.\gradlew.bat clean assembleDebug` with zero errors.
+- **End Marker:** ---
+- **Type of Details:** Refactor & New Update
+- **Description:** 
+  1. Completely removed the bottom `NavigationBar` from the application.
+  2. Extracted the entire app UI, Scaffold, screen stack state, grid selector dialog, and content routing logic from `MainActivity.kt` into a new package-level Composable `MainAppScreen.kt` acting as the central screen and navgraph.
+  3. Cleaned up `MainActivity.kt` down to a lightweight activity host of under 50 lines.
+  4. Redesigned `VedInstaTopAppBar.kt` to use the standard left-aligned Material 3 `TopAppBar` instead of `CenterAlignedTopAppBar` to align all screen names beautifully in the top-left corner.
+  5. Added a new "Sessions" callback parameter to `HomeScreen.kt` and updated the "Quick Actions" panel from two cards to three columns, adding a new dedicated sessions navigation shortcut card with the `AccountBox` icon.
+  6. Verified the project compiles successfully using `.\gradlew.bat clean assembleDebug` with zero errors.
+- **End Marker:** ---

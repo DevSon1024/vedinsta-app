@@ -4,7 +4,7 @@ import android.app.Service
 import android.content.Intent
 import android.os.IBinder
 import android.util.Log
-import com.devson.vedinsta.ImageCard
+import com.devson.vedinsta.model.ImageCard
 import com.devson.vedinsta.SettingsManager
 import com.devson.vedinsta.VedInstaApplication
 import com.devson.vedinsta.notification.VedInstaNotificationManager
