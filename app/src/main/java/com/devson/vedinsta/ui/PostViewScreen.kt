@@ -10,13 +10,19 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
@@ -43,6 +49,8 @@ import java.util.*
 @Composable
 fun PostViewScreen(
     post: DownloadedPost,
+    isFavorite: (String) -> Boolean,
+    onToggleFavorite: (String) -> Unit,
     onBackClick: () -> Unit,
     onDeletePost: (DownloadedPost) -> Unit
 ) {
@@ -64,7 +72,14 @@ fun PostViewScreen(
     }
 
     val pagerState = rememberPagerState(pageCount = { mediaFiles.size })
-    var isCaptionExpanded by remember { mutableStateOf(false) }
+    val fav = isFavorite(post.postId)
+    
+    var showCaptionSheet by remember { mutableStateOf(false) }
+    var showShareMenu by remember { mutableStateOf(false) }
+    
+    val hashtags = remember(post.caption) {
+        post.caption?.split(Regex("\\s+"))?.filter { it.startsWith("#") } ?: emptyList()
+    }
 
     Scaffold(
         topBar = {
@@ -74,7 +89,7 @@ fun PostViewScreen(
                     Column {
                         Text(
                             text = "@${post.username}",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -84,7 +99,7 @@ fun PostViewScreen(
                         }
                         Text(
                             text = "Downloaded $dateString",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                             fontSize = 11.sp
                         )
                     }
@@ -106,29 +121,6 @@ fun PostViewScreen(
                         )
                     }
 
-                    // Share File
-                    IconButton(onClick = {
-                        val currentFile = mediaFiles[pagerState.currentPage]
-                        val fileUri = androidx.core.content.FileProvider.getUriForFile(
-                            context,
-                            "${context.packageName}.fileprovider",
-                            currentFile
-                        )
-                        val shareIntent = Intent().apply {
-                            action = Intent.ACTION_SEND
-                            type = if (currentFile.extension.lowercase() in listOf("mp4", "mov", "avi")) "video/*" else "image/*"
-                            putExtra(Intent.EXTRA_STREAM, fileUri)
-                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        }
-                        context.startActivity(Intent.createChooser(shareIntent, "Share media"))
-                    }) {
-                        Icon(
-                            imageVector = Icons.Default.Share,
-                            contentDescription = "Share",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
                     // Delete Post
                     IconButton(onClick = {
                         onDeletePost(post)
@@ -142,93 +134,323 @@ fun PostViewScreen(
                 }
             )
         },
-        containerColor = MaterialTheme.colorScheme.background
+        containerColor = MaterialTheme.colorScheme.background,
+        modifier = Modifier.fillMaxSize()
     ) { paddingValues ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
+                .padding(top = paddingValues.calculateTopPadding()) // Pad only for the TopAppBar
+                .background(MaterialTheme.colorScheme.background)
         ) {
-            // Horizontal Carousel
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier.fillMaxSize().background(Color.Black)
-            ) { page ->
-                val file = mediaFiles[page]
-                val isVideo = file.extension.lowercase() in listOf("mp4", "mov", "avi")
+            // Media Viewport
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .background(Color.Black), // Keeps the media viewport region black for immersion
+                contentAlignment = Alignment.Center
+            ) {
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxSize()
+                ) { page ->
+                    val file = mediaFiles[page]
+                    val isVideo = file.extension.lowercase() in listOf("mp4", "mov", "avi")
 
-                Box(
-                    modifier = Modifier.fillMaxSize().background(Color.Black),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (isVideo) {
-                        VideoPlayer(file = file)
-                    } else {
-                        AsyncImage(
-                            model = file,
-                            contentDescription = "Post Media",
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Fit
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (isVideo) {
+                            VideoPlayer(file = file)
+                        } else {
+                            AsyncImage(
+                                model = file,
+                                contentDescription = "Post Media",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Fit
+                            )
+                        }
+                    }
+                }
+
+                // Page indicator bubble
+                if (mediaFiles.size > 1) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(16.dp)
+                            .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+                            .padding(horizontal = 12.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "${pagerState.currentPage + 1} / ${mediaFiles.size}",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 }
             }
 
-            // Carousel indicator / index counter
-            if (mediaFiles.size > 1) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(16.dp)
-                        .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
-                        .padding(horizontal = 12.dp, vertical = 4.dp)
-                ) {
-                    Text(
-                        text = "${pagerState.currentPage + 1} / ${mediaFiles.size}",
-                        color = Color.White,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-
-            // Caption overlay at bottom
-            if (!post.caption.isNullOrEmpty()) {
-                val fullCaption = post.caption
-                val isLong = fullCaption.length > 80
-
+            // Bottom Section (Instagram style, theme aware and with zero white padding)
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding(), // Ensures proper edge-to-edge drawing without bottom white padding
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 2.dp
+            ) {
                 Column(
                     modifier = Modifier
-                        .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                ) {
+                    // Row of Action Buttons (Like, Share, Description)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            // Favorite/Like Icon
+                            IconButton(onClick = { onToggleFavorite(post.postId) }) {
+                                Icon(
+                                    imageVector = if (fav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                    contentDescription = "Favorite",
+                                    tint = if (fav) Color.Red else MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.size(28.dp)
+                                )
+                            }
+
+                            // Share Icon with anchor for dropdown menu
+                            Box {
+                                IconButton(onClick = { showShareMenu = true }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Share,
+                                        contentDescription = "Share Options",
+                                        tint = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                }
+
+                                DropdownMenu(
+                                    expanded = showShareMenu,
+                                    onDismissRequest = { showShareMenu = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Share Current Media File") },
+                                        onClick = {
+                                            showShareMenu = false
+                                            val currentFile = mediaFiles[pagerState.currentPage]
+                                            val fileUri = androidx.core.content.FileProvider.getUriForFile(
+                                                context,
+                                                "${context.packageName}.fileprovider",
+                                                currentFile
+                                            )
+                                            val shareIntent = Intent().apply {
+                                                action = Intent.ACTION_SEND
+                                                type = if (currentFile.extension.lowercase() in listOf("mp4", "mov", "avi")) "video/*" else "image/*"
+                                                putExtra(Intent.EXTRA_STREAM, fileUri)
+                                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                            }
+                                            context.startActivity(Intent.createChooser(shareIntent, "Share Current Media"))
+                                        }
+                                    )
+                                    if (mediaFiles.size > 1) {
+                                        DropdownMenuItem(
+                                            text = { Text("Share All Media Files") },
+                                            onClick = {
+                                                showShareMenu = false
+                                                val fileUris = ArrayList<Uri>()
+                                                mediaFiles.forEach { file ->
+                                                    val fileUri = androidx.core.content.FileProvider.getUriForFile(
+                                                        context,
+                                                        "${context.packageName}.fileprovider",
+                                                        file
+                                                    )
+                                                    fileUris.add(fileUri)
+                                                }
+                                                val shareIntent = Intent().apply {
+                                                    action = Intent.ACTION_SEND_MULTIPLE
+                                                    type = "*/*"
+                                                    putParcelableArrayListExtra(Intent.EXTRA_STREAM, fileUris)
+                                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                }
+                                                context.startActivity(Intent.createChooser(shareIntent, "Share All Media"))
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Description/Caption indicator button
+                        if (!post.caption.isNullOrEmpty()) {
+                            TextButton(
+                                onClick = { showCaptionSheet = true }
+                            ) {
+                                Text(
+                                    text = "View Description",
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+
+                    // Instagram-like caption summary
+                    if (!post.caption.isNullOrEmpty()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { showCaptionSheet = true }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            Text(
+                                text = "@${post.username} ",
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontSize = 13.sp
                             )
-                        )
-                        .padding(24.dp)
+                            val shortCaption = if (post.caption.length > 70) post.caption.take(70) + "... more" else post.caption
+                            Text(
+                                text = shortCaption,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 13.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Modal Bottom Sheet for Post Description
+    if (showCaptionSheet && !post.caption.isNullOrEmpty()) {
+        ModalBottomSheet(
+            onDismissRequest = { showCaptionSheet = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 20.dp, vertical = 8.dp)
+            ) {
+                // Header with Copy button
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = if (isCaptionExpanded || !isLong) fullCaption else fullCaption.take(80) + "...",
-                        color = Color.White,
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp,
-                        maxLines = if (isCaptionExpanded) Int.MAX_VALUE else 3,
-                        overflow = TextOverflow.Ellipsis
+                        text = "Description",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
-                    
-                    if (isLong) {
-                        Text(
-                            text = if (isCaptionExpanded) "Show Less" else "Show More",
-                            color = MaterialTheme.colorScheme.tertiary,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier
-                                .clickable { isCaptionExpanded = !isCaptionExpanded }
-                                .padding(vertical = 4.dp)
+
+                    IconButton(onClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val clip = ClipData.newPlainText("post_caption", post.caption)
+                        clipboard.setPrimaryClip(clip)
+                        Toast.makeText(context, "Description copied to clipboard", Toast.LENGTH_SHORT).show()
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.ContentCopy,
+                            contentDescription = "Copy Description",
+                            tint = MaterialTheme.colorScheme.primary
                         )
                     }
                 }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Scrollable description block with selection support
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 280.dp)
+                        .background(
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            RoundedCornerShape(12.dp)
+                        )
+                        .padding(16.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        SelectionContainer {
+                            Text(
+                                text = post.caption,
+                                fontSize = 14.sp,
+                                lineHeight = 20.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+
+                // Dedicated Hashtags Section
+                if (hashtags.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Text(
+                        text = "Hashtags (${hashtags.size})",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // Horizontal scroll of Hashtag chips
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(hashtags) { tag ->
+                            SuggestionChip(
+                                onClick = {
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    val clip = ClipData.newPlainText("hashtag", tag)
+                                    clipboard.setPrimaryClip(clip)
+                                    Toast.makeText(context, "Copied hashtag: $tag", Toast.LENGTH_SHORT).show()
+                                },
+                                label = { Text(text = tag, fontWeight = FontWeight.SemiBold) }
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // Button to copy all hashtags
+                    OutlinedButton(
+                        onClick = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val clip = ClipData.newPlainText("hashtags", hashtags.joinToString(" "))
+                            clipboard.setPrimaryClip(clip)
+                            Toast.makeText(context, "All hashtags copied", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Copy All Hashtags")
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
             }
         }
     }

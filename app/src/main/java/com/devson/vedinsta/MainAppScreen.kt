@@ -81,12 +81,8 @@ fun MainAppScreen(
     }
 
     fun navigateBack() {
-        if (currentScreen is Screen.Login) {
-            if (screenStack.size > 1) {
-                screenStack.removeAt(screenStack.lastIndex)
-            } else {
-                navigateTo(Screen.Home)
-            }
+        if (screenStack.size > 1) {
+            screenStack.removeAt(screenStack.lastIndex)
         } else {
             navigateTo(Screen.Home)
         }
@@ -196,105 +192,127 @@ fun MainAppScreen(
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
+        val applyPadding = currentScreen !is Screen.PostView && currentScreen !is Screen.Login
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
+                .padding(if (applyPadding) paddingValues else PaddingValues(0.dp))
         ) {
-            when (currentScreen) {
-                is Screen.Home -> {
-                    HomeScreen(
-                        recentPosts = posts,
-                        onNavigateToDownloader = { navigateTo(Screen.Downloader) },
-                        onNavigateToFavorites = { navigateTo(Screen.Favorites) },
-                        onNavigateToHistory = { navigateTo(Screen.History) },
-                        onNavigateToSessions = { navigateTo(Screen.Sessions) },
-                        onPostClick = { post -> navigateTo(Screen.PostView(post)) }
-                    )
-                }
-                is Screen.Downloader -> {
-                    MediaSelectionScreen(
-                        authViewModel = authViewModel,
-                        extractionViewModel = extractionViewModel,
-                        onNavigateToLogin = { navigateTo(Screen.Login) }
-                    )
-                }
-                is Screen.History -> {
-                    HistoryScreen(
-                        posts = posts,
-                        gridColumnCount = gridColumnCount,
-                        isFavorite = isFavoriteHelper,
-                        onToggleFavorite = toggleFavoriteHelper,
-                        onPostClick = { post -> navigateTo(Screen.PostView(post)) },
-                        onPostLongClick = { post ->
-                            showPostOptions(context, post, mainViewModel, toggleFavoriteHelper, isFavoriteHelper(post.postId))
-                        }
-                    )
-                }
-                is Screen.Favorites -> {
-                    FavoritesScreen(
-                        posts = posts,
-                        gridColumnCount = gridColumnCount,
-                        isFavorite = isFavoriteHelper,
-                        onToggleFavorite = toggleFavoriteHelper,
-                        onPostClick = { post -> navigateTo(Screen.PostView(post)) },
-                        onPostLongClick = { post ->
-                            showPostOptions(context, post, mainViewModel, toggleFavoriteHelper, isFavoriteHelper(post.postId))
-                        }
-                    )
-                }
-                is Screen.Sessions -> {
-                    SessionsScreen(
-                        authViewModel = authViewModel,
-                        onNavigateToLogin = { navigateTo(Screen.Login) }
-                    )
-                }
-                is Screen.Login -> {
-                    InstagramLoginScreen(
-                        authViewModel = authViewModel,
-                        onBackClick = { navigateBack() }
-                    )
-                    // Navigate back automatically on login completion
-                    val authState by authViewModel.authState.collectAsState()
-                    LaunchedEffect(authState) {
-                        if (authState is InstagramAuthState.LoggedIn) {
-                            navigateBack()
+            AnimatedContent(
+                targetState = currentScreen,
+                transitionSpec = {
+                    val initialOrder = getScreenOrderValue(initialState)
+                    val targetOrder = getScreenOrderValue(targetState)
+                    if (targetOrder > initialOrder) {
+                        // Opening: Left to Right
+                        slideInHorizontally(initialOffsetX = { -it }) + fadeIn() togetherWith
+                            slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
+                    } else {
+                        // Closing: Right to Left
+                        slideInHorizontally(initialOffsetX = { it }) + fadeIn() togetherWith
+                            slideOutHorizontally(targetOffsetX = { -it }) + fadeOut()
+                    }
+                },
+                label = "ScreenTransition",
+                modifier = Modifier.fillMaxSize()
+            ) { targetScreen ->
+                when (targetScreen) {
+                    is Screen.Home -> {
+                        HomeScreen(
+                            recentPosts = posts,
+                            onNavigateToDownloader = { navigateTo(Screen.Downloader) },
+                            onNavigateToFavorites = { navigateTo(Screen.Favorites) },
+                            onNavigateToHistory = { navigateTo(Screen.History) },
+                            onNavigateToSessions = { navigateTo(Screen.Sessions) },
+                            onPostClick = { post -> navigateTo(Screen.PostView(post)) }
+                        )
+                    }
+                    is Screen.Downloader -> {
+                        MediaSelectionScreen(
+                            authViewModel = authViewModel,
+                            extractionViewModel = extractionViewModel,
+                            onNavigateToLogin = { navigateTo(Screen.Login) }
+                        )
+                    }
+                    is Screen.History -> {
+                        HistoryScreen(
+                            posts = posts,
+                            gridColumnCount = gridColumnCount,
+                            isFavorite = isFavoriteHelper,
+                            onToggleFavorite = toggleFavoriteHelper,
+                            onPostClick = { post -> navigateTo(Screen.PostView(post)) },
+                            onPostLongClick = { post ->
+                                showPostOptions(context, post, mainViewModel, toggleFavoriteHelper, isFavoriteHelper(post.postId))
+                            }
+                        )
+                    }
+                    is Screen.Favorites -> {
+                        FavoritesScreen(
+                            posts = posts,
+                            gridColumnCount = gridColumnCount,
+                            isFavorite = isFavoriteHelper,
+                            onToggleFavorite = toggleFavoriteHelper,
+                            onPostClick = { post -> navigateTo(Screen.PostView(post)) },
+                            onPostLongClick = { post ->
+                                showPostOptions(context, post, mainViewModel, toggleFavoriteHelper, isFavoriteHelper(post.postId))
+                            }
+                        )
+                    }
+                    is Screen.Sessions -> {
+                        SessionsScreen(
+                            authViewModel = authViewModel,
+                            onNavigateToLogin = { navigateTo(Screen.Login) }
+                        )
+                    }
+                    is Screen.Login -> {
+                        InstagramLoginScreen(
+                            authViewModel = authViewModel,
+                            onBackClick = { navigateBack() }
+                        )
+                        // Navigate back automatically on login completion
+                        val authState by authViewModel.authState.collectAsState()
+                        LaunchedEffect(authState) {
+                            if (authState is InstagramAuthState.LoggedIn) {
+                                navigateBack()
+                            }
                         }
                     }
-                }
-                is Screen.Settings -> {
-                    SettingsScreen(
-                        settingsManager = settingsManager,
-                        onNavigateToAbout = { navigateTo(Screen.About) },
-                        onThemeChanged = onThemeChanged
-                    )
-                }
-                is Screen.About -> {
-                    AboutScreen()
-                }
-                is Screen.Notifications -> {
-                    NotificationsScreen(
-                        notifications = notifications,
-                        onNotificationClick = { id -> notificationViewModel.markAsRead(id) },
-                        onDeleteClick = { id -> notificationViewModel.deleteNotification(id) }
-                    )
-                }
-                is Screen.PostView -> {
-                    PostViewScreen(
-                        post = currentScreen.post,
-                        onBackClick = { navigateBack() },
-                        onDeletePost = { post ->
-                            mainViewModel.deleteDownloadedPost(post)
-                            post.mediaPaths.forEach { path ->
-                                try {
-                                    val file = File(path)
-                                    if (file.exists()) file.delete()
-                                } catch (e: Exception) {}
+                    is Screen.Settings -> {
+                        SettingsScreen(
+                            settingsManager = settingsManager,
+                            onNavigateToAbout = { navigateTo(Screen.About) },
+                            onThemeChanged = onThemeChanged
+                        )
+                    }
+                    is Screen.About -> {
+                        AboutScreen()
+                    }
+                    is Screen.Notifications -> {
+                        NotificationsScreen(
+                            notifications = notifications,
+                            onNotificationClick = { id -> notificationViewModel.markAsRead(id) },
+                            onDeleteClick = { id -> notificationViewModel.deleteNotification(id) }
+                        )
+                    }
+                    is Screen.PostView -> {
+                        PostViewScreen(
+                            post = targetScreen.post,
+                            isFavorite = isFavoriteHelper,
+                            onToggleFavorite = toggleFavoriteHelper,
+                            onBackClick = { navigateBack() },
+                            onDeletePost = { post ->
+                                mainViewModel.deleteDownloadedPost(post)
+                                post.mediaPaths.forEach { path ->
+                                    try {
+                                        val file = File(path)
+                                        if (file.exists()) file.delete()
+                                    } catch (e: Exception) {}
+                                }
+                                Toast.makeText(context, "Post deleted", Toast.LENGTH_SHORT).show()
+                                navigateBack()
                             }
-                            Toast.makeText(context, "Post deleted", Toast.LENGTH_SHORT).show()
-                            navigateBack()
-                        }
-                    )
+                        )
+                    }
                 }
             }
         }
@@ -409,4 +427,19 @@ fun <T> LiveData<T>.observeAsState(initial: T): State<T> {
         }
     }
     return state
+}
+
+private fun getScreenOrderValue(screen: Screen): Int {
+    return when (screen) {
+        is Screen.Home -> 0
+        is Screen.Downloader -> 1
+        is Screen.History -> 2
+        is Screen.Favorites -> 3
+        is Screen.Sessions -> 4
+        is Screen.Settings -> 5
+        is Screen.Notifications -> 6
+        is Screen.About -> 7
+        is Screen.Login -> 8
+        is Screen.PostView -> 9
+    }
 }

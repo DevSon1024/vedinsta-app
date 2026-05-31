@@ -31,7 +31,7 @@ You must actively maintain the project's changelog. After every completed task, 
 
 - **Type of Details:** (e.g., Error Solving, New Update, Refactor, Performance Improvement, More)
 - **Description:** A brief, clear summary of what was changed, fixed, or added in the recent chat/interaction.
-- **End Marker:** After the details of the latest update, you must append only `---` to close out that specific chat area/session.
+  After the details of the latest update, you must append only `---` to close out that specific chat area/session.
 
 ## 5. Project Architecture & Structure
 

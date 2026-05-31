@@ -126,58 +126,7 @@ fun HomeScreen(
                 .padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Card 1: Go to Downloader
-            Card(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(120.dp)
-                    .clickable { onNavigateToDownloader() },
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .background(
-                                MaterialTheme.colorScheme.primaryContainer,
-                                RoundedCornerShape(10.dp)
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.AddCircle,
-                            contentDescription = "Downloader",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                    Column {
-                        Text(
-                            text = "Downloader",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "Download links",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-            }
-
-            // Card 2: Go to Favorites
+            // Card 1: Go to Favorites
             Card(
                 modifier = Modifier
                     .weight(1f)
@@ -228,7 +177,7 @@ fun HomeScreen(
                 }
             }
 
-            // Card 3: Go to Sessions
+            // Card 2: Go to Sessions
             Card(
                 modifier = Modifier
                     .weight(1f)

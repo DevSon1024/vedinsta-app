@@ -369,9 +369,19 @@ fun MediaItemCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            // Media Preview Image (Load from chosen quality URL or fallback)
+            // Media Preview Image (Load from lowest quality URL to save bandwidth)
+            val previewUrl = remember(item) {
+                val qualities = item.qualities ?: emptyList()
+                if (qualities.isEmpty()) {
+                    item.url
+                } else {
+                    qualities.filter { !it.url.isNullOrBlank() }
+                        .minByOrNull { (it.width ?: 9999) * (it.height ?: 9999) }?.url ?: item.url
+                }
+            }
+
             AsyncImage(
-                model = chosenUrl ?: item.url,
+                model = previewUrl,
                 contentDescription = "Media Preview",
                 modifier = Modifier
                     .fillMaxSize()
