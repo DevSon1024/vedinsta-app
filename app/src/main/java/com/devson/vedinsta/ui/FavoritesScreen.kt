@@ -16,6 +16,9 @@ import com.devson.vedinsta.database.DownloadedPost
 fun FavoritesScreen(
     posts: List<DownloadedPost>,
     gridColumnCount: Int,
+    onGridColumnsChanged: (Int) -> Unit,
+    isListView: Boolean,
+    onListViewChanged: (Boolean) -> Unit,
     isFavorite: (String) -> Boolean,
     onToggleFavorite: (String) -> Unit,
     onPostClick: (DownloadedPost) -> Unit,
@@ -49,6 +52,9 @@ fun FavoritesScreen(
         HistoryScreen(
             posts = favoritePosts,
             gridColumnCount = gridColumnCount,
+            onGridColumnsChanged = onGridColumnsChanged,
+            isListView = isListView,
+            onListViewChanged = onListViewChanged,
             isFavorite = isFavorite,
             onToggleFavorite = onToggleFavorite,
             onPostClick = onPostClick,

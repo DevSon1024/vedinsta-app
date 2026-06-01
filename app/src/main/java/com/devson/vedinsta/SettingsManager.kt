@@ -15,6 +15,7 @@ class SettingsManager(private val context: Context) {
         const val KEY_VIDEO_URI = "video_uri"
         const val KEY_GRID_COLUMNS = "grid_columns"
         const val KEY_DEFAULT_LINK_ACTION = "default_link_action"
+        const val KEY_IS_LIST_VIEW = "is_list_view"
 
         // Actions
         const val ACTION_ASK_EVERY_TIME = 0
@@ -25,6 +26,10 @@ class SettingsManager(private val context: Context) {
     var gridColumnCount: Int
         get() = prefs.getInt(KEY_GRID_COLUMNS, 3)
         set(value) = prefs.edit().putInt(KEY_GRID_COLUMNS, value.coerceIn(1, 6)).apply()
+
+    var isListView: Boolean
+        get() = prefs.getBoolean(KEY_IS_LIST_VIEW, false)
+        set(value) = prefs.edit().putBoolean(KEY_IS_LIST_VIEW, value).apply()
 
     var imageDirectoryUri: String?
         get() = prefs.getString(KEY_IMAGE_URI, null)

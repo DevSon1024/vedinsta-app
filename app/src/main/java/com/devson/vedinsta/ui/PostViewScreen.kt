@@ -76,7 +76,13 @@ fun PostViewScreen(
     
     var showCaptionSheet by remember { mutableStateOf(false) }
     var showShareMenu by remember { mutableStateOf(false) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     
+    val dateString = remember(post.downloadDate) {
+        val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
+        dateFormat.format(Date(post.downloadDate))
+    }
+
     val hashtags = remember(post.caption) {
         post.caption?.split(Regex("\\s+"))?.filter { it.startsWith("#") } ?: emptyList()
     }
@@ -92,15 +98,6 @@ fun PostViewScreen(
                             color = MaterialTheme.colorScheme.onSurface,
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold
-                        )
-                        val dateString = remember(post.downloadDate) {
-                            val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
-                            dateFormat.format(Date(post.downloadDate))
-                        }
-                        Text(
-                            text = "Downloaded $dateString",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                            fontSize = 11.sp
                         )
                     }
                 },
@@ -223,7 +220,7 @@ fun PostViewScreen(
                                     imageVector = if (fav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                                     contentDescription = "Favorite",
                                     tint = if (fav) Color.Red else MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.size(28.dp)
+                                    modifier = Modifier.size(22.dp)
                                 )
                             }
 
@@ -234,7 +231,7 @@ fun PostViewScreen(
                                         imageVector = Icons.Default.Share,
                                         contentDescription = "Share Options",
                                         tint = MaterialTheme.colorScheme.onSurface,
-                                        modifier = Modifier.size(28.dp)
+                                        modifier = Modifier.size(22.dp)
                                     )
                                 }
 
@@ -303,6 +300,15 @@ fun PostViewScreen(
                         }
                     }
 
+                    // Download Date displayed below buttons
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "Downloaded on $dateString",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(horizontal = 4.dp)
+                    )
+
                     // Instagram-like caption summary
                     if (!post.caption.isNullOrEmpty()) {
                         Spacer(modifier = Modifier.height(4.dp))
@@ -313,12 +319,6 @@ fun PostViewScreen(
                                 .padding(vertical = 4.dp),
                             verticalAlignment = Alignment.Top
                         ) {
-                            Text(
-                                text = "@${post.username} ",
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                fontSize = 13.sp
-                            )
                             val shortCaption = if (post.caption.length > 70) post.caption.take(70) + "... more" else post.caption
                             Text(
                                 text = shortCaption,
@@ -338,7 +338,7 @@ fun PostViewScreen(
     if (showCaptionSheet && !post.caption.isNullOrEmpty()) {
         ModalBottomSheet(
             onDismissRequest = { showCaptionSheet = false },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            sheetState = sheetState,
             containerColor = MaterialTheme.colorScheme.surface,
             contentColor = MaterialTheme.colorScheme.onSurface
         ) {

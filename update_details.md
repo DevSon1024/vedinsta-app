@@ -168,3 +168,22 @@
   Inline code comments were also added explaining each behaviour for future developers.
 
 ---
+
+- **Type of Details:** Refactor / UI Improvement
+- **Description:** Improved UI layout and sheet transition animations in PostViewScreen.kt:
+  1. Removed duplicate username from caption summary, allowing description to occupy full width.
+  2. Moved "Downloaded on [Date]" label from the Top Bar to the bottom section, directly below the action buttons.
+  3. Reduced action icon sizes from 28.dp to 22.dp for cleaner look.
+  4. Moved rememberModalBottomSheetState declaration to the top level of PostViewScreen to prevent state recreation, resolving the buggy stuttering animation when opening/closing the description bottom sheet.
+
+---
+
+- **Type of Details:** New Update / UI Component
+- **Description:** Added ViewSettingBottomSheet component for grid/list customization inside HistoryScreen.kt and FavoritesScreen.kt. Features:
+  1. **Layout Modes** — Toggle between a clean Grid View and a newly-implemented List View.
+  2. **Grid Size Slider** — Adjust grid size between 2 to 4 columns via a premium slider in the bottom sheet.
+  3. **Pinch-to-Adjust Grid** — Implemented standard gallery pinch gesture (detectTransformGestures) to dynamically adjust the grid column count between 2 and 4 by pinching on the screen.
+  4. **List View Layout** — Shows clipped thumbnails with top-left badges indicating media type (video/carousel) and elegant details (bold username title on the first line, and truncated description on the second line ending with '...').
+  5. **Hamburger Menu Toggle** — The top right corner action button now invokes the new premium ViewSettingBottomSheet.
+
+---

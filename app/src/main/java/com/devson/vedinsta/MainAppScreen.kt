@@ -58,7 +58,9 @@ fun MainAppScreen(
     val unreadCount by notificationViewModel.unreadCount.observeAsState(0)
 
     var gridColumnCount by remember { mutableStateOf(settingsManager.gridColumnCount) }
-    var showGridSizeDialog by remember { mutableStateOf(false) }
+    var isListView by remember { mutableStateOf(settingsManager.isListView) }
+    var showViewSettingsSheet by remember { mutableStateOf(false) }
+    val viewSettingsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     // Local states for Favorites tracking using SharedPreferences via SettingsManager
     val favoritesUpdated = remember { mutableStateOf(0) }
@@ -162,11 +164,11 @@ fun MainAppScreen(
                                 }
                             }
                         } else if (currentScreen == Screen.History || currentScreen == Screen.Favorites) {
-                            // Grid Size Controller (only in History or Favorites screen)
-                            IconButton(onClick = { showGridSizeDialog = true }) {
+                            // View settings bottom sheet trigger (using hamburger menu)
+                            IconButton(onClick = { showViewSettingsSheet = true }) {
                                 Icon(
                                     imageVector = Icons.Default.Menu,
-                                    contentDescription = "Grid Size",
+                                    contentDescription = "View Settings",
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
@@ -238,6 +240,15 @@ fun MainAppScreen(
                         HistoryScreen(
                             posts = posts,
                             gridColumnCount = gridColumnCount,
+                            onGridColumnsChanged = { cols ->
+                                settingsManager.gridColumnCount = cols
+                                gridColumnCount = cols
+                            },
+                            isListView = isListView,
+                            onListViewChanged = { listMode ->
+                                settingsManager.isListView = listMode
+                                isListView = listMode
+                            },
                             isFavorite = isFavoriteHelper,
                             onToggleFavorite = toggleFavoriteHelper,
                             onPostClick = { post -> navigateTo(Screen.PostView(post)) },
@@ -250,6 +261,15 @@ fun MainAppScreen(
                         FavoritesScreen(
                             posts = posts,
                             gridColumnCount = gridColumnCount,
+                            onGridColumnsChanged = { cols ->
+                                settingsManager.gridColumnCount = cols
+                                gridColumnCount = cols
+                            },
+                            isListView = isListView,
+                            onListViewChanged = { listMode ->
+                                settingsManager.isListView = listMode
+                                isListView = listMode
+                            },
                             isFavorite = isFavoriteHelper,
                             onToggleFavorite = toggleFavoriteHelper,
                             onPostClick = { post -> navigateTo(Screen.PostView(post)) },
@@ -318,35 +338,21 @@ fun MainAppScreen(
         }
     }
 
-    // Grid Columns Selector Dialog
-    if (showGridSizeDialog) {
-        AlertDialog(
-            onDismissRequest = { showGridSizeDialog = false },
-            title = { Text("Grid Columns", color = Color.White) },
-            text = {
-                Row(
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    (2..4).forEach { cols ->
-                        Button(
-                            onClick = {
-                                settingsManager.gridColumnCount = cols
-                                gridColumnCount = cols
-                                showGridSizeDialog = false
-                            },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (gridColumnCount == cols) Color(0xFFFD1D1D) else Color(0xFF333333)
-                            ),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("$cols Cols")
-                        }
-                    }
-                }
+    // View Settings Bottom Sheet
+    if (showViewSettingsSheet) {
+        ViewSettingBottomSheet(
+            sheetState = viewSettingsSheetState,
+            isListView = isListView,
+            onListViewChanged = { listMode ->
+                settingsManager.isListView = listMode
+                isListView = listMode
             },
-            confirmButton = {},
-            containerColor = Color(0xFF1E1E1E)
+            gridColumnCount = gridColumnCount,
+            onGridColumnsChanged = { cols ->
+                settingsManager.gridColumnCount = cols
+                gridColumnCount = cols
+            },
+            onDismissRequest = { showViewSettingsSheet = false }
         )
     }
 }
