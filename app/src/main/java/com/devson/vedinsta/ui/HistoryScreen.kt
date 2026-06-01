@@ -120,7 +120,7 @@ fun HistoryScreen(
                                 AsyncImage(
                                     model = ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
                                         .data(if (post.thumbnailPath.isNotEmpty()) File(post.thumbnailPath) else null)
-                                        .size(Size.ORIGINAL)
+                                        .size(300, 300) // Downsample to small resolution for smooth scrolling & memory efficiency
                                         .videoFrameMillis(0L)
                                         .crossfade(true)
                                         .diskCachePolicy(CachePolicy.DISABLED)
@@ -285,7 +285,7 @@ fun HistoryScreen(
                             AsyncImage(
                                 model = ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
                                     .data(if (post.thumbnailPath.isNotEmpty()) File(post.thumbnailPath) else null)
-                                    .size(Size.ORIGINAL)
+                                    .size(300, 300) // Downsample to small resolution for smooth scrolling & memory efficiency
                                     .videoFrameMillis(0L)
                                     .crossfade(true)
                                     .diskCachePolicy(CachePolicy.DISABLED)

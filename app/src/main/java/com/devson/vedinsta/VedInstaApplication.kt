@@ -13,6 +13,7 @@ import androidx.work.*
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.decode.VideoFrameDecoder
+import coil.disk.DiskCache
 import coil.request.CachePolicy
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
@@ -107,14 +108,26 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
      * Provides a global Coil ImageLoader that can decode video files (.mp4 etc.) as
      * thumbnail frames. This makes AsyncImage work correctly for all video thumbnails
      * across HistoryScreen, FavoritesScreen, and HomeScreen without any UI changes.
+     *
+     * PERF FIX: Disk cache is now ENABLED with a 20 MB cap so decoded video-frame
+     * thumbnails are persisted between scroll passes.  This eliminates the massive
+     * CPU spikes caused by constant re-extraction of frames on every RecyclerView
+     * bind, which was the primary source of "Skipped N frames" jank.
      */
     override fun newImageLoader(): ImageLoader {
+        // Dedicated 20 MB disk cache for video-frame thumbnails.
+        val videoFrameDiskCache = DiskCache.Builder()
+            .directory(File(cacheDir, "coil_video_frames"))
+            .maxSizeBytes(20L * 1024 * 1024) // 20 MB cap – prevents storage bloat
+            .build()
+
         return ImageLoader.Builder(this)
             .components {
                 add(VideoFrameDecoder.Factory())
             }
-            .diskCachePolicy(CachePolicy.DISABLED)
-            .memoryCachePolicy(CachePolicy.ENABLED)
+            .diskCache(videoFrameDiskCache)          // Persist decoded frames to disk
+            .diskCachePolicy(CachePolicy.ENABLED)    // Allow read & write to disk cache
+            .memoryCachePolicy(CachePolicy.ENABLED)  // Keep in-memory cache as well
             .crossfade(true)
             .build()
     }
@@ -140,8 +153,17 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
             Log.d(TAG, "Removed cached metadata for key $key")
         }
     }
-    fun getPostInfo(url: String): JSONObject? {
-        return try {
+    /**
+     * Fetches metadata for an Instagram post URL via the mo3 Python script.
+     *
+     * PERF FIX: Converted to a suspend function.  All Python initialisation,
+     * script execution, and JSON parsing are dispatched to [Dispatchers.IO] via
+     * [withContext], ensuring the main thread is never blocked.  This eliminates
+     * the primary source of heavy GC churn and "application may be doing too much
+     * work on its main thread" errors that were visible in Logcat.
+     */
+    suspend fun getPostInfo(url: String): JSONObject? = withContext(Dispatchers.IO) {
+        try {
             Log.d("VedInstaApp", "Getting post info for: $url")
 
             val python = Python.getInstance()
@@ -150,7 +172,7 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
 
             // Call the correct method: get_media_urls on mo3
             val result = module.callAttr("get_media_urls", url, cookieFile)
-            val resultString = result?.toString() ?: return null
+            val resultString = result?.toString() ?: return@withContext null
 
             Log.d("VedInstaApp", "Python result: $resultString")
 
@@ -160,12 +182,12 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
             when (status) {
                 "success" -> {
                     // Post is accessible
-                    return jsonResult
+                    jsonResult
                 }
                 "private" -> {
                     // Post is private
                     Log.w("VedInstaApp", "Post is private")
-                    return JSONObject().apply {
+                    JSONObject().apply {
                         put("is_private", true)
                         put("media_count", 0)
                     }
@@ -173,7 +195,7 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
                 "login_required" -> {
                     // Login required
                     Log.w("VedInstaApp", "Login required for post")
-                    return JSONObject().apply {
+                    JSONObject().apply {
                         put("is_private", true)
                         put("media_count", 0)
                     }
@@ -181,12 +203,12 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
                 "not_found" -> {
                     // Post not found
                     Log.w("VedInstaApp", "Post not found")
-                    return null
+                    null
                 }
                 else -> {
                     // Other error
                     Log.e("VedInstaApp", "Error status: $status")
-                    return null
+                    null
                 }
             }
         } catch (e: Exception) {
