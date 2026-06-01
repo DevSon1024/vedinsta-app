@@ -39,6 +39,7 @@ import java.io.File
 fun SettingsScreen(
     settingsManager: SettingsManager,
     onNavigateToAbout: () -> Unit,
+    onNavigateToAppearance: () -> Unit,
     onThemeChanged: (Int) -> Unit
 ) {
     val context = LocalContext.current
@@ -50,13 +51,7 @@ fun SettingsScreen(
     var linkActionLabel by remember { mutableStateOf(settingsManager.getDefaultActionLabel()) }
     var showLinkActionDialog by remember { mutableStateOf(false) }
 
-    var appThemeState by remember { mutableStateOf(settingsManager.appTheme) }
-    var showThemeDialog by remember { mutableStateOf(false) }
-    val themeLabel = when (appThemeState) {
-        1 -> "Light Mode"
-        2 -> "Dark Mode"
-        else -> "System Default"
-    }
+    // Folder Pickers
 
     // Folder Pickers
     val imagePicker = rememberLauncherForActivityResult(
@@ -90,17 +85,22 @@ fun SettingsScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .verticalScroll(scrollState)
+            .navigationBarsPadding()
             .padding(16.dp)
     ) {
-        Text(
-            text = "Settings",
-            color = MaterialTheme.colorScheme.onBackground,
-            fontSize = 22.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(vertical = 16.dp)
+
+        // 1. Display Settings Category
+        SettingsCategoryHeader("Display Settings")
+
+        SettingsClickableItem(
+            title = "App Theme",
+            subtitle = "Theme selection, palette & navbar transparency",
+            onClick = onNavigateToAppearance
         )
 
-        // 1. Storage Location Category
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // 2. Storage Location Category
         SettingsCategoryHeader("Storage Settings")
         
         SettingsClickableItem(
@@ -123,24 +123,13 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // 2. Link Behavior Category
+        // 3. Link Behavior Category
         SettingsCategoryHeader("Link Behaviors")
 
         SettingsClickableItem(
             title = "When sharing a link:",
             subtitle = linkActionLabel,
             onClick = { showLinkActionDialog = true }
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // 3. Display Settings Category
-        SettingsCategoryHeader("Display Settings")
-
-        SettingsClickableItem(
-            title = "App Theme",
-            subtitle = themeLabel,
-            onClick = { showThemeDialog = true }
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -234,50 +223,6 @@ fun SettingsScreen(
         )
     }
 
-    // Theme Selection Dialog
-    if (showThemeDialog) {
-        val themeOptions = listOf(
-            "System Default",
-            "Light Mode",
-            "Dark Mode"
-        )
-        AlertDialog(
-            onDismissRequest = { showThemeDialog = false },
-            title = { Text("App Theme") },
-            text = {
-                Column {
-                    themeOptions.forEachIndexed { index, option ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    settingsManager.appTheme = index
-                                    appThemeState = index
-                                    onThemeChanged(index)
-                                    showThemeDialog = false
-                                }
-                                .padding(vertical = 12.dp)
-                        ) {
-                            RadioButton(
-                                selected = (index == appThemeState),
-                                onClick = null // Click handled by Row
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(option, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showThemeDialog = false }) {
-                    Text("Cancel", color = MaterialTheme.colorScheme.error)
-                }
-            },
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-            titleContentColor = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
 }
 
 @Composable

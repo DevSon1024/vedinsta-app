@@ -90,17 +90,8 @@ fun PostViewScreen(
     Scaffold(
         topBar = {
             VedInstaTopAppBar(
-                title = "",
-                titleContent = {
-                    Column {
-                        Text(
-                            text = "@${post.username}",
-                            color = MaterialTheme.colorScheme.onSurface,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                },
+                title = "@${post.username}",
+                titleContent = null,
                 showBackButton = true,
                 onBackClick = onBackClick,
                 actions = {
@@ -481,9 +472,7 @@ fun VideoPlayer(file: File) {
                     if (view.isPlaying) view.pause()
                 }
             },
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(16f / 9f)
+            modifier = Modifier.fillMaxSize()
         )
 
         // Overlay Tap to Play/Pause

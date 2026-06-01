@@ -33,6 +33,7 @@ fun AboutScreen() {
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .navigationBarsPadding()
             .padding(24.dp),
         contentAlignment = Alignment.TopCenter
     ) {

@@ -194,3 +194,32 @@
   2. **Silky Smooth Pinch-to-Adjust Gesture**: Rewrote pinch-to-adjust gesture detection to use PixChive's robust gesture system (waitEachGesture, waitFirstDown, calculateZoom) for seamless, native scaling transitions between 2 to 4 grid columns.
 
 ---
+
+- **Type of Details:** UI Refactor / Media View
+- **Description:** Updated VideoPlayer layout inside PostViewScreen.kt:
+  - Replaced the hardcoded horizontal 16:9 aspect ratio modifier on the VideoView's AndroidView with fillMaxSize(). This allows vertical reels, IGTVs, and standard videos to expand to their full layout size and naturally fill the immersive post viewport.
+
+---
+
+- **Type of Details:** UI Enhancement / Settings
+- **Description:** Updated PostViewScreen.kt and SettingsScreen.kt:
+  - **Large Username Title**: Increased the username font size from 16.sp to 22.sp in the Post Viewer top app bar to match other screens' titles.
+  - **Transparent Bottom Navbar**: Added 	ransparent_navbar toggle preference in SettingsManager.kt. When enabled via the newly added "Transparent Bottom Bar" switch item in SettingsScreen.kt, the bottom bar container (Surface) in PostViewScreen.kt becomes completely transparent and omits the extra navigation bar padding, creating a modern edge-to-edge transparent layout where the media extends all the way down.
+
+---
+
+- **Type of Details:** UI Refactor / Appearance Settings / Theme Integration
+- **Description:** Successfully integrated the premium dynamic theme selection system and edge-to-edge transparency:
+  1. **Top Bar Font Size**: Unified the PostViewScreen.kt username title formatting to use the standard large page title (22.sp) by passing it directly to the standard title field of VedInstaTopAppBar.
+  2. **Appearance settings Integration**: Added Screen.Appearance definition to MainAppScreen.kt, mapping it to render the new AppearanceSettingsScreen, and connected it directly to SettingsScreen.kt's "App Theme" menu selection.
+  3. **ViewModel Integration**: Refactored AppearanceSettingsScreen.kt to receive and use the shared settingsViewModel instance supplied by MainActivity.kt and MainAppScreen.kt.
+  4. **System Navigation Bar edge-to-edge Support**: Set the main scaffold's navigation bar padding to 0.dp to allow layout drawing behind the transparent system navigation bar, and integrated navigationBarsPadding() directly inside HomeScreen.kt, HistoryScreen.kt (List and Grid layouts), SessionsScreen.kt, SettingsScreen.kt, AboutScreen.kt, and NotificationsScreen.kt.
+
+---
+
+- **Type of Details:** UI Enhancement / Layout Fix
+- **Description:** Resolved a bottom padding issue in HistoryScreen.kt and FavoritesScreen.kt when drawing edge-to-edge content:
+  - Removed .navigationBarsPadding() from the LazyColumn and LazyVerticalGrid modifiers to allow the viewport scroll region to expand fully behind the transparent system navigation bar area.
+  - Utilized the contentPadding parameter inside LazyColumn and LazyVerticalGrid to cleanly pad the list and grid items bottom margin by the system navigation bar's inset height plus 80.dp. This prevents the FloatingActionButton and navigation bar from overlapping or blocking any grid card row when scrolled to the very bottom, creating a premium seamless scroll experience.
+
+---

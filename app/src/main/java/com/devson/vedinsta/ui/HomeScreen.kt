@@ -55,6 +55,7 @@ fun HomeScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .verticalScroll(scrollState)
+            .navigationBarsPadding()
             .padding(bottom = 24.dp)
     ) {
         // 1. Material You Header Greeting Card
@@ -134,6 +135,7 @@ fun HomeScreen(
                 modifier = Modifier
                     .weight(1f)
                     .height(120.dp)
+                    .clip(RoundedCornerShape(16.dp))
                     .clickable { onNavigateToFavorites() },
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
@@ -185,6 +187,7 @@ fun HomeScreen(
                 modifier = Modifier
                     .weight(1f)
                     .height(120.dp)
+                    .clip(RoundedCornerShape(16.dp))
                     .clickable { onNavigateToSessions() },
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(

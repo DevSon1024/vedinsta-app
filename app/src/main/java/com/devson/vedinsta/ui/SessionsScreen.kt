@@ -51,6 +51,7 @@ fun SessionsScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .navigationBarsPadding()
             .padding(16.dp),
         contentAlignment = Alignment.TopCenter
     ) {

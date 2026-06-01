@@ -7,15 +7,15 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import com.devson.vedinsta.ui.theme.VedinstaTheme
+import com.devson.vedinsta.ui.theme.NosvedPlayerTheme
 import com.devson.vedinsta.viewmodel.InstagramAuthViewModel
 import com.devson.vedinsta.viewmodel.MainViewModel
 import com.devson.vedinsta.viewmodel.MediaExtractionViewModel
 import com.devson.vedinsta.viewmodel.NotificationViewModel
+import com.devson.vedinsta.viewmodel.SettingsViewModel
 
 class MainActivity : ComponentActivity() {
 
@@ -23,6 +23,7 @@ class MainActivity : ComponentActivity() {
     private val extractionViewModel: MediaExtractionViewModel by viewModels()
     private val mainViewModel: MainViewModel by viewModels()
     private val notificationViewModel: NotificationViewModel by viewModels()
+    private val settingsViewModel: SettingsViewModel by viewModels()
 
     private val currentIntent = mutableStateOf<Intent?>(null)
 
@@ -40,22 +41,29 @@ class MainActivity : ComponentActivity() {
         val settingsManager = SettingsManager(this)
 
         setContent {
-            var appThemeState by remember { mutableStateOf(settingsManager.appTheme) }
-            val darkTheme = when (appThemeState) {
-                1 -> false
-                2 -> true
-                else -> androidx.compose.foundation.isSystemInDarkTheme()
-            }
-            VedinstaTheme(darkTheme = darkTheme) {
+            val isDark by settingsViewModel.isDarkTheme.collectAsState()
+            val dynamicColor by settingsViewModel.dynamicColor.collectAsState()
+            val selectedPalette by settingsViewModel.selectedPalette.collectAsState()
+            val navBarTransparent by settingsViewModel.isNavBarTransparent.collectAsState()
+            val isAmoledTheme by settingsViewModel.isAmoledTheme.collectAsState()
+
+            NosvedPlayerTheme(
+                forceDark = isDark,
+                dynamicColor = dynamicColor,
+                palette = selectedPalette,
+                isNavBarTransparent = navBarTransparent,
+                isAmoledTheme = isAmoledTheme
+            ) {
                 MainAppScreen(
                     authViewModel = authViewModel,
                     extractionViewModel = extractionViewModel,
                     mainViewModel = mainViewModel,
                     notificationViewModel = notificationViewModel,
+                    settingsViewModel = settingsViewModel,
                     settingsManager = settingsManager,
                     intent = currentIntent.value,
-                    onThemeChanged = { newTheme ->
-                        appThemeState = newTheme
+                    onThemeChanged = {
+                        // Managed reactively by settingsViewModel!
                     }
                 )
             }

@@ -1,5 +1,7 @@
 package com.devson.vedinsta.ui
 
+import androidx.compose.animation.core.animateIntAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -80,8 +82,13 @@ fun HistoryScreen(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background)
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                    .background(MaterialTheme.colorScheme.background),
+                contentPadding = PaddingValues(
+                    start = 12.dp,
+                    end = 12.dp,
+                    top = 6.dp,
+                    bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 80.dp
+                ),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(posts, key = { it.postId }) { post ->
@@ -204,13 +211,17 @@ fun HistoryScreen(
         } else {
             // GRID VIEW LAYOUT
             var accumulatedZoom by remember { mutableStateOf(1f) }
+            val animatedColumns by animateIntAsState(
+                targetValue = gridColumnCount,
+                animationSpec = tween(300),
+                label = "columns_anim"
+            )
             LazyVerticalGrid(
-                columns = GridCells.Fixed(gridColumnCount),
+                columns = GridCells.Fixed(animatedColumns.coerceIn(2, 4)),
                 modifier = Modifier
                     .fillMaxSize()
                     .background(MaterialTheme.colorScheme.background)
-                    .padding(10.dp)
-                    .pointerInput(Unit) {
+                    .pointerInput(gridColumnCount) {
                         awaitEachGesture {
                             awaitFirstDown(requireUnconsumed = false)
                             var hasChangedInThisGesture = false
@@ -242,6 +253,12 @@ fun HistoryScreen(
                             } while (event.changes.any { it.pressed })
                         }
                     },
+                contentPadding = PaddingValues(
+                    start = 10.dp,
+                    end = 10.dp,
+                    top = 10.dp,
+                    bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 80.dp
+                ),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {

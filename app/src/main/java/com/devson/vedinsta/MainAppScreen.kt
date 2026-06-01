@@ -33,6 +33,7 @@ sealed class Screen {
     object Favorites : Screen()
     object Sessions : Screen()
     object Settings : Screen()
+    object Appearance : Screen()
     data class PostView(val post: DownloadedPost) : Screen()
     object About : Screen()
     object Notifications : Screen()
@@ -45,6 +46,7 @@ fun MainAppScreen(
     extractionViewModel: MediaExtractionViewModel,
     mainViewModel: MainViewModel,
     notificationViewModel: NotificationViewModel,
+    settingsViewModel: SettingsViewModel,
     settingsManager: SettingsManager,
     intent: Intent?,
     onThemeChanged: (Int) -> Unit
@@ -106,7 +108,7 @@ fun MainAppScreen(
 
     Scaffold(
         topBar = {
-            if (currentScreen !is Screen.PostView && currentScreen !is Screen.Login) {
+            if (currentScreen !is Screen.PostView && currentScreen !is Screen.Login && currentScreen !is Screen.Appearance) {
                 VedInstaTopAppBar(
                     title = when(currentScreen) {
                         Screen.Home -> "Home"
@@ -178,7 +180,7 @@ fun MainAppScreen(
             }
         },
         floatingActionButton = {
-            if (currentScreen !is Screen.Downloader && currentScreen !is Screen.Login && currentScreen !is Screen.PostView) {
+            if (currentScreen !is Screen.Downloader && currentScreen !is Screen.Login && currentScreen !is Screen.PostView && currentScreen !is Screen.Appearance) {
                 FloatingActionButton(
                     onClick = { navigateTo(Screen.Downloader) },
                     containerColor = MaterialTheme.colorScheme.primary,
@@ -194,11 +196,14 @@ fun MainAppScreen(
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
-        val applyPadding = currentScreen !is Screen.PostView && currentScreen !is Screen.Login
+        val applyPadding = currentScreen !is Screen.PostView && currentScreen !is Screen.Login && currentScreen !is Screen.Appearance
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(if (applyPadding) paddingValues else PaddingValues(0.dp))
+                .padding(
+                    top = if (applyPadding) paddingValues.calculateTopPadding() else 0.dp,
+                    bottom = 0.dp
+                )
         ) {
             AnimatedContent(
                 targetState = currentScreen,
@@ -301,7 +306,14 @@ fun MainAppScreen(
                         SettingsScreen(
                             settingsManager = settingsManager,
                             onNavigateToAbout = { navigateTo(Screen.About) },
+                            onNavigateToAppearance = { navigateTo(Screen.Appearance) },
                             onThemeChanged = onThemeChanged
+                        )
+                    }
+                    is Screen.Appearance -> {
+                        AppearanceSettingsScreen(
+                            onNavigateBack = { navigateBack() },
+                            settingsViewModel = settingsViewModel
                         )
                     }
                     is Screen.About -> {
@@ -443,9 +455,10 @@ private fun getScreenOrderValue(screen: Screen): Int {
         is Screen.Favorites -> 3
         is Screen.Sessions -> 4
         is Screen.Settings -> 5
-        is Screen.Notifications -> 6
-        is Screen.About -> 7
-        is Screen.Login -> 8
-        is Screen.PostView -> 9
+        is Screen.Appearance -> 6
+        is Screen.Notifications -> 7
+        is Screen.About -> 8
+        is Screen.Login -> 9
+        is Screen.PostView -> 10
     }
 }
