@@ -4,7 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     id("com.chaquo.python")
-    kotlin("kapt")
+    alias(libs.plugins.ksp)
 }
 
 // Version constants - single source of truth
@@ -206,7 +206,7 @@ dependencies {
     // --- Room Database ---
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
-    kapt(libs.androidx.room.compiler)
+    ksp(libs.androidx.room.compiler)
 
     // --- WorkManager ---
     implementation(libs.androidx.work.runtime.ktx)

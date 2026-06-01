@@ -191,37 +191,93 @@ fun SessionsScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Safety Warning Notice
+            // --- Session Storage Info Card ---
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 shape = RoundedCornerShape(12.dp)
             ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Warning,
-                        contentDescription = "Warning",
-                        tint = MaterialTheme.colorScheme.tertiary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column {
+                Column(modifier = Modifier.padding(16.dp)) {
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = "Security Info",
+                            tint = MaterialTheme.colorScheme.tertiary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Security & Privacy",
+                            text = "Session Storage & Privacy",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp
                         )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "Your login cookies are stored safely on-device in secure preference files and used strictly to execute python scripts in a sandbox.",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                            fontSize = 11.sp,
-                            lineHeight = 14.sp
-                        )
                     }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Where are cookies stored?
+                    Text(
+                        text = "🔒  Where are session files stored?",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 12.sp
+                    )
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Text(
+                        // instagram_cookies.txt is written via context.filesDir - the app's
+                        // private internal storage at /data/data/com.devson.vedinsta/files/.
+                        // This directory is completely sandboxed by Android's Linux kernel
+                        // permission model: no other app, file manager, or even ADB (on
+                        // non-rooted devices) can read it. It is NOT inside the user-visible
+                        // "Android/data/" folder on external storage.
+                        text = "Your Instagram session cookies are stored inside this app's private internal storage sandbox - inaccessible to any other app, file manager, or ADB on non-rooted devices.\nit will be not shared on servers or any other platforms \n\nSafe and Secure\n\nPhysical path (internal, not visible to user):\n/data/data/com.devson.vedinsta/files/",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Uninstall behavior
+                    Text(
+                        text = "🗑️  What happens on uninstall?",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 12.sp
+                    )
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Text(
+                        // Android automatically wipes the entire /data/data/<package>/ directory
+                        // when the app is uninstalled. The cookie file, encrypted preferences,
+                        // and the Room database are all destroyed at that point.
+                        text = "When VedInsta is uninstalled, Android automatically deletes the entire app sandbox - including session cookies and encrypted preferences. No data is left behind.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Logout clarification
+                    Text(
+                        text = "⚠️  \"Log Out Session\" vs. Instagram logout",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 12.sp
+                    )
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Text(
+                        // Pressing "Log Out Session" only deletes the local cookie file and
+                        // clears EncryptedSharedPreferences inside VedInsta. It does NOT
+                        // revoke the session on Instagram's servers. Your account stays
+                        // logged in on the Instagram app, browser, and other devices.
+                        // To truly end the session globally, log out from Instagram directly.
+                        text = "Tapping \"Log Out Session\" only removes the saved cookies from this app - it does NOT log you out of Instagram globally. Your Instagram account remains active on the Instagram app, browsers, and all other devices. To invalidate the session everywhere, log out from Instagram itself.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp
+                    )
                 }
             }
         }

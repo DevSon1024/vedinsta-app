@@ -2,6 +2,7 @@
 # Build toolchain
 agp     = "8.13.0"
 kotlin  = "2.0.21"
+ksp     = "2.0.21-1.0.28"
 
 # AndroidX
 coreKtx             = "1.17.0"
@@ -98,3 +99,4 @@ androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-co
 android-application = { id = "com.android.application",              version.ref = "agp" }
 kotlin-android      = { id = "org.jetbrains.kotlin.android",         version.ref = "kotlin" }
 kotlin-compose      = { id = "org.jetbrains.kotlin.plugin.compose",  version.ref = "kotlin" }
+ksp                 = { id = "com.google.devtools.ksp",               version.ref = "ksp" }
