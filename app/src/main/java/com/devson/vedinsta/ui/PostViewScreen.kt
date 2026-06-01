@@ -40,6 +40,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.request.CachePolicy
 import com.devson.vedinsta.database.DownloadedPost
 import java.io.File
 import java.text.SimpleDateFormat
@@ -154,7 +156,11 @@ fun PostViewScreen(
                             VideoPlayer(file = file)
                         } else {
                             AsyncImage(
-                                model = file,
+                                model = ImageRequest.Builder(LocalContext.current)
+                                    .data(file)
+                                    .diskCachePolicy(CachePolicy.DISABLED)
+                                    .memoryCachePolicy(CachePolicy.ENABLED)
+                                    .build(),
                                 contentDescription = "Post Media",
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Fit

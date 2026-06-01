@@ -1,3 +1,6 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 // VedInsta - app/build.gradle.kts
 plugins {
     alias(libs.plugins.android.application)
@@ -11,6 +14,15 @@ plugins {
 val appVersionCode = 2
 val appVersionName = "1.0.1"
 val appName        = "VedInsta"
+
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties()
+if (keystorePropertiesFile.exists()) {
+    FileInputStream(keystorePropertiesFile).use { keystoreProperties.load(it) }
+}
+val splitApks = !project.hasProperty("noSplits") && !gradle.startParameter.taskNames.any {
+    it.contains("debug", ignoreCase = true)
+}
 
 android {
     namespace  = "com.devson.vedinsta"
@@ -27,45 +39,43 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        ndk {
+            if (splitApks) {
+                abiFilters.addAll(listOf("arm64-v8a", "x86_64"))
+            } else {
+                abiFilters.add("arm64-v8a")
+            }
+        }
     }
 
-    // ABI Splits - separate APKs per architecture + one universal fallback
-    flavorDimensions += "abi"
-
-    productFlavors {
-        // arm64-v8a  - modern 64-bit ARM (most Android 8+ phones)
-        create("arm64") {
-            dimension       = "abi"
-            versionCode     = appVersionCode + 2   // highest store priority
-            ndk { abiFilters += "arm64-v8a" }
-        }
-
-        // x86_64 - emulators + Chrome OS
-        create("x86_64") {
-            dimension       = "abi"
-            versionCode     = appVersionCode + 1
-            ndk { abiFilters += "x86_64" }
-        }
-
-        // Universal - all supported ABIs in one APK (GitHub Releases / sideload)
-        create("universal") {
-            dimension       = "abi"
-            versionCode     = appVersionCode        // lowest store priority
-            ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+    if (splitApks) {
+        splits {
+            abi {
+                isEnable = true
+                reset()
+                include("arm64-v8a", "x86_64")
+                isUniversalApk = true
+            }
         }
     }
 
     // Signing
     signingConfigs {
-        // Release signing - configure via environment variables or local.properties
-        // so the keystore path is never committed to source control.
         create("release") {
-            val keystorePath = System.getenv("KEYSTORE_PATH")
-            if (keystorePath != null) {
-                storeFile     = file(keystorePath)
-                storePassword = System.getenv("KEYSTORE_PASSWORD") ?: ""
-                keyAlias      = System.getenv("KEY_ALIAS")         ?: ""
-                keyPassword   = System.getenv("KEY_PASSWORD")      ?: ""
+            if (keystorePropertiesFile.exists()) {
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+                storeFile = file(keystoreProperties.getProperty("storeFile") ?: "")
+                storePassword = keystoreProperties.getProperty("storePassword")
+            } else {
+                val keystorePath = System.getenv("KEYSTORE_PATH")
+                if (keystorePath != null) {
+                    storeFile     = file(keystorePath)
+                    storePassword = System.getenv("KEYSTORE_PASSWORD") ?: ""
+                    keyAlias      = System.getenv("KEY_ALIAS")         ?: ""
+                    keyPassword   = System.getenv("KEY_PASSWORD")      ?: ""
+                }
             }
         }
     }
@@ -79,10 +89,10 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // Only apply release signing when keystore env vars are present
-            if (System.getenv("KEYSTORE_PATH") != null) {
+            if (keystorePropertiesFile.exists() || System.getenv("KEYSTORE_PATH") != null) {
                 signingConfig = signingConfigs.getByName("release")
             }
+            resValue("string", "app_name", "VedInsta")
         }
 
         debug {
@@ -90,28 +100,17 @@ android {
             isDebuggable       = true
             applicationIdSuffix = ".debug"
             versionNameSuffix  = "-debug"
+            resValue("string", "app_name", "VedInsta Beta")
         }
     }
 
-    // APK output naming - VedInsta-v1.0.0-arm64-v8a-release.apk
+    // APK output naming - VedInsta-v1.0.1-arm64-v8a-release.apk
     applicationVariants.all {
-        val variant      = this
-        val vName        = variant.versionName          // e.g. "1.0.0"
-        val flavorName   = variant.flavorName           // e.g. "arm64"
-        val buildTypeName = variant.buildType.name      // "release" or "debug"
-
-        // Map flavor → ABI display name used in filename
-        val abiLabel = when (flavorName) {
-            "arm64"    -> "arm64-v8a"
-            "x86_64"   -> "x86_64"
-            "universal"-> "universal"
-            else       -> flavorName
-        }
-
+        val variant = this
         variant.outputs.all {
-            val output = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
-            output.outputFileName =
-                "$appName-v$vName-$abiLabel-$buildTypeName.apk"
+            val outputImpl = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
+            val abiName = outputImpl.filters.find { it.filterType == "ABI" }?.identifier ?: "universal"
+            outputFileName = "$appName-v${variant.versionName}-$abiName-${variant.buildType.name}.apk"
         }
     }
 

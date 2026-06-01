@@ -38,6 +38,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.request.videoFrameMillis
 import coil.size.Size
+import coil.request.CachePolicy
 import com.devson.vedinsta.database.DownloadedPost
 import java.io.File
 
@@ -122,6 +123,8 @@ fun HistoryScreen(
                                         .size(Size.ORIGINAL)
                                         .videoFrameMillis(0L)
                                         .crossfade(true)
+                                        .diskCachePolicy(CachePolicy.DISABLED)
+                                        .memoryCachePolicy(CachePolicy.ENABLED)
                                         .build(),
                                     contentDescription = "Post Thumbnail",
                                     modifier = Modifier.fillMaxSize(),
@@ -285,6 +288,8 @@ fun HistoryScreen(
                                     .size(Size.ORIGINAL)
                                     .videoFrameMillis(0L)
                                     .crossfade(true)
+                                    .diskCachePolicy(CachePolicy.DISABLED)
+                                    .memoryCachePolicy(CachePolicy.ENABLED)
                                     .build(),
                                 contentDescription = "Post Thumbnail",
                                 modifier = Modifier.fillMaxSize(),

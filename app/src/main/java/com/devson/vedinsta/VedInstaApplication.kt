@@ -50,6 +50,42 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
     companion object {
         private const val TAG = "VedInstaApplication"
         const val UNIQUE_DOWNLOAD_WORK_NAME = "vedInstaDownloadWork" // Can be used for specific single tasks if needed
+
+        fun clearAppCache(context: Context) {
+            val cacheDir = context.cacheDir
+            if (cacheDir != null && cacheDir.exists()) {
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        deleteRecursive(cacheDir, excludeSelf = true)
+                        Log.d(TAG, "App cache directory cleared successfully.")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to clear app cache", e)
+                    }
+                }
+            }
+        }
+
+        private fun deleteRecursive(file: File, excludeSelf: Boolean = false) {
+            if (file.isDirectory) {
+                // Exclude any directory containing python or chaquopy to avoid breaking Python environment
+                if (file.name.contains("python", ignoreCase = true) || file.name.contains("chaquopy", ignoreCase = true)) {
+                    Log.d(TAG, "Skipping python/chaquopy cache directory: ${file.absolutePath}")
+                    return
+                }
+                val children = file.listFiles()
+                if (children != null) {
+                    for (child in children) {
+                        deleteRecursive(child, excludeSelf = false)
+                    }
+                }
+            }
+            if (!excludeSelf) {
+                val deleted = file.delete()
+                if (!deleted) {
+                    Log.w(TAG, "Failed to delete file/dir: ${file.absolutePath}")
+                }
+            }
+        }
     }
 
     override fun onCreate() {
@@ -61,6 +97,8 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
         }
         // Prune finished WorkManager jobs on app start to clean up
         WorkManager.getInstance(this).pruneWork()
+        // Clear app cache on startup
+        clearAppCache(this)
     }
 
     /**
@@ -73,7 +111,7 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
             .components {
                 add(VideoFrameDecoder.Factory())
             }
-            .diskCachePolicy(CachePolicy.ENABLED)
+            .diskCachePolicy(CachePolicy.DISABLED)
             .memoryCachePolicy(CachePolicy.ENABLED)
             .crossfade(true)
             .build()
@@ -319,7 +357,7 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
     fun enqueueMultipleDownloads(
         context: Context,
         filesToDownload: List<ImageCard>,
-        postId: String?, // The actual Instagram post ID/shortcode, if available
+        postId: String?,
         postCaption: String?
     ): List<UUID> {
         Log.i(TAG, "Enqueueing multiple downloads (${filesToDownload.size}) for Post ID/Key: $postId")
@@ -523,7 +561,6 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
     private val tagObservers = ConcurrentHashMap<String, Observer<List<WorkInfo>>>() // Maps tag -> observer instance
     private val idObservers = ConcurrentHashMap<UUID, Observer<WorkInfo>>() // Maps workId -> observer instance
 
-
     private fun observeWorkProgressById(
         context: Context,
         workId: UUID,
@@ -724,6 +761,8 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
                     applicationScope.launch(Dispatchers.IO) {
                         saveDownloadedPostToDb(context, groupTag, postUrl, completedFilePaths, hasVideo, finalUsername, cachedCaption)
                         scanFiles(context, completedFilePaths) // Scan files after saving
+                        // Clear temporary cache
+                        clearAppCache(context)
 
                         // Show summary notification/toast on Main thread
                         withContext(Dispatchers.Main) {
@@ -792,6 +831,8 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
                 caption = cachedCaption
             )
             scanFiles(context, listOf(filePath))
+            // Clear temporary cache
+            clearAppCache(context)
 
             // Show completion feedback on Main thread
             withContext(Dispatchers.Main) {

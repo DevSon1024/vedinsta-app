@@ -10,6 +10,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -26,6 +29,7 @@ fun SessionsScreen(
     onNavigateToLogin: () -> Unit
 ) {
     val authState by authViewModel.authState.collectAsState()
+    var showLogoutDialog by remember { mutableStateOf(false) }
 
     val isDark = MaterialTheme.colorScheme.background.let { it.red + it.green + it.blue } < 1.5f
 
@@ -59,13 +63,6 @@ fun SessionsScreen(
             modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(
-                text = "Session Manager",
-                color = MaterialTheme.colorScheme.onBackground,
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(vertical = 16.dp)
-            )
 
             Card(
                 modifier = Modifier
@@ -146,7 +143,7 @@ fun SessionsScreen(
                     when (authState) {
                         is InstagramAuthState.LoggedIn -> {
                             Button(
-                                onClick = { authViewModel.logout() },
+                                onClick = { showLogoutDialog = true },
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.error,
                                     contentColor = MaterialTheme.colorScheme.onError
@@ -282,5 +279,34 @@ fun SessionsScreen(
                 }
             }
         }
+    }
+
+    if (showLogoutDialog) {
+        AlertDialog(
+            onDismissRequest = { showLogoutDialog = false },
+            title = {
+                Text(text = "Log Out Session", fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Text(text = "Are you sure you want to log out? This will remove your saved Instagram session cookies from this app.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showLogoutDialog = false
+                        authViewModel.logout()
+                    }
+                ) {
+                    Text(text = "Log Out", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showLogoutDialog = false }
+                ) {
+                    Text(text = "Cancel")
+                }
+            }
+        )
     }
 }

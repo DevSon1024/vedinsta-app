@@ -131,6 +131,7 @@ class DownloadService : Service() {
                         val remaining = activeTasks.decrementAndGet()
                         if (remaining <= 0) {
                             ServiceCompat.stopForeground(this@DownloadService, ServiceCompat.STOP_FOREGROUND_REMOVE)
+                            com.devson.vedinsta.VedInstaApplication.clearAppCache(applicationContext)
                             stopSelf()
                         }
                     }
@@ -169,6 +170,8 @@ class DownloadService : Service() {
         totalImages: Int,
         hasVideo: Boolean
     ) {
+        var downloadSuccess = false
+        var fileToClean: File? = null
         try {
             val request = Request.Builder()
                 .url(url)
@@ -184,6 +187,7 @@ class DownloadService : Service() {
                 val body = response.body ?: throw IOException("Empty response body")
 
                 val file = File(filePath)
+                fileToClean = file
                 file.parentFile?.mkdirs()
 
                 val contentLength = body.contentLength()
@@ -214,6 +218,11 @@ class DownloadService : Service() {
                         }
                     }
                 }
+
+                if (contentLength > 0 && currentTotalBytesRead != contentLength) {
+                    throw IOException("Size mismatch: Expected=$contentLength, Got=$currentTotalBytesRead")
+                }
+                downloadSuccess = true
             }
 
             // Index file in MediaStore so it displays in native gallery immediately
@@ -235,6 +244,18 @@ class DownloadService : Service() {
 
         } catch (e: Exception) {
             Log.e(TAG, "Failed to download $fileName", e)
+            if (!downloadSuccess) {
+                fileToClean?.let {
+                    if (it.exists()) {
+                        try {
+                            it.delete()
+                            Log.d(TAG, "Cleaned up failed/incomplete file: ${it.absolutePath}")
+                        } catch (ex: Exception) {
+                            Log.e(TAG, "Failed to delete incomplete file", ex)
+                        }
+                    }
+                }
+            }
             handleDownloadFailure(postId, totalImages, username, fileName, e.message ?: "Unknown error", notificationId)
         }
     }

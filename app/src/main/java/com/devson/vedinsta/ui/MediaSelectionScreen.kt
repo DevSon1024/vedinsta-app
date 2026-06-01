@@ -43,7 +43,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.request.CachePolicy
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
 import com.devson.vedinsta.model.MediaResult
 import com.devson.vedinsta.viewmodel.ExtractionState
 import com.devson.vedinsta.viewmodel.InstagramAuthState
@@ -66,6 +71,22 @@ fun MediaSelectionScreen(
     val chosenQualities by extractionViewModel.chosenQualities.collectAsState()
 
     var instagramUrl by remember { mutableStateOf("") }
+
+    val localPaths by produceState<List<String>>(initialValue = emptyList(), extractionState) {
+        value = if (extractionState is ExtractionState.Success) {
+            val postId = (extractionState as ExtractionState.Success).extractedPost.postId
+            withContext(Dispatchers.IO) {
+                try {
+                    val db = com.devson.vedinsta.database.AppDatabase.getDatabase(context.applicationContext)
+                    db.downloadedPostDao().getPostById(postId)?.mediaPaths ?: emptyList()
+                } catch (e: Exception) {
+                    emptyList()
+                }
+            }
+        } else {
+            emptyList()
+        }
+    }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -231,8 +252,22 @@ fun MediaSelectionScreen(
                                 }
                             }
 
+                            val localFile = remember(localPaths, idx) {
+                                val path = localPaths.getOrNull(idx - 1)
+                                if (!path.isNullOrBlank()) {
+                                    val f = File(path)
+                                    if (f.exists() && f.canRead()) f else null
+                                } else {
+                                    null
+                                }
+                            }
+
                             AsyncImage(
-                                model = previewUrl,
+                                model = ImageRequest.Builder(LocalContext.current)
+                                    .data(localFile ?: previewUrl)
+                                    .diskCachePolicy(CachePolicy.DISABLED)
+                                    .memoryCachePolicy(CachePolicy.ENABLED)
+                                    .build(),
                                 contentDescription = "Media Preview",
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop
@@ -622,7 +657,11 @@ fun MediaItemCard(
             }
 
             AsyncImage(
-                model = previewUrl,
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(previewUrl)
+                    .diskCachePolicy(CachePolicy.DISABLED)
+                    .memoryCachePolicy(CachePolicy.ENABLED)
+                    .build(),
                 contentDescription = "Media Preview",
                 modifier = Modifier
                     .fillMaxSize()
