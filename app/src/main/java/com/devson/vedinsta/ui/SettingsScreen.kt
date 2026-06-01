@@ -40,6 +40,7 @@ fun SettingsScreen(
     settingsManager: SettingsManager,
     onNavigateToAbout: () -> Unit,
     onNavigateToAppearance: () -> Unit,
+    onNavigateToPrivacyPolicy: () -> Unit,
     onThemeChanged: (Int) -> Unit
 ) {
     val context = LocalContext.current
@@ -153,10 +154,7 @@ fun SettingsScreen(
         SettingsClickableItem(
             title = "Privacy Policy",
             subtitle = "View VedInsta privacy conditions",
-            onClick = {
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/DevSon1024/vedinsta-app/blob/main/PRIVACY_POLICY.md"))
-                context.startActivity(intent)
-            }
+            onClick = onNavigateToPrivacyPolicy
         )
 
         SettingsClickableItem(

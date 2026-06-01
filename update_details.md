@@ -358,5 +358,10 @@
   1. **Thumbnail Downsampling Optimization** — Resolved massive memory consumption and scrolling stuttering in `HistoryScreen.kt` and `HomeScreen.kt` by replacing Coil's `.size(Size.ORIGINAL)` parameter with `.size(300, 300)` on all local downloaded post thumbnail requests.
   2. **Eliminated Out-Of-Memory Risks** — By downsampling high-resolution images and video frames to a light $300 \times 300$ px preview boundary, memory footprint drops by ~99% per thumbnail, drastically reducing garbage collection thrashing and delivering a buttery-smooth 60/120fps scrolling experience.
 
+- **Type of Details:** New Update & Refactor
+- **Description:**
+  1. **Built Native Privacy & Policy Screen** — Designed and created `PrivacyPolicyScreen.kt` using standard Material Design 3 guidelines. It features elegant cards outlining data security guarantees, on-device sandboxed execution via Chaquopy Python, secure EncryptedSharedPreferences session cookie storage, zero tracking logs policy, and localized public file-writing logic.
+  2. **Integrated Navigation & Settings Actions** — Added the `PrivacyPolicy` destination to the `Screen` sealed class inside `MainAppScreen.kt`, mapped its top app bar header title, and integrated it into the navigation host. Refactored `SettingsScreen.kt` to accept the `onNavigateToPrivacyPolicy: () -> Unit` callback, substituting the external GitHub repository browser intent with smooth in-app horizontal screen transitions.
+
 ---
 

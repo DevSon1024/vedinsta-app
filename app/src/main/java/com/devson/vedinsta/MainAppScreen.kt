@@ -39,6 +39,7 @@ sealed class Screen {
     object About : Screen()
     object Notifications : Screen()
     object Login : Screen()
+    object PrivacyPolicy : Screen()
 }
 
 @Composable
@@ -120,6 +121,7 @@ fun MainAppScreen(
                         Screen.Settings -> "Settings"
                         Screen.About -> "About"
                         Screen.Notifications -> "Notifications"
+                        Screen.PrivacyPolicy -> "Privacy Policy"
                         else -> "VedInsta"
                     },
                     showBackButton = currentScreen !is Screen.Home,
@@ -331,6 +333,7 @@ fun MainAppScreen(
                             settingsManager = settingsManager,
                             onNavigateToAbout = { navigateTo(Screen.About) },
                             onNavigateToAppearance = { navigateTo(Screen.Appearance) },
+                            onNavigateToPrivacyPolicy = { navigateTo(Screen.PrivacyPolicy) },
                             onThemeChanged = onThemeChanged
                         )
                     }
@@ -342,6 +345,9 @@ fun MainAppScreen(
                     }
                     is Screen.About -> {
                         AboutScreen()
+                    }
+                    is Screen.PrivacyPolicy -> {
+                        PrivacyPolicyScreen()
                     }
                     is Screen.Notifications -> {
                         NotificationsScreen(
@@ -485,5 +491,6 @@ private fun getScreenOrderValue(screen: Screen): Int {
         is Screen.About -> 9
         is Screen.Login -> 10
         is Screen.PostView -> 11
+        is Screen.PrivacyPolicy -> 12
     }
 }
