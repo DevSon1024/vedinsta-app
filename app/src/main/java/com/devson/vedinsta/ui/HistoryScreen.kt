@@ -24,6 +24,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.request.videoFrameMillis
+import coil.size.Size
 import com.devson.vedinsta.database.DownloadedPost
 import java.io.File
 
@@ -88,13 +91,17 @@ fun HistoryScreen(
                     Box(modifier = Modifier.fillMaxSize()) {
                         // Thumbnail
                         AsyncImage(
-                            model = if (post.thumbnailPath.isNotEmpty()) File(post.thumbnailPath) else null,
+                            model = ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+                                .data(if (post.thumbnailPath.isNotEmpty()) File(post.thumbnailPath) else null)
+                                .size(Size.ORIGINAL)
+                                .videoFrameMillis(0L)
+                                .crossfade(true)
+                                .build(),
                             contentDescription = "Post Thumbnail",
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop
                         )
 
-                        // Top-Left Badges (Insget style overlay for play indicators and stacks)
                         if (post.hasVideo) {
                             Box(
                                 modifier = Modifier

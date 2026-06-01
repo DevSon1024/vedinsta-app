@@ -109,11 +109,23 @@ class VedInstaNotificationManager private constructor(private val context: Conte
     }
 
     fun showBatchDownloadProgress(current: Int, total: Int) {
+        showBatchDownloadProgress(NOTIFICATION_ID_BATCH_DOWNLOAD, current, total, "Downloading")
+    }
+
+    fun showBatchDownloadProgress(notificationId: Int, current: Int, total: Int, title: String) {
+        val percent = if (total > 0) ((current * 100) / total) else 0
+        val remaining = total - current
+        val subText = when {
+            remaining <= 0 -> "All files downloaded"
+            remaining == 1 -> "$remaining file remaining"
+            else -> "$remaining files remaining"
+        }
         // SILENT CHANNEL
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_SILENT)
             .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle("Downloading")
-            .setContentText("$current of $total")
+            .setContentTitle("VedInsta · Downloading")
+            .setContentText("$current of $total files ($percent%)")
+            .setSubText(subText)
             .setProgress(total, current, false)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
@@ -121,38 +133,42 @@ class VedInstaNotificationManager private constructor(private val context: Conte
             .setOnlyAlertOnce(true)
             .build()
 
-        notify(NOTIFICATION_ID_BATCH_DOWNLOAD, notification)
+        notify(notificationId, notification)
+    }
+
+    fun showSingleDownloadProgress(notificationId: Int, fileName: String, progress: Int) {
+        val ext = fileName.substringAfterLast('.', "").uppercase()
+        val displayName = if (ext.isNotBlank()) "$ext file" else "Media file"
+        val contentText = when {
+            progress >= 100 -> "Download complete"
+            progress >= 0 -> "$progress% downloaded"
+            else -> "Starting download..."
+        }
+        // SILENT CHANNEL
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID_SILENT)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentTitle("VedInsta · Downloading $displayName")
+            .setContentText(contentText)
+            .setProgress(100, if (progress >= 0) progress else 0, progress < 0)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .build()
+
+        notify(notificationId, notification)
     }
 
     fun showBatchDownloadComplete(totalFiles: Int) {
         cancelBatchDownloadNotification()
-
-        val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            context,
-            System.currentTimeMillis().toInt(),
-            intent,
-            pendingIntentFlags
-        )
-
-        // SILENT CHANNEL (As requested)
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID_SILENT)
-            .setSmallIcon(android.R.drawable.stat_sys_download_done)
-            .setContentTitle("Download Complete")
-            .setContentText("Saved $totalFiles file(s)")
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setDefaults(0) // No sound/vibrate
-            .setCategory(NotificationCompat.CATEGORY_STATUS)
-            .setContentIntent(pendingIntent)
-            .setAutoCancel(true)
-            .build()
-
-        notify(System.currentTimeMillis().toInt(), notification)
+        showDownloadCompleted("Download Complete", "Saved $totalFiles file(s)")
     }
 
     fun showDownloadCompleted(fileName: String, totalFiles: Int, postUrl: String? = null, filePaths: List<String> = emptyList()) {
+        val countText = if (totalFiles > 1) "$totalFiles files saved" else "File saved to gallery"
+        showDownloadCompleted("Download Complete", countText)
+    }
+
+    fun showDownloadCompleted(title: String, message: String) {
         val notificationId = System.currentTimeMillis().toInt()
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
@@ -167,9 +183,10 @@ class VedInstaNotificationManager private constructor(private val context: Conte
         // SILENT CHANNEL
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_SILENT)
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
-            .setContentTitle("Download Completed")
-            .setContentText("Saved: $fileName")
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setContentTitle("VedInsta · $title")
+            .setContentText(message)
+            .setSubText("Tap to open")
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setDefaults(0)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)

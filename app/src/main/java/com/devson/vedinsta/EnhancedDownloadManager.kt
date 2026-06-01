@@ -50,12 +50,28 @@ class EnhancedDownloadManager(
         val mediaUrl = inputData.getString(KEY_MEDIA_URL) ?: return Result.failure()
         val filePath = inputData.getString(KEY_FILE_PATH) ?: return Result.failure()
         val fileName = inputData.getString(KEY_FILE_NAME) ?: "downloading_file"
+        val isBatch = inputData.getBoolean("is_batch", false)
+        val postId = inputData.getString(KEY_POST_ID)
+        
         val notificationId = id.hashCode() + NOTIFICATION_ID_OFFSET
+        val finalNotificationId = if (isBatch && postId != null) postId.hashCode() else notificationId
 
-        val initialNotification = createProgressNotification(fileName, 0)
+        val initialNotification = if (isBatch) {
+            NotificationCompat.Builder(applicationContext, VedInstaNotificationManager.CHANNEL_ID_SILENT)
+                .setContentTitle("VedInsta · Downloading")
+                .setContentText("Preparing files…")
+                .setSmallIcon(android.R.drawable.stat_sys_download)
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .build()
+        } else {
+            createProgressNotification(fileName, 0)
+        }
+
         try {
-            setForeground(ForegroundInfo(notificationId, initialNotification))
-            Log.d(TAG, "Foreground service started for worker $id with notification ID $notificationId")
+            setForeground(ForegroundInfo(finalNotificationId, initialNotification))
+            Log.d(TAG, "Foreground service started for worker $id with notification ID $finalNotificationId")
         } catch (e: Exception) {
             Log.e(TAG, "Error setting foreground info (permission or other issue)", e)
         }
@@ -64,7 +80,7 @@ class EnhancedDownloadManager(
 
         return try {
             Log.d(TAG, "Starting download for: $mediaUrl")
-            val success = downloadWithProgress(mediaUrl, filePath, fileName, notificationId)
+            val success = downloadWithProgress(mediaUrl, filePath, fileName, finalNotificationId, isBatch)
             if (success) {
                 Log.d(TAG, "Download finished successfully: $filePath")
                 val outputData = workDataOf(
@@ -86,7 +102,8 @@ class EnhancedDownloadManager(
         url: String,
         filePath: String,
         fileName: String,
-        notificationId: Int
+        notificationId: Int,
+        isBatch: Boolean
     ): Boolean = withContext(Dispatchers.IO) {
         val client = createEnhancedOkHttpClient()
         val request = createEnhancedRequest(url)
@@ -133,14 +150,16 @@ class EnhancedDownloadManager(
                                 setProgress(workDataOf(PROGRESS to progress))
                                 lastProgress = progress
 
-                                if (now - lastNotificationUpdateTime >= NOTIFICATION_UPDATE_INTERVAL_MS || progress == 100 || progress == -1 && lastNotificationUpdateTime == 0L) {
-                                    val notification = createProgressNotification(fileName, progress)
-                                    try {
-                                        notificationManagerCompat.notify(notificationId, notification)
-                                        lastNotificationUpdateTime = now
-                                    } catch (e: SecurityException) {
-                                        Log.w(TAG, "Permission denied updating notification")
-                                        lastNotificationUpdateTime = Long.MAX_VALUE
+                                if (!isBatch) {
+                                    if (now - lastNotificationUpdateTime >= NOTIFICATION_UPDATE_INTERVAL_MS || progress == 100 || progress == -1 && lastNotificationUpdateTime == 0L) {
+                                        val notification = createProgressNotification(fileName, progress)
+                                        try {
+                                            notificationManagerCompat.notify(notificationId, notification)
+                                            lastNotificationUpdateTime = now
+                                        } catch (e: SecurityException) {
+                                            Log.w(TAG, "Permission denied updating notification")
+                                            lastNotificationUpdateTime = Long.MAX_VALUE
+                                        }
                                     }
                                 }
                             }
@@ -242,7 +261,22 @@ class EnhancedDownloadManager(
 
     override suspend fun getForegroundInfo(): ForegroundInfo {
         val fileName = inputData.getString(KEY_FILE_NAME) ?: "downloading_file"
-        val notificationId = id.hashCode() + NOTIFICATION_ID_OFFSET
-        return ForegroundInfo(notificationId, createProgressNotification(fileName, 0))
+        val isBatch = inputData.getBoolean("is_batch", false)
+        val postId = inputData.getString(KEY_POST_ID)
+        val finalNotificationId = if (isBatch && postId != null) postId.hashCode() else (id.hashCode() + NOTIFICATION_ID_OFFSET)
+        
+        val notification = if (isBatch) {
+            NotificationCompat.Builder(applicationContext, VedInstaNotificationManager.CHANNEL_ID_SILENT)
+                .setContentTitle("Downloading batch media")
+                .setContentText("Preparing files...")
+                .setSmallIcon(android.R.drawable.stat_sys_download)
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .build()
+        } else {
+            createProgressNotification(fileName, 0)
+        }
+        return ForegroundInfo(finalNotificationId, notification)
     }
 }

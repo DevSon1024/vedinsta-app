@@ -10,6 +10,10 @@ import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.Observer
 import androidx.work.*
+import coil.ImageLoader
+import coil.ImageLoaderFactory
+import coil.decode.VideoFrameDecoder
+import coil.request.CachePolicy
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
 import com.devson.vedinsta.database.AppDatabase
@@ -33,7 +37,7 @@ import android.content.Intent
 import com.devson.vedinsta.model.ImageCard
 import com.devson.vedinsta.service.DownloadService
 
-class VedInstaApplication : Application() {
+class VedInstaApplication : Application(), ImageLoaderFactory {
 
     lateinit var settingsManager: SettingsManager
     // Use SupervisorJob to prevent failure of one child from cancelling others
@@ -57,6 +61,22 @@ class VedInstaApplication : Application() {
         }
         // Prune finished WorkManager jobs on app start to clean up
         WorkManager.getInstance(this).pruneWork()
+    }
+
+    /**
+     * Provides a global Coil ImageLoader that can decode video files (.mp4 etc.) as
+     * thumbnail frames. This makes AsyncImage work correctly for all video thumbnails
+     * across HistoryScreen, FavoritesScreen, and HomeScreen without any UI changes.
+     */
+    override fun newImageLoader(): ImageLoader {
+        return ImageLoader.Builder(this)
+            .components {
+                add(VideoFrameDecoder.Factory())
+            }
+            .diskCachePolicy(CachePolicy.ENABLED)
+            .memoryCachePolicy(CachePolicy.ENABLED)
+            .crossfade(true)
+            .build()
     }
 
     // --- Caching Username and Caption ---
@@ -144,14 +164,10 @@ class VedInstaApplication : Application() {
     ) {
         withContext(Dispatchers.IO) {
             try {
-                val notificationManager = VedInstaNotificationManager.getInstance(this@VedInstaApplication)
                 val totalItems = mediaItems.size
 
                 for ((index, mediaItem) in mediaItems.withIndex()) {
                     try {
-                        // Show progress
-                        notificationManager.showBatchDownloadProgress(index + 1, totalItems)
-
                         val timestamp = System.currentTimeMillis()
                         val extension = if (mediaItem.type == "video") "mp4" else "jpg"
                         val fileName = "${username}_${timestamp + index}.$extension"
@@ -177,9 +193,6 @@ class VedInstaApplication : Application() {
                         Log.e("VedInstaApp", "Error downloading item ${index + 1}", e)
                     }
                 }
-
-                // Show completion
-                notificationManager.showBatchDownloadComplete(totalItems)
 
             } catch (e: Exception) {
                 Log.e("VedInstaApp", "Error in batch download", e)
@@ -211,25 +224,17 @@ class VedInstaApplication : Application() {
                     throw Exception("No media found in post")
                 }
 
-                val notificationManager = VedInstaNotificationManager.getInstance(this@VedInstaApplication)
                 val totalItems = mediaArray.length()
-
-                // Show initial progress
-                notificationManager.showBatchDownloadProgress(0, totalItems)
 
                 for (i in 0 until totalItems) {
                     val mediaObj = mediaArray.getJSONObject(i)
                     val downloadUrl = mediaObj.getString("url")
                     val mediaType = mediaObj.optString("type", "image")
-                    val index = mediaObj.optInt("index", i + 1)
 
                     val username = postData.optString("username", "unknown")
                     val timestamp = System.currentTimeMillis()
                     val extension = if (mediaType == "video") "mp4" else "jpg"
                     val fileName = "${username}_${timestamp + i}.$extension"
-
-                    // Update progress
-                    notificationManager.showBatchDownloadProgress(i + 1, totalItems)
 
                     // Queue download - this will save to same location as in-app downloads
                     queueDownload(
@@ -248,12 +253,6 @@ class VedInstaApplication : Application() {
                         kotlinx.coroutines.delay(300)
                     }
                 }
-
-                // Small delay before showing completion
-                kotlinx.coroutines.delay(500)
-
-                // Show completion notification
-                notificationManager.showBatchDownloadComplete(totalItems)
 
             } catch (e: Exception) {
                 Log.e("VedInstaApp", "Error downloading post", e)
@@ -366,6 +365,7 @@ class VedInstaApplication : Application() {
                     EnhancedDownloadManager.KEY_FILE_NAME to fileName,
                     EnhancedDownloadManager.KEY_POST_ID to groupTag, // Use groupTag for all items in batch
                     EnhancedDownloadManager.KEY_MEDIA_TYPE to media.type,
+                    "is_batch" to true
                     // Add flag indicating if manual move to SAF is needed after download
                     // "requires_manual_move" to requiresManualMove, // TODO: Implement worker reading this
                     // "target_saf_uri" to targetDirectoryUriString // TODO: Implement worker reading this
@@ -451,7 +451,8 @@ class VedInstaApplication : Application() {
                 EnhancedDownloadManager.KEY_FILE_PATH to workerFilePath, // Path worker writes to
                 EnhancedDownloadManager.KEY_FILE_NAME to fileName,
                 EnhancedDownloadManager.KEY_POST_ID to postIdOrKey, // Use the key consistently
-                EnhancedDownloadManager.KEY_MEDIA_TYPE to mediaType
+                EnhancedDownloadManager.KEY_MEDIA_TYPE to mediaType,
+                "is_batch" to false
                 // TODO: Add requiresManualMove and target_saf_uri flags if implementing SAF move
             )
 
@@ -560,8 +561,10 @@ class VedInstaApplication : Application() {
             val mediaType = workInfo.progress.getString(EnhancedDownloadManager.KEY_MEDIA_TYPE)
                 ?: workInfo.tags.firstOrNull() ?: "image" // Fallback
 
+            val notificationManager = VedInstaNotificationManager.getInstance(context)
             when (workInfo.state) {
                 WorkInfo.State.SUCCEEDED -> {
+                    notificationManager.cancelDownloadNotification(workId.hashCode() + 1000)
                     if (filePath != null) {
                         Log.i(TAG, "Observer: Work $workId ($fileName) SUCCEEDED. Path: $filePath")
                         // TODO: Implement SAF move here if required
@@ -578,6 +581,7 @@ class VedInstaApplication : Application() {
                 }
                 WorkInfo.State.FAILED, WorkInfo.State.CANCELLED -> {
                     Log.w(TAG, "Observer: Work $workId ($fileName) ${workInfo.state}.")
+                    notificationManager.cancelDownloadNotification(workId.hashCode() + 1000)
                     handleSingleFailure(context, fileName, tag)
                     cleanupObserver(workId, workInfoLiveData) // Clean up after terminal state
                 }
@@ -690,6 +694,8 @@ class VedInstaApplication : Application() {
             }
 
 
+            val notificationManager = VedInstaNotificationManager.getInstance(context)
+
             // Check if ALL expected jobs are finished
             if (finishedCount >= expectedCount) {
                 Log.i(TAG, "All $expectedCount works for tag '$groupTag' have finished.")
@@ -721,20 +727,33 @@ class VedInstaApplication : Application() {
 
                         // Show summary notification/toast on Main thread
                         withContext(Dispatchers.Main) {
-                            val message = "Downloaded ${completedFilePaths.size} / $expectedCount files for $finalUsername."
+                            val message = "Downloaded ${completedFilePaths.size}/$expectedCount files for $finalUsername."
                             Toast.makeText(context, message, Toast.LENGTH_LONG).show()
-                            VedInstaNotificationManager.getInstance(context).showDownloadCompleted(finalUsername, completedFilePaths.size)
+                            notificationManager.cancelDownloadNotification(groupTag.hashCode())
+                            notificationManager.showDownloadCompleted(
+                                title = "Download Completed",
+                                message = "Saved ${completedFilePaths.size}/$expectedCount files from @$finalUsername"
+                            )
                         }
                     }
                 } else {
                     Log.w(TAG, "All work finished for tag '$groupTag', but no files succeeded.")
                     applicationScope.launch(Dispatchers.Main) {
                         Toast.makeText(context, "Download failed for post $finalUsername.", Toast.LENGTH_LONG).show()
-                        VedInstaNotificationManager.getInstance(context).showDownloadError("Post $finalUsername", "All downloads failed")
+                        notificationManager.cancelDownloadNotification(groupTag.hashCode())
+                        notificationManager.showDownloadError("Post $finalUsername", "All downloads failed")
                     }
                 }
             } else {
                 Log.d(TAG, "Tag '$groupTag': Waiting for ${expectedCount - finishedCount} more job(s) to finish.")
+                val cachedMetadata = getCachedMetadata(groupTag)
+                val displayUsername = cachedMetadata.first ?: "unknown"
+                notificationManager.showBatchDownloadProgress(
+                    notificationId = groupTag.hashCode(),
+                    current = finishedCount,
+                    total = expectedCount,
+                    title = "Downloading from @$displayUsername"
+                )
             }
         } // End of observer lambda
 

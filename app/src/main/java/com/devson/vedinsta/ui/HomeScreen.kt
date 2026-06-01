@@ -24,6 +24,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.request.videoFrameMillis
+import coil.size.Size
 import com.devson.vedinsta.database.DownloadedPost
 import java.io.File
 import java.util.Calendar
@@ -328,7 +331,12 @@ fun HomeScreen(
                         Box(modifier = Modifier.fillMaxSize()) {
                             // Thumbnail Image
                             AsyncImage(
-                                model = if (post.thumbnailPath.isNotEmpty()) File(post.thumbnailPath) else null,
+                                model = ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+                                    .data(if (post.thumbnailPath.isNotEmpty()) File(post.thumbnailPath) else null)
+                                    .size(Size.ORIGINAL)
+                                    .videoFrameMillis(0L)
+                                    .crossfade(true)
+                                    .build(),
                                 contentDescription = "Post Thumbnail",
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop

@@ -16,6 +16,8 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 
 class DownloadService : Service() {
 
@@ -43,6 +45,10 @@ class DownloadService : Service() {
         private val dbMutex = Mutex()
         private const val TAG = "DownloadService"
         private const val USER_AGENT = "Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.193 Mobile Safari/537.36 Instagram 314.0.0.19.113 Android (34/14; 450dpi; 1440x3088; samsung; SM-S918B; dm3q; qcom; en_US; 557876543)"
+
+        // ConcurrentMaps for batch download progress tracking
+        private val batchProgressMap = ConcurrentHashMap<String, Pair<AtomicInteger, AtomicInteger>>()
+        private val batchCompletedFilesMap = ConcurrentHashMap<String, CopyOnWriteArrayList<String>>()
     }
 
     override fun onCreate() {
@@ -63,11 +69,34 @@ class DownloadService : Service() {
             val hasVideo = it.getBooleanExtra(EXTRA_HAS_VIDEO, false)
 
             if (url != null && filePath != null && fileName != null) {
-                val notificationId = System.currentTimeMillis().toInt()
+                val isBatch = postId != null && totalImages > 1
+                val notificationId = if (isBatch) postId.hashCode() else System.currentTimeMillis().toInt()
                 
                 activeTasks.incrementAndGet()
 
-                val notification = createForegroundNotification(fileName)
+                if (isBatch) {
+                    batchProgressMap.putIfAbsent(postId!!, Pair(AtomicInteger(0), AtomicInteger(0)))
+                    batchCompletedFilesMap.putIfAbsent(postId, CopyOnWriteArrayList())
+                }
+
+                val notification = if (isBatch) {
+                    val progress = batchProgressMap[postId]
+                    val finished = progress?.first?.get() ?: 0
+                    val percent = if (totalImages > 0) ((finished * 100) / totalImages) else 0
+                    NotificationCompat.Builder(this, VedInstaNotificationManager.CHANNEL_ID_SILENT)
+                        .setSmallIcon(android.R.drawable.stat_sys_download)
+                        .setContentTitle("VedInsta · Downloading")
+                        .setContentText("$finished of $totalImages files ($percent%)")
+                        .setSubText("${totalImages - finished} remaining")
+                        .setProgress(totalImages, finished, false)
+                        .setPriority(NotificationCompat.PRIORITY_LOW)
+                        .setOngoing(true)
+                        .setOnlyAlertOnce(true)
+                        .build()
+                } else {
+                    createForegroundNotification(fileName)
+                }
+
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
                     ServiceCompat.startForeground(
                         this,
@@ -116,14 +145,17 @@ class DownloadService : Service() {
         return START_NOT_STICKY
     }
 
-    private fun createForegroundNotification(fileName: String) =
-        NotificationCompat.Builder(this, VedInstaNotificationManager.CHANNEL_ID_SILENT)
+    private fun createForegroundNotification(fileName: String): android.app.Notification {
+        val ext = fileName.substringAfterLast('.', "").uppercase()
+        val displayName = if (ext.isNotBlank()) "$ext file" else "Media file"
+        return NotificationCompat.Builder(this, VedInstaNotificationManager.CHANNEL_ID_SILENT)
             .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle("VedInsta Download")
-            .setContentText("Downloading: $fileName")
+            .setContentTitle("VedInsta · Downloading $displayName")
+            .setContentText("Starting download...")
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
             .build()
+    }
 
     private suspend fun downloadFile(
         url: String,
@@ -145,7 +177,7 @@ class DownloadService : Service() {
 
             httpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
-                    notificationManager.showDownloadError(fileName, "HTTP ${response.code}")
+                    handleDownloadFailure(postId, totalImages, username, fileName, "HTTP ${response.code}", notificationId)
                     return
                 }
 
@@ -154,6 +186,11 @@ class DownloadService : Service() {
                 val file = File(filePath)
                 file.parentFile?.mkdirs()
 
+                val contentLength = body.contentLength()
+                var currentTotalBytesRead = 0L
+                var lastProgress = -1
+                var lastNotificationUpdateTime = 0L
+
                 body.byteStream().use { inputStream ->
                     FileOutputStream(file).use { outputStream ->
                         val buffer = ByteArray(8192)
@@ -161,13 +198,23 @@ class DownloadService : Service() {
 
                         while (inputStream.read(buffer).also { bytesRead = it } != -1) {
                             outputStream.write(buffer, 0, bytesRead)
+                            currentTotalBytesRead += bytesRead
+
+                            if (contentLength > 0 && (postId == null || totalImages <= 1)) {
+                                val progress = ((currentTotalBytesRead * 100) / contentLength).toInt()
+                                if (progress != lastProgress) {
+                                    lastProgress = progress
+                                    val now = System.currentTimeMillis()
+                                    if (now - lastNotificationUpdateTime >= 1000L || progress == 100) {
+                                        lastNotificationUpdateTime = now
+                                        notificationManager.showSingleDownloadProgress(notificationId, fileName, progress)
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
-
-            notificationManager.cancelDownloadNotification(notificationId)
-            notificationManager.showDownloadCompleted(fileName, 1)
 
             // Index file in MediaStore so it displays in native gallery immediately
             scanFileWithMediaScanner(filePath)
@@ -184,9 +231,93 @@ class DownloadService : Service() {
                 )
             }
 
+            handleDownloadSuccess(postId, totalImages, username, fileName, notificationId, filePath)
+
         } catch (e: Exception) {
             Log.e(TAG, "Failed to download $fileName", e)
-            notificationManager.showDownloadError(fileName, e.message ?: "Unknown error")
+            handleDownloadFailure(postId, totalImages, username, fileName, e.message ?: "Unknown error", notificationId)
+        }
+    }
+
+    private fun handleDownloadSuccess(
+        postId: String?,
+        totalImages: Int,
+        username: String?,
+        fileName: String,
+        notificationId: Int,
+        filePath: String
+    ) {
+        if (postId != null && totalImages > 1) {
+            val progress = batchProgressMap[postId]
+            if (progress != null) {
+                progress.second.incrementAndGet() // increment success count
+                val finished = progress.first.incrementAndGet() // increment finished count
+                batchCompletedFilesMap[postId]?.add(filePath)
+
+                val displayUsername = username ?: "unknown"
+                notificationManager.showBatchDownloadProgress(
+                    notificationId = postId.hashCode(),
+                    current = finished,
+                    total = totalImages,
+                    title = "Downloading from @$displayUsername"
+                )
+
+                if (finished >= totalImages) {
+                    notificationManager.cancelDownloadNotification(postId.hashCode())
+                    val successes = progress.second.get()
+                    notificationManager.showDownloadCompleted(
+                        title = "Download Completed",
+                        message = "Saved $successes/$totalImages files from @$displayUsername"
+                    )
+                    batchProgressMap.remove(postId)
+                    batchCompletedFilesMap.remove(postId)
+                }
+            }
+        } else {
+            notificationManager.cancelDownloadNotification(notificationId)
+            notificationManager.showDownloadCompleted(fileName, 1)
+        }
+    }
+
+    private fun handleDownloadFailure(
+        postId: String?,
+        totalImages: Int,
+        username: String?,
+        fileName: String,
+        errorMessage: String,
+        notificationId: Int
+    ) {
+        if (postId != null && totalImages > 1) {
+            val progress = batchProgressMap[postId]
+            if (progress != null) {
+                val finished = progress.first.incrementAndGet() // increment finished count
+
+                val displayUsername = username ?: "unknown"
+                notificationManager.showBatchDownloadProgress(
+                    notificationId = postId.hashCode(),
+                    current = finished,
+                    total = totalImages,
+                    title = "Downloading from @$displayUsername"
+                )
+
+                if (finished >= totalImages) {
+                    notificationManager.cancelDownloadNotification(postId.hashCode())
+                    val successes = progress.second.get()
+                    if (successes > 0) {
+                        notificationManager.showDownloadCompleted(
+                            title = "Download Completed with errors",
+                            message = "Saved $successes/$totalImages files from @$displayUsername"
+                        )
+                    } else {
+                        notificationManager.showDownloadError("Batch Download Failed", "Could not download files from @$displayUsername")
+                    }
+                    batchProgressMap.remove(postId)
+                    batchCompletedFilesMap.remove(postId)
+                }
+            }
+        } else {
+            notificationManager.cancelDownloadNotification(notificationId)
+            notificationManager.showDownloadError(fileName, errorMessage)
         }
     }
 
