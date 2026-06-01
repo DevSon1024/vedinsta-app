@@ -93,6 +93,12 @@ class InstagramAuthViewModel(application: Application) : AndroidViewModel(applic
     private fun fetchRealUsernameInBackground(dsUserId: String) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                // Wait for Python to start up in the background if it's still initializing
+                var retries = 0
+                while (!Python.isStarted() && retries < 50) {
+                    kotlinx.coroutines.delay(100)
+                    retries++
+                }
                 if (Python.isStarted()) {
                     val python = Python.getInstance()
                     val mo3Module = python.getModule("mo3")

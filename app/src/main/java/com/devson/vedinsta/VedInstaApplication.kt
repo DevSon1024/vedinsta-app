@@ -52,14 +52,14 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
         const val UNIQUE_DOWNLOAD_WORK_NAME = "vedInstaDownloadWork" // Can be used for specific single tasks if needed
 
         fun clearAppCache(context: Context) {
-            val cacheDir = context.cacheDir
-            if (cacheDir != null && cacheDir.exists()) {
+            val downloadCacheDir = File(context.cacheDir, "download_cache")
+            if (downloadCacheDir.exists()) {
                 CoroutineScope(Dispatchers.IO).launch {
                     try {
-                        deleteRecursive(cacheDir, excludeSelf = true)
-                        Log.d(TAG, "App cache directory cleared successfully.")
+                        deleteRecursive(downloadCacheDir, excludeSelf = false)
+                        Log.d(TAG, "Download cache directory cleared successfully.")
                     } catch (e: Exception) {
-                        Log.e(TAG, "Failed to clear app cache", e)
+                        Log.e(TAG, "Failed to clear download cache", e)
                     }
                 }
             }
@@ -91,9 +91,11 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         settingsManager = SettingsManager(this)
-        // Initialize Python interpreter if not already started
-        if (!Python.isStarted()) {
-            Python.start(AndroidPlatform(this))
+        // Initialize Python interpreter asynchronously in the background to prevent startup lag
+        applicationScope.launch(Dispatchers.IO) {
+            if (!Python.isStarted()) {
+                Python.start(AndroidPlatform(this@VedInstaApplication))
+            }
         }
         // Prune finished WorkManager jobs on app start to clean up
         WorkManager.getInstance(this).pruneWork()

@@ -37,6 +37,10 @@ class MediaExtractionViewModel(application: Application) : AndroidViewModel(appl
     private val _chosenQualities = MutableStateFlow<Map<Int, String>>(emptyMap())
     val chosenQualities: StateFlow<Map<Int, String>> = _chosenQualities.asStateFlow()
 
+    // Holds the URL of the currently extracted post
+    var lastExtractedUrl: String = ""
+        private set
+
     /**
      * Triggers the Python media extraction script and updates flow states.
      */
@@ -45,6 +49,7 @@ class MediaExtractionViewModel(application: Application) : AndroidViewModel(appl
             _extractionState.value = ExtractionState.Error("Please enter a valid Instagram URL or shortcode")
             return
         }
+        lastExtractedUrl = urlOrShortcode
 
         viewModelScope.launch {
             _extractionState.value = ExtractionState.Loading
@@ -85,6 +90,7 @@ class MediaExtractionViewModel(application: Application) : AndroidViewModel(appl
         _extractionState.value = ExtractionState.Idle
         _selectedIndexes.value = emptySet()
         _chosenQualities.value = emptyMap()
+        lastExtractedUrl = ""
     }
 
     fun toggleSelection(index: Int) {

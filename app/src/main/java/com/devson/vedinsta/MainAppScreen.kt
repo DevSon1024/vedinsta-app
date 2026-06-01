@@ -29,6 +29,7 @@ import java.io.File
 sealed class Screen {
     object Home : Screen()
     object Downloader : Screen()
+    object DownloaderDetails : Screen()
     object History : Screen()
     object Favorites : Screen()
     object Sessions : Screen()
@@ -108,7 +109,7 @@ fun MainAppScreen(
 
     Scaffold(
         topBar = {
-            if (currentScreen !is Screen.PostView && currentScreen !is Screen.Login && currentScreen !is Screen.Appearance && currentScreen !is Screen.Downloader) {
+            if (currentScreen !is Screen.PostView && currentScreen !is Screen.Login && currentScreen !is Screen.Appearance && currentScreen !is Screen.Downloader && currentScreen !is Screen.DownloaderDetails) {
                 VedInstaTopAppBar(
                     title = when(currentScreen) {
                         Screen.Home -> "Home"
@@ -125,19 +126,8 @@ fun MainAppScreen(
                     onBackClick = { navigateBack() },
                     actions = {
                         if (currentScreen == Screen.Home) {
-                            // Settings Button in TopAppBar
-                            IconButton(onClick = { navigateTo(Screen.Settings) }) {
-                                Icon(
-                                    imageVector = Icons.Default.Settings,
-                                    contentDescription = "Settings",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-
                             // Notification badge icon
-                            Box(
-                                modifier = Modifier.padding(end = 8.dp)
-                            ) {
+                            Box {
                                 IconButton(onClick = {
                                     notificationViewModel.markAllAsRead()
                                     navigateTo(Screen.Notifications)
@@ -165,12 +155,34 @@ fun MainAppScreen(
                                     }
                                 }
                             }
+
+                            // Settings Button in TopAppBar
+                            IconButton(
+                                onClick = { navigateTo(Screen.Settings) },
+                                modifier = Modifier.padding(end = 8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Settings,
+                                    contentDescription = "Settings",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         } else if (currentScreen == Screen.History || currentScreen == Screen.Favorites) {
                             // View settings bottom sheet trigger (using hamburger menu)
                             IconButton(onClick = { showViewSettingsSheet = true }) {
                                 Icon(
-                                    imageVector = Icons.Default.Menu,
+                                    imageVector = Icons.Default.Tune,
                                     contentDescription = "View Settings",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            IconButton(
+                                onClick = { navigateTo(Screen.Settings) },
+                                modifier = Modifier.padding(end = 8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Settings,
+                                    contentDescription = "Settings",
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
@@ -180,7 +192,7 @@ fun MainAppScreen(
             }
         },
         floatingActionButton = {
-            if (currentScreen !is Screen.Downloader && currentScreen !is Screen.Login && currentScreen !is Screen.PostView && currentScreen !is Screen.Appearance) {
+            if (currentScreen !is Screen.Downloader && currentScreen !is Screen.DownloaderDetails && currentScreen !is Screen.Login && currentScreen !is Screen.PostView && currentScreen !is Screen.Appearance) {
                 FloatingActionButton(
                     onClick = { navigateTo(Screen.Downloader) },
                     containerColor = MaterialTheme.colorScheme.primary,
@@ -196,7 +208,7 @@ fun MainAppScreen(
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
-        val applyPadding = currentScreen !is Screen.PostView && currentScreen !is Screen.Login && currentScreen !is Screen.Appearance
+        val applyPadding = currentScreen !is Screen.PostView && currentScreen !is Screen.Login && currentScreen !is Screen.Appearance && currentScreen !is Screen.Downloader && currentScreen !is Screen.DownloaderDetails
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -239,7 +251,18 @@ fun MainAppScreen(
                             authViewModel = authViewModel,
                             extractionViewModel = extractionViewModel,
                             onNavigateToLogin = { navigateTo(Screen.Login) },
+                            onNavigateToDetails = { navigateTo(Screen.DownloaderDetails) },
                             onNavigateBack = { navigateBack() }
+                        )
+                    }
+                    is Screen.DownloaderDetails -> {
+                        MediaSelectionDetailScreen(
+                            authViewModel = authViewModel,
+                            extractionViewModel = extractionViewModel,
+                            onNavigateBack = {
+                                extractionViewModel.reset()
+                                navigateBack()
+                            }
                         )
                     }
                     is Screen.History -> {
@@ -452,14 +475,15 @@ private fun getScreenOrderValue(screen: Screen): Int {
     return when (screen) {
         is Screen.Home -> 0
         is Screen.Downloader -> 1
-        is Screen.History -> 2
-        is Screen.Favorites -> 3
-        is Screen.Sessions -> 4
-        is Screen.Settings -> 5
-        is Screen.Appearance -> 6
-        is Screen.Notifications -> 7
-        is Screen.About -> 8
-        is Screen.Login -> 9
-        is Screen.PostView -> 10
+        is Screen.DownloaderDetails -> 2
+        is Screen.History -> 3
+        is Screen.Favorites -> 4
+        is Screen.Sessions -> 5
+        is Screen.Settings -> 6
+        is Screen.Appearance -> 7
+        is Screen.Notifications -> 8
+        is Screen.About -> 9
+        is Screen.Login -> 10
+        is Screen.PostView -> 11
     }
 }

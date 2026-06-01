@@ -296,3 +296,53 @@
   9. Successfully verified the build compiles using `.\gradlew assembleDebug` (1m 49s) and `.\gradlew assembleRelease` (2m 44s), producing split and universal release APKs (reducing arm64 download size to 17.48 MB).
 
 ---
+
+- **Type of Details:** UI Refactor & New Update
+- **Description:**
+  1. Exchanged the placement of the Settings and Notifications action buttons in the top app bar for `Screen.Home` only. The Notifications badge icon is now placed first, and the Settings icon is placed second (at the end).
+  2. Applied an end padding of 8.dp to the Settings icon on the Home screen to ensure correct layout spacing.
+  3. Added the Settings action icon to the end of the top app bar on History and Favorites screens next to the View Settings (Tune) action button.
+  4. Verified the project compiles successfully using `.\gradlew assembleDebug`.
+
+---
+
+- **Type of Details:** Performance Improvement & Error Solving
+- **Description:**
+  1. Resolved app cold start lag by initializing the Chaquopy Python interpreter asynchronously on a background IO thread (`Dispatchers.IO`) in `VedInstaApplication.kt` instead of synchronously blocking the Main Thread in `onCreate()`.
+  2. Implemented check-and-wait polling loops (up to 5 seconds with 100ms delays) in `MediaFetcherRepository.kt`, `InstagramAuthViewModel.kt`, and `SharedLinkProcessingService.kt` to safely suspend operations and wait for background Python startup, ensuring no errors or crashes if the user interacts immediately on app boot.
+  3. Fixed severe overall device and application lagging caused by recursive cache clearing on startup and download completion by restricting `clearAppCache` to ONLY clear the temporary `download_cache` folder, preventing disk I/O thrashing and conflicts with Chaquopy's internal Python assets.
+  4. Verified the project compiles successfully using `.\gradlew assembleDebug`.
+
+---
+
+- **Type of Details:** UI Enhancement / Bug Fix
+- **Description:**
+  1. Updated the Resolution Selection Pill in `MediaSelectionScreen.kt` to use a capsule shape (`RoundedCornerShape(16.dp)`).
+  2. Applied `.clip(RoundedCornerShape(16.dp))` before the `.clickable` modifier to restrict the click ripple animation to the rounded boundaries of the pill, eliminating the rectangular/square selection feedback.
+  3. Verified the project compiles successfully using `.\gradlew clean assembleDebug`.
+
+---
+
+- **Type of Details:** Refactor & New Update
+- **Description:**
+  1. Split the single-page media downloader interface into two distinct pages: input page (`MediaSelectionScreen.kt`) and a separate media selection and download details page (`MediaSelectionDetailScreen.kt`).
+  2. Simplified `MediaSelectionScreen.kt` to display only the Instagram URL paste input form and action button, along with idle, loading, and error state indicators.
+  3. Integrated a dynamic transition in `MediaSelectionScreen` using `LaunchedEffect(extractionState)` to automatically navigate to the details page upon successful media extraction.
+  4. Implemented `MediaSelectionDetailScreen.kt` using a horizontal carousel, selection checkboxes, quality selection dropdowns, page indicator dots, and a primary download action button.
+  5. Added `lastExtractedUrl` state in `MediaExtractionViewModel` to store the target URL during extraction.
+  6. Configured `MainAppScreen.kt` navigation graph to support `Screen.DownloaderDetails`, hiding default app bars and the floating action button on this screen, and resetting extraction state to `Idle` on back navigation.
+  7. Adjusted top padding in `MainAppScreen.kt` to exclude both `Screen.Downloader` and `Screen.DownloaderDetails` from standard app bar padding, allowing both header layouts to extend properly edge-to-edge under the status bar.
+  8. Verified the project compiles successfully using `.\gradlew assembleDebug`.
+
+---
+
+- **Type of Details:** UI Enhancement / Refactor
+- **Description:**
+  1. Added a blurred background image effect for images in [PostViewScreen.kt](file:///c:/Android/vedinsta/app/src/main/java/com/devson/vedinsta/ui/PostViewScreen.kt) to replace the default letterbox/pillarbox black strips.
+  2. Applied a 45% opacity dark overlay on the blurred background image to maintain readability and separation with the primary foreground image.
+  3. Integrated Coil's built-in image `crossfade` animation on both background and foreground image loaders to create smooth fade-in transitions.
+  4. Added a premium page-swipe transition using Compose `graphicsLayer` to animate `alpha` and `scale` dynamically based on pager scroll offsets.
+  5. Verified the project compiles successfully using `.\gradlew compileDebugKotlin`.
+
+---
+

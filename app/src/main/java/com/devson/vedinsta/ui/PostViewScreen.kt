@@ -29,8 +29,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
+import kotlin.math.absoluteValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -148,18 +151,50 @@ fun PostViewScreen(
                     val file = mediaFiles[page]
                     val isVideo = file.extension.lowercase() in listOf("mp4", "mov", "avi")
 
+                    val pageOffset = ((pagerState.currentPage - page) + pagerState.currentPageOffsetFraction).absoluteValue
+                    val fraction = 1f - pageOffset.coerceIn(0f, 1f)
+                    val scale = 0.95f + 0.05f * fraction
+
                     Box(
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                this.alpha = fraction
+                                scaleX = scale
+                                scaleY = scale
+                            },
                         contentAlignment = Alignment.Center
                     ) {
                         if (isVideo) {
                             VideoPlayer(file = file)
                         } else {
+                            // Blurred Background Image to cover black letterbox/pillarbox bars
                             AsyncImage(
                                 model = ImageRequest.Builder(LocalContext.current)
                                     .data(file)
                                     .diskCachePolicy(CachePolicy.DISABLED)
                                     .memoryCachePolicy(CachePolicy.ENABLED)
+                                    .crossfade(true)
+                                    .build(),
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .blur(24.dp),
+                                contentScale = ContentScale.Crop
+                            )
+                            // Dimming overlay to ensure the primary image remains legible
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color.Black.copy(alpha = 0.45f))
+                            )
+                            // Main Foreground Image
+                            AsyncImage(
+                                model = ImageRequest.Builder(LocalContext.current)
+                                    .data(file)
+                                    .diskCachePolicy(CachePolicy.DISABLED)
+                                    .memoryCachePolicy(CachePolicy.ENABLED)
+                                    .crossfade(true)
                                     .build(),
                                 contentDescription = "Post Media",
                                 modifier = Modifier.fillMaxSize(),

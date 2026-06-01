@@ -20,9 +20,14 @@ class MediaFetcherRepository(private val context: Context) {
      */
     suspend fun fetchMedia(urlOrShortcode: String): com.devson.vedinsta.model.ExtractedPost = withContext(Dispatchers.IO) {
         try {
-            // Ensure Python is initialized
+            // Wait for Python to start up in the background if it's still initializing
+            var retries = 0
+            while (!Python.isStarted() && retries < 50) {
+                kotlinx.coroutines.delay(100)
+                retries++
+            }
             if (!Python.isStarted()) {
-                throw Exception("Python is not started")
+                throw Exception("Python interpreter failed to start. Please restart the app.")
             }
 
             val python = Python.getInstance()
