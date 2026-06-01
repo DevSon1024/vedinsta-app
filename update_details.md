@@ -363,5 +363,18 @@
   1. **Built Native Privacy & Policy Screen** — Designed and created `PrivacyPolicyScreen.kt` using standard Material Design 3 guidelines. It features elegant cards outlining data security guarantees, on-device sandboxed execution via Chaquopy Python, secure EncryptedSharedPreferences session cookie storage, zero tracking logs policy, and localized public file-writing logic.
   2. **Integrated Navigation & Settings Actions** — Added the `PrivacyPolicy` destination to the `Screen` sealed class inside `MainAppScreen.kt`, mapped its top app bar header title, and integrated it into the navigation host. Refactored `SettingsScreen.kt` to accept the `onNavigateToPrivacyPolicy: () -> Unit` callback, substituting the external GitHub repository browser intent with smooth in-app horizontal screen transitions.
 
+- **Type of Details:** Performance Improvement
+- **Description:**
+  1. **Sequential Download Queue Pipeline** — Implemented a coroutine `Channel` sequential download request queue in `DownloadService.kt`. The service now serializes file downloads instead of initiating them concurrently in parallel.
+  2. **Eliminated System UI Freezes** — By processing downloads sequentially on `Dispatchers.IO`, random-write disk I/O lockups and network bandwidth saturation are entirely resolved, ensuring the app remains perfectly responsive and fluid during active downloads.
+
 ---
+
+- **Type of Details:** Performance Improvement / New Update
+- **Description:**
+  1. **Integrated Batch Intent Processing inside Queue** — Updated `DownloadService.kt` to natively parse string array list extras (`download_urls_list`, `file_paths_list`, `file_names_list`, `media_types_list`). The service now processes these list-based extras dynamically, ensuring all media elements are sent to the sequential coroutine `Channel` queue.
+  2. **Eliminated Multiple Service Start Churn** — Avoided service recreation and repetitive `startForeground()` binder transactions by sending the entire batch list in a single intent. This keeps the service alive dynamically for the duration of all sequential downloads and reduces UI lag down to zero.
+
+---
+
 

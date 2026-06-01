@@ -25,13 +25,6 @@ fun PrivacyPolicyScreen() {
             .padding(horizontal = 24.dp, vertical = 8.dp)
     ) {
         Text(
-            text = "Privacy Policy",
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
             text = "Effective Date: June 1, 2026",
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)

@@ -31,6 +31,22 @@ class DownloadService : Service() {
     // Keep track of concurrent download tasks
     private val activeTasks = AtomicInteger(0)
 
+    private data class DownloadRequest(
+        val url: String,
+        val filePath: String,
+        val fileName: String,
+        val notificationId: Int,
+        val postId: String?,
+        val postUrl: String?,
+        val username: String?,
+        val caption: String?,
+        val totalImages: Int,
+        val hasVideo: Boolean
+    )
+
+    // Unlimited channel acts as a memory queue for sequential downloads
+    private val downloadChannel = kotlinx.coroutines.channels.Channel<DownloadRequest>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+
     companion object {
         const val EXTRA_DOWNLOAD_URL = "download_url"
         const val EXTRA_FILE_PATH = "file_path"
@@ -41,6 +57,11 @@ class DownloadService : Service() {
         const val EXTRA_CAPTION = "caption"
         const val EXTRA_TOTAL_IMAGES = "total_images"
         const val EXTRA_HAS_VIDEO = "has_video"
+
+        const val EXTRA_DOWNLOAD_URLS_LIST = "download_urls_list"
+        const val EXTRA_FILE_PATHS_LIST = "file_paths_list"
+        const val EXTRA_FILE_NAMES_LIST = "file_names_list"
+        const val EXTRA_MEDIA_TYPES_LIST = "media_types_list"
 
         private val dbMutex = Mutex()
         private const val TAG = "DownloadService"
@@ -54,91 +75,203 @@ class DownloadService : Service() {
     override fun onCreate() {
         super.onCreate()
         notificationManager = VedInstaNotificationManager.getInstance(this)
+
+        // PERF FIX: Start a single worker coroutine to process queued download requests sequentially on Dispatchers.IO.
+        // This avoids simultaneous network bandwidth saturation and random concurrent disk writes (I/O lockups),
+        // which completely eliminates system-wide UI freezing when multiple downloads are started in a batch.
+        serviceScope.launch {
+            for (request in downloadChannel) {
+                try {
+                    downloadFile(
+                        url = request.url,
+                        filePath = request.filePath,
+                        fileName = request.fileName,
+                        notificationId = request.notificationId,
+                        postId = request.postId,
+                        postUrl = request.postUrl,
+                        username = request.username,
+                        caption = request.caption,
+                        totalImages = request.totalImages,
+                        hasVideo = request.hasVideo
+                    )
+                } finally {
+                    val remaining = activeTasks.decrementAndGet()
+                    if (remaining <= 0) {
+                        ServiceCompat.stopForeground(this@DownloadService, ServiceCompat.STOP_FOREGROUND_REMOVE)
+                        com.devson.vedinsta.VedInstaApplication.clearAppCache(applicationContext)
+                        stopSelf()
+                    }
+                }
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         intent?.let {
-            val url = it.getStringExtra(EXTRA_DOWNLOAD_URL)
-            val filePath = it.getStringExtra(EXTRA_FILE_PATH)
-            val fileName = it.getStringExtra(EXTRA_FILE_NAME)
-            val postId = it.getStringExtra(EXTRA_POST_ID)
-            val postUrl = it.getStringExtra(EXTRA_POST_URL)
-            val username = it.getStringExtra(EXTRA_USERNAME)
-            val caption = it.getStringExtra(EXTRA_CAPTION)
-            val totalImages = it.getIntExtra(EXTRA_TOTAL_IMAGES, 1)
-            val hasVideo = it.getBooleanExtra(EXTRA_HAS_VIDEO, false)
+            val urls = it.getStringArrayListExtra(EXTRA_DOWNLOAD_URLS_LIST)
+            val filePaths = it.getStringArrayListExtra(EXTRA_FILE_PATHS_LIST)
+            val fileNames = it.getStringArrayListExtra(EXTRA_FILE_NAMES_LIST)
+            val mediaTypes = it.getStringArrayListExtra(EXTRA_MEDIA_TYPES_LIST)
 
-            if (url != null && filePath != null && fileName != null) {
+            if (urls != null && filePaths != null && fileNames != null && urls.isNotEmpty()) {
+                val totalImages = it.getIntExtra(EXTRA_TOTAL_IMAGES, urls.size)
+                val postId = it.getStringExtra(EXTRA_POST_ID)
+                val postUrl = it.getStringExtra(EXTRA_POST_URL)
+                val username = it.getStringExtra(EXTRA_USERNAME)
+                val caption = it.getStringExtra(EXTRA_CAPTION)
+
                 val isBatch = postId != null && totalImages > 1
-                val notificationId = if (isBatch) postId.hashCode() else System.currentTimeMillis().toInt()
-                
-                activeTasks.incrementAndGet()
+                val notificationId = if (isBatch) postId!!.hashCode() else 4242
 
                 if (isBatch) {
                     batchProgressMap.putIfAbsent(postId!!, Pair(AtomicInteger(0), AtomicInteger(0)))
                     batchCompletedFilesMap.putIfAbsent(postId, CopyOnWriteArrayList())
                 }
 
-                val notification = if (isBatch) {
-                    val progress = batchProgressMap[postId]
-                    val finished = progress?.first?.get() ?: 0
-                    val percent = if (totalImages > 0) ((finished * 100) / totalImages) else 0
-                    NotificationCompat.Builder(this, VedInstaNotificationManager.CHANNEL_ID_SILENT)
-                        .setSmallIcon(android.R.drawable.stat_sys_download)
-                        .setContentTitle("VedInsta · Downloading")
-                        .setContentText("$finished of $totalImages files ($percent%)")
-                        .setSubText("${totalImages - finished} remaining")
-                        .setProgress(totalImages, finished, false)
-                        .setPriority(NotificationCompat.PRIORITY_LOW)
-                        .setOngoing(true)
-                        .setOnlyAlertOnce(true)
-                        .build()
-                } else {
-                    createForegroundNotification(fileName)
-                }
+                val currentTaskCount = activeTasks.addAndGet(urls.size)
+                val isFirstTask = (currentTaskCount - urls.size) == 0
 
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                    ServiceCompat.startForeground(
-                        this,
-                        notificationId,
-                        notification,
-                        android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-                    )
-                } else {
-                    ServiceCompat.startForeground(
-                        this,
-                        notificationId,
-                        notification,
-                        0
-                    )
-                }
+                if (isFirstTask) {
+                    val notification = if (isBatch) {
+                        val progress = batchProgressMap[postId]
+                        val finished = progress?.first?.get() ?: 0
+                        val percent = if (totalImages > 0) ((finished * 100) / totalImages) else 0
+                        NotificationCompat.Builder(this, VedInstaNotificationManager.CHANNEL_ID_SILENT)
+                            .setSmallIcon(android.R.drawable.stat_sys_download)
+                            .setContentTitle("VedInsta · Downloading")
+                            .setContentText("$finished of $totalImages files ($percent%)")
+                            .setSubText("${totalImages - finished} remaining")
+                            .setProgress(totalImages, finished, false)
+                            .setPriority(NotificationCompat.PRIORITY_LOW)
+                            .setOngoing(true)
+                            .setOnlyAlertOnce(true)
+                            .build()
+                    } else {
+                        createForegroundNotification(fileNames.firstOrNull() ?: "media")
+                    }
 
-                serviceScope.launch {
-                    try {
-                        downloadFile(
-                            url = url,
-                            filePath = filePath,
-                            fileName = fileName,
-                            notificationId = notificationId,
-                            postId = postId,
-                            postUrl = postUrl,
-                            username = username,
-                            caption = caption,
-                            totalImages = totalImages,
-                            hasVideo = hasVideo
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                        ServiceCompat.startForeground(
+                            this,
+                            notificationId,
+                            notification,
+                            android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
                         )
-                    } finally {
-                        val remaining = activeTasks.decrementAndGet()
-                        if (remaining <= 0) {
-                            ServiceCompat.stopForeground(this@DownloadService, ServiceCompat.STOP_FOREGROUND_REMOVE)
-                            com.devson.vedinsta.VedInstaApplication.clearAppCache(applicationContext)
-                            stopSelf()
-                        }
+                    } else {
+                        ServiceCompat.startForeground(
+                            this,
+                            notificationId,
+                            notification,
+                            0
+                        )
+                    }
+                }
+
+                // Send the download requests to the sequential queue channel
+                serviceScope.launch {
+                    for (i in urls.indices) {
+                        val url = urls[i]
+                        val filePath = filePaths[i]
+                        val fileName = fileNames[i]
+                        val mediaType = mediaTypes?.getOrNull(i) ?: "image"
+                        val hasVideo = mediaType == "video"
+
+                        downloadChannel.send(
+                            DownloadRequest(
+                                url = url,
+                                filePath = filePath,
+                                fileName = fileName,
+                                notificationId = notificationId,
+                                postId = postId,
+                                postUrl = postUrl,
+                                username = username,
+                                caption = caption,
+                                totalImages = totalImages,
+                                hasVideo = hasVideo
+                            )
+                        )
                     }
                 }
             } else {
-                if (activeTasks.get() == 0) {
-                    stopSelfResult(startId)
+                // Fallback to single download parameters if list extra is not present
+                val url = it.getStringExtra(EXTRA_DOWNLOAD_URL)
+                val filePath = it.getStringExtra(EXTRA_FILE_PATH)
+                val fileName = it.getStringExtra(EXTRA_FILE_NAME)
+                val postId = it.getStringExtra(EXTRA_POST_ID)
+                val postUrl = it.getStringExtra(EXTRA_POST_URL)
+                val username = it.getStringExtra(EXTRA_USERNAME)
+                val caption = it.getStringExtra(EXTRA_CAPTION)
+                val totalImages = it.getIntExtra(EXTRA_TOTAL_IMAGES, 1)
+                val hasVideo = it.getBooleanExtra(EXTRA_HAS_VIDEO, false)
+
+                if (url != null && filePath != null && fileName != null) {
+                    val isBatch = postId != null && totalImages > 1
+                    val notificationId = if (isBatch) postId.hashCode() else 4242
+                    
+                    val currentTaskCount = activeTasks.incrementAndGet()
+                    val isFirstTask = currentTaskCount == 1
+
+                    if (isBatch) {
+                        batchProgressMap.putIfAbsent(postId!!, Pair(AtomicInteger(0), AtomicInteger(0)))
+                        batchCompletedFilesMap.putIfAbsent(postId, CopyOnWriteArrayList())
+                    }
+
+                    if (isFirstTask) {
+                        val notification = if (isBatch) {
+                            val progress = batchProgressMap[postId]
+                            val finished = progress?.first?.get() ?: 0
+                            val percent = if (totalImages > 0) ((finished * 100) / totalImages) else 0
+                            NotificationCompat.Builder(this, VedInstaNotificationManager.CHANNEL_ID_SILENT)
+                                .setSmallIcon(android.R.drawable.stat_sys_download)
+                                .setContentTitle("VedInsta · Downloading")
+                                .setContentText("$finished of $totalImages files ($percent%)")
+                                .setSubText("${totalImages - finished} remaining")
+                                .setProgress(totalImages, finished, false)
+                                .setPriority(NotificationCompat.PRIORITY_LOW)
+                                .setOngoing(true)
+                                .setOnlyAlertOnce(true)
+                                .build()
+                        } else {
+                            createForegroundNotification(fileName)
+                        }
+
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                            ServiceCompat.startForeground(
+                                this,
+                                notificationId,
+                                notification,
+                                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                            )
+                        } else {
+                            ServiceCompat.startForeground(
+                                this,
+                                notificationId,
+                                notification,
+                                0
+                            )
+                        }
+                    }
+
+                    serviceScope.launch {
+                        downloadChannel.send(
+                            DownloadRequest(
+                                url = url,
+                                filePath = filePath,
+                                fileName = fileName,
+                                notificationId = notificationId,
+                                postId = postId,
+                                postUrl = postUrl,
+                                username = username,
+                                caption = caption,
+                                totalImages = totalImages,
+                                hasVideo = hasVideo
+                            )
+                        )
+                    }
+                } else {
+                    if (activeTasks.get() == 0) {
+                        stopSelfResult(startId)
+                    }
                 }
             }
         }

@@ -227,37 +227,44 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
         withContext(Dispatchers.IO) {
             try {
                 val totalItems = mediaItems.size
+                val urlsList = ArrayList<String>()
+                val filePathsList = ArrayList<String>()
+                val fileNamesList = ArrayList<String>()
+                val mediaTypesList = ArrayList<String>()
+
+                val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                val vedInstaDir = File(downloadDir, "VedInsta")
+                vedInstaDir.mkdirs()
 
                 for ((index, mediaItem) in mediaItems.withIndex()) {
-                    try {
-                        val timestamp = System.currentTimeMillis()
-                        val extension = if (mediaItem.type == "video") "mp4" else "jpg"
-                        val fileName = "${username}_${timestamp + index}.$extension"
+                    val timestamp = System.currentTimeMillis()
+                    val extension = if (mediaItem.type == "video") "mp4" else "jpg"
+                    val fileName = "${username}_${timestamp + index}.$extension"
+                    val filePath = File(vedInstaDir, fileName).absolutePath
 
-                        // Queue download
-                        queueDownload(
-                            url = mediaItem.url,
-                            fileName = fileName,
-                            postId = postId,
-                            postUrl = postUrl,
-                            username = username,
-                            caption = caption,
-                            totalImages = totalItems,
-                            hasVideo = mediaItem.type == "video"
-                        )
-
-                        // Small delay between downloads
-                        if (index < totalItems - 1) {
-                            kotlinx.coroutines.delay(500)
-                        }
-
-                    } catch (e: Exception) {
-                        Log.e("VedInstaApp", "Error downloading item ${index + 1}", e)
-                    }
+                    urlsList.add(mediaItem.url)
+                    filePathsList.add(filePath)
+                    fileNamesList.add(fileName)
+                    mediaTypesList.add(mediaItem.type)
                 }
 
+                Log.d("VedInstaApp", "Queueing batch download of $totalItems items in a single Service Intent")
+
+                val downloadIntent = Intent(this@VedInstaApplication, DownloadService::class.java).apply {
+                    putStringArrayListExtra("download_urls_list", urlsList)
+                    putStringArrayListExtra("file_paths_list", filePathsList)
+                    putStringArrayListExtra("file_names_list", fileNamesList)
+                    putStringArrayListExtra("media_types_list", mediaTypesList)
+                    putExtra(DownloadService.EXTRA_POST_ID, postId)
+                    putExtra(DownloadService.EXTRA_POST_URL, postUrl)
+                    putExtra(DownloadService.EXTRA_USERNAME, username)
+                    putExtra(DownloadService.EXTRA_CAPTION, caption)
+                    putExtra(DownloadService.EXTRA_TOTAL_IMAGES, totalItems)
+                }
+                startService(downloadIntent)
+
             } catch (e: Exception) {
-                Log.e("VedInstaApp", "Error in batch download", e)
+                Log.e("VedInstaApp", "Error in batch download queueing", e)
             }
         }
     }
@@ -287,34 +294,49 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
                 }
 
                 val totalItems = mediaArray.length()
+                val username = postData.optString("username", "unknown")
+                val shortcode = postData.optString("shortcode", "unknown")
+                val caption = postData.optString("caption", "")
+
+                val urlsList = ArrayList<String>()
+                val filePathsList = ArrayList<String>()
+                val fileNamesList = ArrayList<String>()
+                val mediaTypesList = ArrayList<String>()
+
+                val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                val vedInstaDir = File(downloadDir, "VedInsta")
+                vedInstaDir.mkdirs()
 
                 for (i in 0 until totalItems) {
                     val mediaObj = mediaArray.getJSONObject(i)
                     val downloadUrl = mediaObj.getString("url")
                     val mediaType = mediaObj.optString("type", "image")
 
-                    val username = postData.optString("username", "unknown")
                     val timestamp = System.currentTimeMillis()
                     val extension = if (mediaType == "video") "mp4" else "jpg"
                     val fileName = "${username}_${timestamp + i}.$extension"
+                    val filePath = File(vedInstaDir, fileName).absolutePath
 
-                    // Queue download - this will save to same location as in-app downloads
-                    queueDownload(
-                        url = downloadUrl,
-                        fileName = fileName,
-                        postId = postData.optString("shortcode", "unknown"),
-                        postUrl = url,
-                        username = username,
-                        caption = postData.optString("caption", ""),
-                        totalImages = totalItems,
-                        hasVideo = mediaType == "video"
-                    )
-
-                    // Small delay between queuing downloads
-                    if (i < totalItems - 1) {
-                        kotlinx.coroutines.delay(300)
-                    }
+                    urlsList.add(downloadUrl)
+                    filePathsList.add(filePath)
+                    fileNamesList.add(fileName)
+                    mediaTypesList.add(mediaType)
                 }
+
+                Log.d("VedInstaApp", "Queueing URL batch download of $totalItems items in a single Service Intent")
+
+                val downloadIntent = Intent(this@VedInstaApplication, DownloadService::class.java).apply {
+                    putStringArrayListExtra("download_urls_list", urlsList)
+                    putStringArrayListExtra("file_paths_list", filePathsList)
+                    putStringArrayListExtra("file_names_list", fileNamesList)
+                    putStringArrayListExtra("media_types_list", mediaTypesList)
+                    putExtra(DownloadService.EXTRA_POST_ID, shortcode)
+                    putExtra(DownloadService.EXTRA_POST_URL, url)
+                    putExtra(DownloadService.EXTRA_USERNAME, username)
+                    putExtra(DownloadService.EXTRA_CAPTION, caption)
+                    putExtra(DownloadService.EXTRA_TOTAL_IMAGES, totalItems)
+                }
+                startService(downloadIntent)
 
             } catch (e: Exception) {
                 Log.e("VedInstaApp", "Error downloading post", e)
