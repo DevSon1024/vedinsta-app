@@ -187,3 +187,10 @@
   5. **Hamburger Menu Toggle** — The top right corner action button now invokes the new premium ViewSettingBottomSheet.
 
 ---
+
+- **Type of Details:** UI Enhancement / Gestures
+- **Description:** Optimized Grid View details in HistoryScreen.kt and FavoritesScreen.kt:
+  1. **Hide Icons in 4-column Grid**: When grid is adjusted to 4 columns, all overlay badges (video/carousel) and the favorite heart button are hidden. Only the media thumbnail is visible.
+  2. **Silky Smooth Pinch-to-Adjust Gesture**: Rewrote pinch-to-adjust gesture detection to use PixChive's robust gesture system (waitEachGesture, waitFirstDown, calculateZoom) for seamless, native scaling transitions between 2 to 4 grid columns.
+
+---

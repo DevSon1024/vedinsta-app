@@ -3,7 +3,9 @@ package com.devson.vedinsta.ui
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -201,7 +203,7 @@ fun HistoryScreen(
             }
         } else {
             // GRID VIEW LAYOUT
-            var zoomScale by remember { mutableStateOf(1f) }
+            var accumulatedZoom by remember { mutableStateOf(1f) }
             LazyVerticalGrid(
                 columns = GridCells.Fixed(gridColumnCount),
                 modifier = Modifier
@@ -209,23 +211,35 @@ fun HistoryScreen(
                     .background(MaterialTheme.colorScheme.background)
                     .padding(10.dp)
                     .pointerInput(Unit) {
-                        detectTransformGestures { _, _, zoom, _ ->
-                            if (zoom != 1f) {
-                                zoomScale *= zoom
-                                if (zoomScale > 1.35f) {
-                                    // Pinch out: larger cards -> fewer columns
-                                    if (gridColumnCount > 2) {
-                                        onGridColumnsChanged(gridColumnCount - 1)
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            var hasChangedInThisGesture = false
+                            do {
+                                val event = awaitPointerEvent()
+                                if (event.changes.size >= 2) {
+                                    val zoom = event.calculateZoom()
+                                    accumulatedZoom *= zoom
+                                    if (!hasChangedInThisGesture) {
+                                        if (accumulatedZoom > 1.25f) {
+                                            val newCols = (gridColumnCount - 1).coerceIn(2, 4)
+                                            if (newCols != gridColumnCount) {
+                                                onGridColumnsChanged(newCols)
+                                            }
+                                            hasChangedInThisGesture = true
+                                        } else if (accumulatedZoom < 0.75f) {
+                                            val newCols = (gridColumnCount + 1).coerceIn(2, 4)
+                                            if (newCols != gridColumnCount) {
+                                                onGridColumnsChanged(newCols)
+                                            }
+                                            hasChangedInThisGesture = true
+                                        }
                                     }
-                                    zoomScale = 1f
-                                } else if (zoomScale < 0.65f) {
-                                    // Pinch in: smaller cards -> more columns
-                                    if (gridColumnCount < 4) {
-                                        onGridColumnsChanged(gridColumnCount + 1)
-                                    }
-                                    zoomScale = 1f
+                                    event.changes.forEach { if (it.pressed) it.consume() }
+                                } else {
+                                    accumulatedZoom = 1f
+                                    hasChangedInThisGesture = false
                                 }
-                            }
+                            } while (event.changes.any { it.pressed })
                         }
                     },
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -260,55 +274,58 @@ fun HistoryScreen(
                                 contentScale = ContentScale.Crop
                             )
 
-                            if (post.hasVideo) {
-                                Box(
-                                    modifier = Modifier
-                                        .align(Alignment.TopStart)
-                                        .padding(8.dp)
-                                        .size(28.dp)
-                                        .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(14.dp)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.PlayArrow,
-                                        contentDescription = "Video",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(16.dp)
-                                    )
+                            // Hide all overlays & favorite heart when grid column count is 4
+                            if (gridColumnCount < 4) {
+                                if (post.hasVideo) {
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.TopStart)
+                                            .padding(8.dp)
+                                            .size(28.dp)
+                                            .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(14.dp)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.PlayArrow,
+                                            contentDescription = "Video",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                } else if (post.totalImages > 1) {
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.TopStart)
+                                            .padding(8.dp)
+                                            .size(28.dp)
+                                            .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(8.dp)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Collections,
+                                            contentDescription = "Carousel",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
                                 }
-                            } else if (post.totalImages > 1) {
-                                Box(
-                                    modifier = Modifier
-                                        .align(Alignment.TopStart)
-                                        .padding(8.dp)
-                                        .size(28.dp)
-                                        .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(8.dp)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Collections,
-                                        contentDescription = "Carousel",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                }
-                            }
 
-                            // Favorite Button
-                            IconButton(
-                                onClick = { onToggleFavorite(post.postId) },
-                                modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .padding(8.dp)
-                                    .size(28.dp)
-                                    .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(14.dp))
-                            ) {
-                                Icon(
-                                    imageVector = if (fav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                    contentDescription = "Favorite",
-                                    tint = if (fav) Color.Red else Color.White,
-                                    modifier = Modifier.size(16.dp)
-                                )
+                                // Favorite Button
+                                IconButton(
+                                    onClick = { onToggleFavorite(post.postId) },
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .padding(8.dp)
+                                        .size(28.dp)
+                                        .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(14.dp))
+                                ) {
+                                    Icon(
+                                        imageVector = if (fav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                        contentDescription = "Favorite",
+                                        tint = if (fav) Color.Red else Color.White,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
                             }
                         }
                     }
