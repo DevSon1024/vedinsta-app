@@ -57,7 +57,7 @@ def extract_instagram(shortcode: str, cookie_file: str = "instagram_cookies.txt"
 
     cookies = load_cookies(cookie_file)
     if "sessionid" not in cookies:
-        return [{"error": "sessionid missing — re-export cookies while logged into Instagram"}]
+        return [{"error": "sessionid missing - re-export cookies while logged into Instagram"}]
 
     session = requests.Session()
     session.cookies.update(cookies)
@@ -156,7 +156,7 @@ def get_media_urls(url: str, cookie_file: str = "instagram_cookies.txt") -> str:
     try:
         cookies = load_cookies(cookie_file)
         if "sessionid" not in cookies:
-            return json.dumps({"status": "login_required", "message": "sessionid missing — re-export cookies"})
+            return json.dumps({"status": "login_required", "message": "sessionid missing - re-export cookies"})
 
         session = requests.Session()
         session.cookies.update(cookies)
