@@ -81,6 +81,12 @@ class MediaExtractionViewModel(application: Application) : AndroidViewModel(appl
         }
     }
 
+    fun reset() {
+        _extractionState.value = ExtractionState.Idle
+        _selectedIndexes.value = emptySet()
+        _chosenQualities.value = emptyMap()
+    }
+
     fun toggleSelection(index: Int) {
         val current = _selectedIndexes.value.toMutableSet()
         if (current.contains(index)) {

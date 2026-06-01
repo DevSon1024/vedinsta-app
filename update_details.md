@@ -223,3 +223,39 @@
   - Utilized the contentPadding parameter inside LazyColumn and LazyVerticalGrid to cleanly pad the list and grid items bottom margin by the system navigation bar's inset height plus 80.dp. This prevents the FloatingActionButton and navigation bar from overlapping or blocking any grid card row when scrolled to the very bottom, creating a premium seamless scroll experience.
 
 ---
+
+- **Type of Details:** New Update / UI Component
+- **Description:** Implemented a premium Material You Carousel selection screen inside MediaSelectionScreen.kt:
+  - **Horizontal Pager Carousel**: Added a custom HorizontalPager with horizontal peeking edges (contentPadding = 48.dp, pageSpacing = 16.dp) and an immersive scale/alpha transformation animation driven by scroll offset.
+  - **Conditionally Adaptive Top Bar**: Displays the center-aligned username and a select-all square checkbox option at the top right of the page when extraction succeeds. The back button resets the view back to the input form.
+  - **Interactive Selection & Quality Selectors**: Placed individual square checkboxes at the top-right corner of each media card and a resolution selection pill at the bottom-center of the card driven by a DropdownMenu quality selector.
+  - **Animated Indicators & Custom Download Button**: Included pager indicator dots and a rounded Download button matching the selected color theme.
+  - **Changelog**: Maintained change entries inside update_details.md.
+
+---
+
+- **Type of Details:** UI Enhancement / Carousel Refinement
+- **Description:** Enhanced and polished the media extraction carousel screen inside MediaSelectionScreen.kt:
+  - **Animated Pager Indicators**: Upgraded the pager indicator dots row to smoothly animate dot size and color based on active swipe scroll offsets.
+  - **Mockup-Matched Quality Selector**: Standardized the resolution text inside the dropdown pill to display in user-marked PX format (e.g. 1080 PX, 720 PX) dynamically calculated from the shorter side of the selected media.
+  - **Smart Fallback Download Button**: Kept the primary filled download button always enabled visually. Implemented intelligent fallback behavior where clicking the button when no elements are selected automatically downloads the currently viewed carousel card.
+  - **Compilation Verification**: Validated full compilation of the app module against the updated layout without errors.
+
+---
+
+- **Type of Details:** UI Enhancement / TopBar and Preview Refinements
+- **Description:** Excluded the duplicate top bar from the downloader screen and polished selection details:
+  - **Duplicate TopBar Removal**: Added exclusion check inside MainAppScreen.kt to hide the global scaffolding top app bar when Downloader is visible, avoiding header duplication.
+  - **Arrow Back Navigation**: Added back arrow button to the input form's top app bar linking to navigation back action.
+  - **Medium Quality Preview**: Upgraded card media preview loader to load intermediate resolution (medium quality) image/video URLs rather than the lowest quality, improving image clarity.
+  - **Raw Resolution Dropdowns**: Modified dropdown menu options to show the raw resolution heightxwidth (e.g. 720x1080) for detailed dimension inspection.
+  - **Unknown Username Fallback**: Substituted "epic_top_comments_india" default fallback with "Unknown" if username is blank or missing.
+
+---
+
+- **Type of Details:** Error Solving / UI Polish / Notification Fix
+- **Description:** Resolved inner Scaffold double-padding and fixed in-app notifications:
+  - **Top Padding Solution**: Configured contentWindowInsets = WindowInsets(0, 0, 0, 0) on Scaffold and removed a Spacer inside MediaSelectionScreen.kt to completely eliminate unnecessary top status bar insets double-padding.
+  - **In-App Notifications Logging**: Integrated custom notification inserts via addCustomNotification in DownloadService.kt. Now, all successful and failed single/batch downloads are properly stored in the local Room database and instantly visible on the application's internal notifications screen.
+
+---

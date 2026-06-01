@@ -247,6 +247,7 @@ class DownloadService : Service() {
         notificationId: Int,
         filePath: String
     ) {
+        val displayUsername = username ?: "unknown"
         if (postId != null && totalImages > 1) {
             val progress = batchProgressMap[postId]
             if (progress != null) {
@@ -254,7 +255,6 @@ class DownloadService : Service() {
                 val finished = progress.first.incrementAndGet() // increment finished count
                 batchCompletedFilesMap[postId]?.add(filePath)
 
-                val displayUsername = username ?: "unknown"
                 notificationManager.showBatchDownloadProgress(
                     notificationId = postId.hashCode(),
                     current = finished,
@@ -265,17 +265,49 @@ class DownloadService : Service() {
                 if (finished >= totalImages) {
                     notificationManager.cancelDownloadNotification(postId.hashCode())
                     val successes = progress.second.get()
+                    val title = "Download Completed"
+                    val msg = "Saved $successes/$totalImages files from @$displayUsername"
+                    
                     notificationManager.showDownloadCompleted(
-                        title = "Download Completed",
-                        message = "Saved $successes/$totalImages files from @$displayUsername"
+                        title = title,
+                        message = msg
                     )
+
+                    serviceScope.launch {
+                        try {
+                            notificationManager.addCustomNotification(
+                                title = title,
+                                message = msg,
+                                type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_COMPLETED,
+                                priority = com.devson.vedinsta.database.NotificationPriority.NORMAL
+                            )
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to insert success batch notification in DB", e)
+                        }
+                    }
+
                     batchProgressMap.remove(postId)
                     batchCompletedFilesMap.remove(postId)
                 }
             }
         } else {
             notificationManager.cancelDownloadNotification(notificationId)
+            val title = "Download Completed"
+            val msg = "Saved $fileName from @$displayUsername"
             notificationManager.showDownloadCompleted(fileName, 1)
+
+            serviceScope.launch {
+                try {
+                    notificationManager.addCustomNotification(
+                        title = title,
+                        message = msg,
+                        type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_COMPLETED,
+                        priority = com.devson.vedinsta.database.NotificationPriority.NORMAL
+                    )
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to insert success single notification in DB", e)
+                }
+            }
         }
     }
 
@@ -287,12 +319,12 @@ class DownloadService : Service() {
         errorMessage: String,
         notificationId: Int
     ) {
+        val displayUsername = username ?: "unknown"
         if (postId != null && totalImages > 1) {
             val progress = batchProgressMap[postId]
             if (progress != null) {
                 val finished = progress.first.incrementAndGet() // increment finished count
 
-                val displayUsername = username ?: "unknown"
                 notificationManager.showBatchDownloadProgress(
                     notificationId = postId.hashCode(),
                     current = finished,
@@ -304,12 +336,44 @@ class DownloadService : Service() {
                     notificationManager.cancelDownloadNotification(postId.hashCode())
                     val successes = progress.second.get()
                     if (successes > 0) {
+                        val title = "Download Completed with errors"
+                        val msg = "Saved $successes/$totalImages files from @$displayUsername"
+                        
                         notificationManager.showDownloadCompleted(
-                            title = "Download Completed with errors",
-                            message = "Saved $successes/$totalImages files from @$displayUsername"
+                            title = title,
+                            message = msg
                         )
+
+                        serviceScope.launch {
+                            try {
+                                notificationManager.addCustomNotification(
+                                    title = title,
+                                    message = msg,
+                                    type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_COMPLETED,
+                                    priority = com.devson.vedinsta.database.NotificationPriority.LOW
+                                )
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Failed to insert partial success notification in DB", e)
+                            }
+                        }
                     } else {
-                        notificationManager.showDownloadError("Batch Download Failed", "Could not download files from @$displayUsername")
+                        val title = "Download Failed"
+                        val msg = "Could not download files from @$displayUsername"
+                        
+                        notificationManager.showDownloadError("Batch Download Failed", msg)
+
+                        serviceScope.launch {
+                            try {
+                                notificationManager.addCustomNotification(
+                                    title = title,
+                                    message = msg,
+                                    type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_FAILED,
+                                    priority = com.devson.vedinsta.database.NotificationPriority.HIGH
+                                )
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Failed to insert batch error notification in DB", e)
+                            }
+                        }
                     }
                     batchProgressMap.remove(postId)
                     batchCompletedFilesMap.remove(postId)
@@ -317,7 +381,23 @@ class DownloadService : Service() {
             }
         } else {
             notificationManager.cancelDownloadNotification(notificationId)
+            val title = "Download Failed"
+            val msg = "Error downloading $fileName: $errorMessage"
+            
             notificationManager.showDownloadError(fileName, errorMessage)
+
+            serviceScope.launch {
+                try {
+                    notificationManager.addCustomNotification(
+                        title = title,
+                        message = msg,
+                        type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_FAILED,
+                        priority = com.devson.vedinsta.database.NotificationPriority.HIGH
+                    )
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to insert single error notification in DB", e)
+                }
+            }
         }
     }
 

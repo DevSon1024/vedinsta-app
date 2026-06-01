@@ -108,7 +108,7 @@ fun MainAppScreen(
 
     Scaffold(
         topBar = {
-            if (currentScreen !is Screen.PostView && currentScreen !is Screen.Login && currentScreen !is Screen.Appearance) {
+            if (currentScreen !is Screen.PostView && currentScreen !is Screen.Login && currentScreen !is Screen.Appearance && currentScreen !is Screen.Downloader) {
                 VedInstaTopAppBar(
                     title = when(currentScreen) {
                         Screen.Home -> "Home"
@@ -238,7 +238,8 @@ fun MainAppScreen(
                         MediaSelectionScreen(
                             authViewModel = authViewModel,
                             extractionViewModel = extractionViewModel,
-                            onNavigateToLogin = { navigateTo(Screen.Login) }
+                            onNavigateToLogin = { navigateTo(Screen.Login) },
+                            onNavigateBack = { navigateBack() }
                         )
                     }
                     is Screen.History -> {
