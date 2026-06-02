@@ -6,7 +6,6 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-    id("com.chaquo.python")
     alias(libs.plugins.ksp)
 }
 
@@ -155,30 +154,7 @@ android {
     ndkVersion = "27.0.12077973"
 }
 
-// Chaquopy (Python runtime)
-chaquopy {
-    defaultConfig {
-        version = "3.13"
 
-        // Use local Python if available; CI/CD can set PYTHON_PATH env var.
-        val pythonPath = System.getenv("PYTHON_PATH")
-            ?: "C:\\Users\\DEVENDRA\\AppData\\Local\\Programs\\Python\\Python313\\python.exe"
-        buildPython(pythonPath)
-
-        // Keep source bytecode at minimum - reduces APK size
-        pyc {
-            src    = false
-            pip    = false
-            stdlib = false
-        }
-
-        pip {
-            install("requests")
-            install("pillow")
-            install("beautifulsoup4")
-        }
-    }
-}
 
 // Dependencies
 dependencies {

@@ -385,3 +385,20 @@
   2. Purged the intermediate build directories using `gradlew clean` to release all open file handles, ensuring a clean state for subsequent compilations.
 
 ---
+
+- **Type of Details:** Major Refactor & Performance Improvement
+- **Description: Complete Python/Chaquopy Removal — Native Kotlin Media Extractor Migration**
+  1. **Created `InstagramNativeExtractor.kt`** — A pure Kotlin `object` singleton replacing the entire `mo3.py` Python script. Uses only `java.net.HttpURLConnection` and `org.json` (zero new external dependencies). Implements:
+     - Mathematical `shortcodeToId()` conversion using `BigInteger` (identical algorithm to the Python implementation).
+     - Netscape/Mozilla cookie file parser (`parseCookies()`) supporting `instagram.com` domain filtering.
+     - Authenticated `performGetRequest()` with correct `User-Agent`, `X-IG-App-ID`, `X-CSRFToken`, and `Cookie` headers.
+     - Full carousel/video/image media parsing via `parseItems()` and `parseBest()`.
+     - Graceful error handling for HTTP 401/403 (`login_required`), 404 (`not_found`), and general exceptions.
+  2. **Purged Chaquopy & Python runtime** — Removed `chaquopy` plugin from `build.gradle.kts` (app) and `build.gradle.kts` (project), deleted `app/src/main/python/mo3.py` and the entire `app/src/main/python/` directory. Stripped all `Python.isStarted()` / `Python.getInstance()` references from `VedInstaApplication.kt`, `InstagramAuthViewModel.kt`, and `SharedLinkProcessingService.kt`.
+  3. **Zero I/O on Main Thread** — All `InstagramNativeExtractor` invocations are wrapped in `withContext(Dispatchers.IO)`: `getPostInfo()` in `VedInstaApplication.kt`, `fetchPostData()` in `SharedLinkProcessingService.kt`, `fetchRealUsernameInBackground()` in `InstagramAuthViewModel.kt`, and `fetchMedia()` in `MediaFetcherRepository.kt`.
+  4. **Stale Python guard removed** — Deleted the Python/Chaquopy directory exclusion guard from the `deleteRecursive()` helper in `VedInstaApplication.kt`, which was dead code after Python removal.
+  5. **Deprecated API suppressed** — Added `@Suppress("DEPRECATION")` to `databaseEnabled = true` in `InstagramLoginScreen.kt` (WebSQL deprecated in API 26+; retained for WebView compat).
+  6. **UI text updates** — Updated `PrivacyPolicyScreen.kt`, `AboutScreen.kt`, and `MediaSelectionScreen.kt` to reflect the native extraction technology.
+  7. **Build Verified** — `.\gradlew assembleDebug` completed successfully (`BUILD SUCCESSFUL`) with 0 errors and 3 pre-existing warnings unrelated to this migration.
+
+---

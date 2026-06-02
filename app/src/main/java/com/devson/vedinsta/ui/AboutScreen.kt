@@ -59,7 +59,7 @@ fun AboutScreen() {
             Spacer(modifier = Modifier.height(32.dp))
 
             Text(
-                text = "VedInsta is a modern, high-fidelity application that allows you to download Instagram posts, carousels, reels, and stories at multiple resolutions and qualities. Engineered with a secure on-device Python extraction sandbox.",
+                text = "VedInsta is a modern, high-fidelity application that allows you to download Instagram posts, carousels, reels, and stories at multiple resolutions and qualities. Engineered with a secure on-device native extractor.",
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
                 fontSize = 14.sp,
                 lineHeight = 20.sp,

@@ -7,6 +7,7 @@ import android.util.Log
 import com.devson.vedinsta.model.ImageCard
 import com.devson.vedinsta.SettingsManager
 import com.devson.vedinsta.VedInstaApplication
+import com.devson.vedinsta.extractor.InstagramNativeExtractor
 import com.devson.vedinsta.notification.VedInstaNotificationManager
 import kotlinx.coroutines.*
 import java.io.File
@@ -240,19 +241,10 @@ class SharedLinkProcessingService : Service() {
     private suspend fun fetchPostData(url: String): String? {
         return withContext(Dispatchers.IO) {
             try {
-                // Wait for Python to start up in the background if it's still initializing
-                var retries = 0
-                while (!com.chaquo.python.Python.isStarted() && retries < 50) {
-                    kotlinx.coroutines.delay(100)
-                    retries++
-                }
-                val python = com.chaquo.python.Python.getInstance()
-                val module = python.getModule("mo3")
                 val cookieFile = File(filesDir, "instagram_cookies.txt").absolutePath
-                val result = module.callAttr("get_media_urls", url, cookieFile)
-                val resultString = result?.toString()
+                val resultString = InstagramNativeExtractor.getMediaUrls(url, cookieFile)
 
-                if (resultString != null) {
+                if (resultString.isNotEmpty()) {
                     val jsonResult = JSONObject(resultString)
                     if (jsonResult.optString("status") == "success") {
                         return@withContext resultString

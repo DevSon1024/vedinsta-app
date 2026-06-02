@@ -15,8 +15,7 @@ import coil.ImageLoaderFactory
 import coil.decode.VideoFrameDecoder
 import coil.disk.DiskCache
 import coil.request.CachePolicy
-import com.chaquo.python.Python
-import com.chaquo.python.android.AndroidPlatform
+
 import com.devson.vedinsta.database.AppDatabase
 import com.devson.vedinsta.database.DownloadedPost
 import com.devson.vedinsta.database.PostMediaManager
@@ -35,6 +34,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import org.json.JSONObject
 import android.content.Intent
+import com.devson.vedinsta.extractor.InstagramNativeExtractor
 import com.devson.vedinsta.model.ImageCard
 import com.devson.vedinsta.service.DownloadService
 
@@ -68,11 +68,6 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
 
         private fun deleteRecursive(file: File, excludeSelf: Boolean = false) {
             if (file.isDirectory) {
-                // Exclude any directory containing python or chaquopy to avoid breaking Python environment
-                if (file.name.contains("python", ignoreCase = true) || file.name.contains("chaquopy", ignoreCase = true)) {
-                    Log.d(TAG, "Skipping python/chaquopy cache directory: ${file.absolutePath}")
-                    return
-                }
                 val children = file.listFiles()
                 if (children != null) {
                     for (child in children) {
@@ -92,12 +87,7 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         settingsManager = SettingsManager(this)
-        // Initialize Python interpreter asynchronously in the background to prevent startup lag
-        applicationScope.launch(Dispatchers.IO) {
-            if (!Python.isStarted()) {
-                Python.start(AndroidPlatform(this@VedInstaApplication))
-            }
-        }
+
         // Prune finished WorkManager jobs on app start to clean up
         WorkManager.getInstance(this).pruneWork()
         // Clear app cache on startup
@@ -154,10 +144,10 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
         }
     }
     /**
-     * Fetches metadata for an Instagram post URL via the mo3 Python script.
+     * Fetches metadata for an Instagram post URL via the native Instagram extractor.
      *
-     * PERF FIX: Converted to a suspend function.  All Python initialisation,
-     * script execution, and JSON parsing are dispatched to [Dispatchers.IO] via
+     * PERF FIX: Converted to a suspend function.  All extraction execution
+     * and JSON parsing are dispatched to [Dispatchers.IO] via
      * [withContext], ensuring the main thread is never blocked.  This eliminates
      * the primary source of heavy GC churn and "application may be doing too much
      * work on its main thread" errors that were visible in Logcat.
@@ -166,15 +156,12 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
         try {
             Log.d("VedInstaApp", "Getting post info for: $url")
 
-            val python = Python.getInstance()
-            val module = python.getModule("mo3")
             val cookieFile = File(filesDir, "instagram_cookies.txt").absolutePath
 
-            // Call the correct method: get_media_urls on mo3
-            val result = module.callAttr("get_media_urls", url, cookieFile)
-            val resultString = result?.toString() ?: return@withContext null
+            // Call the native extractor
+            val resultString = InstagramNativeExtractor.getMediaUrls(url, cookieFile)
 
-            Log.d("VedInstaApp", "Python result: $resultString")
+            Log.d("VedInstaApp", "Native result: $resultString")
 
             val jsonResult = JSONObject(resultString)
             val status = jsonResult.optString("status", "error")
@@ -274,11 +261,8 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
             try {
                 Log.d("VedInstaApp", "Starting download for: $url")
 
-                val python = Python.getInstance()
-                val module = python.getModule("mo3")
                 val cookieFile = File(filesDir, "instagram_cookies.txt").absolutePath
-                val result = module.callAttr("get_media_urls", url, cookieFile)
-                val resultString = result?.toString() ?: throw Exception("No result from Python")
+                val resultString = InstagramNativeExtractor.getMediaUrls(url, cookieFile)
 
                 val postData = JSONObject(resultString)
                 val status = postData.optString("status", "error")

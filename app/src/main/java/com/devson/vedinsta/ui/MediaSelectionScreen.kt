@@ -134,7 +134,7 @@ fun MediaSelectionScreen(
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                                 Spacer(modifier = Modifier.height(12.dp))
-                                Text("Running python extractor...", color = MaterialTheme.colorScheme.onBackground)
+                                Text("Extracting media...", color = MaterialTheme.colorScheme.onBackground)
                             }
                         }
                         is ExtractionState.Error -> {

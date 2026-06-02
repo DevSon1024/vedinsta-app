@@ -42,7 +42,7 @@ class MediaExtractionViewModel(application: Application) : AndroidViewModel(appl
         private set
 
     /**
-     * Triggers the Python media extraction script and updates flow states.
+     * Triggers the native media extraction and updates flow states.
      */
     fun extractMedia(urlOrShortcode: String, authViewModel: InstagramAuthViewModel) {
         if (urlOrShortcode.isBlank()) {
