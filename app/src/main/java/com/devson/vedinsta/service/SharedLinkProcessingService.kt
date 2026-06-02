@@ -60,6 +60,16 @@ class SharedLinkProcessingService : Service() {
                 val postDataJson = fetchPostData(url)
                 if (postDataJson == null) {
                     notificationManager.showLinkError("Failed to fetch content. Private or removed.")
+                    try {
+                        notificationManager.addCustomNotification(
+                            title = "Link Processing Failed",
+                            message = "Failed to fetch content for shared link. Private or removed.",
+                            type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_FAILED,
+                            priority = com.devson.vedinsta.database.NotificationPriority.HIGH
+                        )
+                    } catch (ex: Exception) {
+                        Log.e(TAG, "Error adding fail notification to DB", ex)
+                    }
                     return@launch
                 }
 
@@ -90,7 +100,29 @@ class SharedLinkProcessingService : Service() {
                         itemId,
                         caption
                     )
+
+                    try {
+                        notificationManager.addCustomNotification(
+                            title = "Shared Link Auto-Download",
+                            message = "Starting download of single post from @$username",
+                            type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_STARTED,
+                            priority = com.devson.vedinsta.database.NotificationPriority.LOW
+                        )
+                    } catch (ex: Exception) {
+                        Log.e(TAG, "Error adding start notification to DB", ex)
+                    }
                 } else if (mediaCount > 1) {
+                    try {
+                        notificationManager.addCustomNotification(
+                            title = "Shared Link Processed",
+                            message = "Found $mediaCount files in shared link from @$username",
+                            type = com.devson.vedinsta.database.NotificationType.SYSTEM_INFO,
+                            priority = com.devson.vedinsta.database.NotificationPriority.LOW
+                        )
+                    } catch (ex: Exception) {
+                        Log.e(TAG, "Error adding process notification to DB", ex)
+                    }
+
                     // MULTIPLE CONTENT: Check Settings
                     when (settingsManager.defaultLinkAction) {
                         SettingsManager.ACTION_DOWNLOAD_ALL -> {
@@ -106,6 +138,16 @@ class SharedLinkProcessingService : Service() {
                     }
                 } else {
                     notificationManager.showLinkError("No media found in link.")
+                    try {
+                        notificationManager.addCustomNotification(
+                            title = "Shared Link Error",
+                            message = "No downloadable media found in shared link.",
+                            type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_FAILED,
+                            priority = com.devson.vedinsta.database.NotificationPriority.NORMAL
+                        )
+                    } catch (ex: Exception) {
+                        Log.e(TAG, "Error adding no-media notification to DB", ex)
+                    }
                 }
 
             } catch (e: Exception) {
@@ -165,9 +207,30 @@ class SharedLinkProcessingService : Service() {
                     caption
                 )
 
+                try {
+                    notificationManager.addCustomNotification(
+                        title = "Shared Link Batch Download",
+                        message = "Starting batch download of ${itemsToDownload.size} files from @$username",
+                        type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_STARTED,
+                        priority = com.devson.vedinsta.database.NotificationPriority.NORMAL
+                    )
+                } catch (ex: Exception) {
+                    Log.e(TAG, "Error adding batch start notification to DB", ex)
+                }
+
             } catch (e: Exception) {
                 Log.e(TAG, "Error in download all", e)
                 notificationManager.showLinkError("Batch download failed")
+                try {
+                    notificationManager.addCustomNotification(
+                        title = "Download Failed",
+                        message = "Batch download of shared post failed: ${e.message}",
+                        type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_FAILED,
+                        priority = com.devson.vedinsta.database.NotificationPriority.HIGH
+                    )
+                } catch (ex: Exception) {
+                    Log.e(TAG, "Error adding batch fail notification to DB", ex)
+                }
             } finally {
                 if (startId != -1) stopSelfResult(startId)
             }

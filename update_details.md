@@ -374,7 +374,14 @@
 - **Description:**
   1. **Integrated Batch Intent Processing inside Queue** — Updated `DownloadService.kt` to natively parse string array list extras (`download_urls_list`, `file_paths_list`, `file_names_list`, `media_types_list`). The service now processes these list-based extras dynamically, ensuring all media elements are sent to the sequential coroutine `Channel` queue.
   2. **Eliminated Multiple Service Start Churn** — Avoided service recreation and repetitive `startForeground()` binder transactions by sending the entire batch list in a single intent. This keeps the service alive dynamically for the duration of all sequential downloads and reduces UI lag down to zero.
+- **Type of Details:** Error Solving & Build Verification
+- **Description:**
+  1. Resolved the release build task `:app:installReleasePythonRequirements` failure by manually triggering requirements installation to successfully resolve DNS, download, and install necessary packages (`requests`, `pillow`, `beautifulsoup4`) into the Gradle Python release environment.
+  2. Verified that the full release compilation pipeline compiles and packages successfully by executing `./gradlew assembleRelease`, which completed successfully (3m 47s) and generated all native split ABI and universal release APKs.
+
+- **Type of Details:** Error Solving & Build Optimization
+- **Description:**
+  1. Resolved the Windows-specific R8 file-locking error (`java.nio.file.FileSystemException: classes.dex: The process cannot access the file because it is being used by another process`) by terminating all conflicting background Gradle Daemons using `gradlew --stop`.
+  2. Purged the intermediate build directories using `gradlew clean` to release all open file handles, ensuring a clean state for subsequent compilations.
 
 ---
-
-

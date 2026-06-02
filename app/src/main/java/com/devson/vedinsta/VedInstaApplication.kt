@@ -810,6 +810,17 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
                         // Clear temporary cache
                         clearAppCache(context)
 
+                        try {
+                            notificationManager.addCustomNotification(
+                                title = "Download Completed",
+                                message = "Saved ${completedFilePaths.size}/$expectedCount files from @$finalUsername",
+                                type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_COMPLETED,
+                                priority = com.devson.vedinsta.database.NotificationPriority.NORMAL
+                            )
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to insert batch success notification to DB", e)
+                        }
+
                         // Show summary notification/toast on Main thread
                         withContext(Dispatchers.Main) {
                             val message = "Downloaded ${completedFilePaths.size}/$expectedCount files for $finalUsername."
@@ -823,10 +834,22 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
                     }
                 } else {
                     Log.w(TAG, "All work finished for tag '$groupTag', but no files succeeded.")
-                    applicationScope.launch(Dispatchers.Main) {
-                        Toast.makeText(context, "Download failed for post $finalUsername.", Toast.LENGTH_LONG).show()
-                        notificationManager.cancelDownloadNotification(groupTag.hashCode())
-                        notificationManager.showDownloadError("Post $finalUsername", "All downloads failed")
+                    applicationScope.launch(Dispatchers.IO) {
+                        try {
+                            notificationManager.addCustomNotification(
+                                title = "Download Failed",
+                                message = "Could not download files from @$finalUsername",
+                                type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_FAILED,
+                                priority = com.devson.vedinsta.database.NotificationPriority.HIGH
+                            )
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to insert batch failure notification to DB", e)
+                        }
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, "Download failed for post $finalUsername.", Toast.LENGTH_LONG).show()
+                            notificationManager.cancelDownloadNotification(groupTag.hashCode())
+                            notificationManager.showDownloadError("Post $finalUsername", "All downloads failed")
+                        }
                     }
                 }
             } else {
@@ -880,25 +903,50 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
             // Clear temporary cache
             clearAppCache(context)
 
+            val fileName = File(filePath).name
+            val notificationManager = VedInstaNotificationManager.getInstance(context)
+            try {
+                notificationManager.addCustomNotification(
+                    title = "Download Completed",
+                    message = "Saved $fileName from @$finalUsername",
+                    type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_COMPLETED,
+                    priority = com.devson.vedinsta.database.NotificationPriority.NORMAL
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to insert single success notification to DB", e)
+            }
+
             // Show completion feedback on Main thread
             withContext(Dispatchers.Main) {
-                val fileName = File(filePath).name
                 Toast.makeText(context, "Download complete: $fileName", Toast.LENGTH_SHORT).show()
-                VedInstaNotificationManager.getInstance(context).showDownloadCompleted(finalUsername, 1)
+                notificationManager.showDownloadCompleted(finalUsername, 1)
             }
         }
     }
 
     // Handle failure for single file downloads (called by ID observer)
     private fun handleSingleFailure(context: Context, fileName: String, tag: String) {
+        val (cachedUsername, _) = getCachedMetadata(tag)
         removeCachedMetadata(tag) // Clean cache on failure
-        applicationScope.launch(Dispatchers.Main) {
-            Toast.makeText(context, "Download failed: $fileName", Toast.LENGTH_SHORT).show()
-            // Optionally show a more persistent error notification
-            VedInstaNotificationManager.getInstance(context).showDownloadError(fileName, "Download failed or cancelled")
+        val finalUsername = cachedUsername ?: "unknown"
+        applicationScope.launch(Dispatchers.IO) {
+            val notificationManager = VedInstaNotificationManager.getInstance(context)
+            try {
+                notificationManager.addCustomNotification(
+                    title = "Download Failed",
+                    message = "Error downloading $fileName from @$finalUsername",
+                    type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_FAILED,
+                    priority = com.devson.vedinsta.database.NotificationPriority.HIGH
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to insert single failure notification to DB", e)
+            }
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "Download failed: $fileName", Toast.LENGTH_SHORT).show()
+                notificationManager.showDownloadError(fileName, "Download failed or cancelled")
+            }
         }
     }
-
 
     private suspend fun saveDownloadedPostToDb(
         context: Context,
