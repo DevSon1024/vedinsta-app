@@ -454,6 +454,11 @@ class DownloadService : Service() {
                         try {
                             val completedPaths = batchCompletedFilesMap[postId]
                             val thumb = completedPaths?.firstOrNull() ?: filePath
+                            val safeThumb = if (thumb.isNotEmpty()) {
+                                com.devson.vedinsta.ui.ThumbnailHelper.getSafeThumbnailPath(applicationContext, thumb)
+                            } else {
+                                ""
+                            }
                             val db = com.devson.vedinsta.database.AppDatabase.getDatabase(applicationContext)
                             val pUrl = db.downloadedPostDao().getPostById(postId)?.postUrl
 
@@ -483,7 +488,7 @@ class DownloadService : Service() {
             val mediaTypeWord = if (isVideo) "reel" else "post"
             val title = "Download Completed"
             val msg = "Saved $mediaTypeWord from @$displayUsername"
-            notificationManager.showDownloadCompleted(notificationId = notificationId, fileName = fileName, totalFiles = 1)
+            notificationManager.showDownloadCompleted(notificationId = notificationId, title = title, message = msg)
 
             serviceScope.launch {
                 try {
@@ -497,7 +502,7 @@ class DownloadService : Service() {
                         priority = com.devson.vedinsta.database.NotificationPriority.NORMAL,
                         postId = postId ?: fileName,
                         postUrl = pUrl,
-                        thumbnailPath = filePath
+                        thumbnailPath = com.devson.vedinsta.ui.ThumbnailHelper.getSafeThumbnailPath(applicationContext, filePath)
                     )
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to insert success single notification in DB", e)
@@ -635,11 +640,16 @@ class DownloadService : Service() {
                         val newFirstVideoPath = downloadedFiles.firstOrNull { isVideo(it) }
                         val currentThumbnailValid = existingPost.thumbnailPath.isNotBlank() && File(existingPost.thumbnailPath).exists()
 
-                        val updatedThumbnailPath = when {
+                        val rawThumbnailPath = when {
                             newFirstImagePath != null -> newFirstImagePath
                             currentThumbnailValid -> existingPost.thumbnailPath
                             newFirstVideoPath != null -> newFirstVideoPath
                             else -> ""
+                        }
+                        val updatedThumbnailPath = if (rawThumbnailPath.isNotEmpty()) {
+                            com.devson.vedinsta.ui.ThumbnailHelper.getSafeThumbnailPath(applicationContext, rawThumbnailPath)
+                        } else {
+                            ""
                         }
 
                         val updatedUsername = if (existingPost.username == "unknown" || existingPost.username == "downloading...") {
@@ -668,7 +678,12 @@ class DownloadService : Service() {
                         }
                         val firstImagePath = downloadedFiles.firstOrNull { !isVideo(it) }
                         val firstVideoPath = downloadedFiles.firstOrNull { isVideo(it) }
-                        val thumbnailPath = firstImagePath ?: firstVideoPath ?: ""
+                        val rawThumbnailPath = firstImagePath ?: firstVideoPath ?: ""
+                        val thumbnailPath = if (rawThumbnailPath.isNotEmpty()) {
+                            com.devson.vedinsta.ui.ThumbnailHelper.getSafeThumbnailPath(applicationContext, rawThumbnailPath)
+                        } else {
+                            ""
+                        }
 
                         val newPost = com.devson.vedinsta.database.DownloadedPost(
                             postId = postId,

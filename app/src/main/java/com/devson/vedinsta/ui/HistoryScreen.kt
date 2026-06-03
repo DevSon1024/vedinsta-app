@@ -56,7 +56,6 @@ fun HistoryScreen(
     isFavorite: (String) -> Boolean,
     onToggleFavorite: (String) -> Unit,
     onPostClick: (DownloadedPost) -> Unit,
-    onPostLongClick: (DownloadedPost) -> Unit,
     posts: List<DownloadedPost>? = null
 ) {
     val observedPosts by mainViewModel.allDownloadedPosts.observeAsState(emptyList())
@@ -101,13 +100,22 @@ fun HistoryScreen(
             ) {
                 items(displayPosts, key = { it.postId }) { post ->
                     val fav = isFavorite(post.postId)
+                    val context = androidx.compose.ui.platform.LocalContext.current
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
                             .combinedClickable(
                                 onClick = { onPostClick(post) },
-                                onLongClick = { onPostLongClick(post) }
+                                onLongClick = {
+                                    showPostOptions(
+                                        context = context,
+                                        post = post,
+                                        viewModel = mainViewModel,
+                                        onToggleFavorite = onToggleFavorite,
+                                        isFavorite = fav
+                                    )
+                                }
                             ),
                         shape = RoundedCornerShape(12.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -274,7 +282,7 @@ fun HistoryScreen(
             ) {
                 items(displayPosts, key = { it.postId }) { post ->
                     val fav = isFavorite(post.postId)
-                    
+                    val context = androidx.compose.ui.platform.LocalContext.current
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -282,7 +290,15 @@ fun HistoryScreen(
                             .clip(RoundedCornerShape(20.dp))
                             .combinedClickable(
                                 onClick = { onPostClick(post) },
-                                onLongClick = { onPostLongClick(post) }
+                                onLongClick = {
+                                    showPostOptions(
+                                        context = context,
+                                        post = post,
+                                        viewModel = mainViewModel,
+                                        onToggleFavorite = onToggleFavorite,
+                                        isFavorite = fav
+                                    )
+                                }
                             ),
                         shape = RoundedCornerShape(20.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)

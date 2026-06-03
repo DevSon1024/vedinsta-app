@@ -70,10 +70,6 @@ fun MainAppScreen(
     var showViewSettingsSheet by remember { mutableStateOf(false) }
     val viewSettingsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    var maxNotificationsLimit by remember { mutableStateOf(settingsViewModel.maxNotificationsLimit) }
-    var showNotificationSettingsSheet by remember { mutableStateOf(false) }
-    val notificationSettingsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
     LaunchedEffect(currentScreen) {
         if (currentScreen is Screen.Notifications) {
             notificationViewModel.pruneNotifications(settingsViewModel.maxNotificationsLimit)
@@ -209,14 +205,6 @@ fun MainAppScreen(
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                        } else if (currentScreen == Screen.Notifications) {
-                            IconButton(onClick = { showNotificationSettingsSheet = true }) {
-                                Icon(
-                                    imageVector = Icons.Default.Tune,
-                                    contentDescription = "Notification Settings",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
                         }
                     }
                 )
@@ -327,10 +315,7 @@ fun MainAppScreen(
                             },
                             isFavorite = isFavoriteHelper,
                             onToggleFavorite = toggleFavoriteHelper,
-                            onPostClick = { post -> navigateTo(Screen.PostView(post)) },
-                            onPostLongClick = { post ->
-                                showPostOptions(context, post, mainViewModel, toggleFavoriteHelper, isFavoriteHelper(post.postId))
-                            }
+                            onPostClick = { post -> navigateTo(Screen.PostView(post)) }
                         )
                     }
                     is Screen.Favorites -> {
@@ -350,10 +335,7 @@ fun MainAppScreen(
                             },
                             isFavorite = isFavoriteHelper,
                             onToggleFavorite = toggleFavoriteHelper,
-                            onPostClick = { post -> navigateTo(Screen.PostView(post)) },
-                            onPostLongClick = { post ->
-                                showPostOptions(context, post, mainViewModel, toggleFavoriteHelper, isFavoriteHelper(post.postId))
-                            }
+                            onPostClick = { post -> navigateTo(Screen.PostView(post)) }
                         )
                     }
                     is Screen.Sessions -> {
@@ -397,9 +379,6 @@ fun MainAppScreen(
                         PrivacyPolicyScreen()
                     }
                     is Screen.Notifications -> {
-                        LaunchedEffect(maxNotificationsLimit) {
-                            notificationViewModel.pruneNotifications(maxNotificationsLimit)
-                        }
                         NotificationsScreen(
                             notifications = notifications,
                             onNotificationClick = { notification ->
@@ -415,7 +394,9 @@ fun MainAppScreen(
                                     }
                                 }
                             },
-                            onDeleteClick = { id -> notificationViewModel.deleteNotification(id) }
+                            onDeleteClick = { id -> notificationViewModel.deleteNotification(id) },
+                            settingsViewModel = settingsViewModel,
+                            notificationViewModel = notificationViewModel
                         )
                     }
                     is Screen.PostView -> {
@@ -456,158 +437,7 @@ fun MainAppScreen(
         )
     }
 
-    // Notification Settings Bottom Sheet
-    if (showNotificationSettingsSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showNotificationSettingsSheet = false },
-            sheetState = notificationSettingsSheetState,
-            containerColor = MaterialTheme.colorScheme.surface,
-            contentColor = MaterialTheme.colorScheme.onSurface
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .padding(horizontal = 24.dp, vertical = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Text(
-                    text = "Notification Settings",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-
-                var isUnrestricted by remember { mutableStateOf(maxNotificationsLimit == 0) }
-                var sliderValue by remember { mutableStateOf(if (maxNotificationsLimit > 0) maxNotificationsLimit.toFloat() else 50f) }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text(
-                            text = "Unrestricted Keep Limit",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "Keep all notifications history indefinitely",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = isUnrestricted,
-                        onCheckedChange = { checked ->
-                            isUnrestricted = checked
-                            val newLimit = if (checked) 0 else sliderValue.toInt()
-                            settingsViewModel.maxNotificationsLimit = newLimit
-                            maxNotificationsLimit = newLimit
-                            notificationViewModel.pruneNotifications(newLimit)
-                        }
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = "Maximum Keep Count: ${sliderValue.toInt()}",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
-                        color = if (isUnrestricted) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f) else MaterialTheme.colorScheme.onSurface
-                    )
-                    Slider(
-                        value = sliderValue,
-                        onValueChange = { valRounded ->
-                            sliderValue = valRounded
-                        },
-                        onValueChangeFinished = {
-                            if (!isUnrestricted) {
-                                val newLimit = sliderValue.toInt()
-                                settingsViewModel.maxNotificationsLimit = newLimit
-                                maxNotificationsLimit = newLimit
-                                notificationViewModel.pruneNotifications(newLimit)
-                            }
-                        },
-                        valueRange = 10f..200f,
-                        steps = 18,
-                        enabled = !isUnrestricted,
-                        colors = SliderDefaults.colors(
-                            thumbColor = MaterialTheme.colorScheme.primary,
-                            activeTrackColor = MaterialTheme.colorScheme.primary,
-                            inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
-                        )
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-        }
-    }
 }
-
-// Helpers for downloaded items options dialog
-private fun showPostOptions(
-    context: Context,
-    post: DownloadedPost,
-    viewModel: MainViewModel,
-    onToggleFavorite: (String) -> Unit,
-    isFavorite: Boolean
-) {
-    val options = arrayOf(
-        if (isFavorite) "Remove from Favorites" else "Add to Favorites",
-        "Share Post File(s)",
-        "Delete from History"
-    )
-
-    androidx.appcompat.app.AlertDialog.Builder(context)
-        .setTitle("Post Options")
-        .setItems(options) { _, which ->
-            when (which) {
-                0 -> onToggleFavorite(post.postId)
-                1 -> {
-                    if (post.mediaPaths.isNotEmpty()) {
-                        val file = File(post.mediaPaths.first())
-                        val fileUri = androidx.core.content.FileProvider.getUriForFile(
-                            context,
-                            "${context.packageName}.fileprovider",
-                            file
-                        )
-                        val shareIntent = Intent().apply {
-                            action = Intent.ACTION_SEND
-                            type = if (file.extension.lowercase() in listOf("mp4", "mov", "avi")) "video/*" else "image/*"
-                            putExtra(Intent.EXTRA_STREAM, fileUri)
-                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        }
-                        context.startActivity(Intent.createChooser(shareIntent, "Share post"))
-                    } else {
-                        Toast.makeText(context, "No media files found to share", Toast.LENGTH_SHORT).show()
-                    }
-                }
-                2 -> {
-                    androidx.appcompat.app.AlertDialog.Builder(context)
-                        .setTitle("Delete Post")
-                        .setMessage("Are you sure you want to delete this post and its downloaded files? This cannot be undone.")
-                        .setPositiveButton("Delete") { _, _ ->
-                            viewModel.deleteDownloadedPost(post)
-                            Toast.makeText(context, "Post deleted", Toast.LENGTH_SHORT).show()
-                        }
-                        .setNegativeButton("Cancel", null)
-                        .show()
-                }
-            }
-        }
-        .show()
-}
-
-
 
 private fun getScreenOrderValue(screen: Screen): Int {
     return when (screen) {

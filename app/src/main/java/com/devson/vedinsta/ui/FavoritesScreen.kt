@@ -24,8 +24,7 @@ fun FavoritesScreen(
     onListViewChanged: (Boolean) -> Unit,
     isFavorite: (String) -> Boolean,
     onToggleFavorite: (String) -> Unit,
-    onPostClick: (DownloadedPost) -> Unit,
-    onPostLongClick: (DownloadedPost) -> Unit
+    onPostClick: (DownloadedPost) -> Unit
 ) {
     val posts by mainViewModel.allDownloadedPosts.observeAsState(emptyList())
     val favoritePosts = posts.filter { isFavorite(it.postId) }
@@ -62,8 +61,7 @@ fun FavoritesScreen(
             onListViewChanged = onListViewChanged,
             isFavorite = isFavorite,
             onToggleFavorite = onToggleFavorite,
-            onPostClick = onPostClick,
-            onPostLongClick = onPostLongClick
+            onPostClick = onPostClick
         )
     }
 }

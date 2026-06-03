@@ -789,6 +789,12 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
                         notificationManager.removeProgressFromDb(groupTag)
 
                         try {
+                            val rawThumb = completedFilePaths.firstOrNull() ?: ""
+                            val safeThumb = if (rawThumb.isNotEmpty()) {
+                                com.devson.vedinsta.ui.ThumbnailHelper.getSafeThumbnailPath(context, rawThumb)
+                            } else {
+                                ""
+                            }
                             notificationManager.addCustomNotification(
                                 title = "Download Completed",
                                 message = "Saved ${completedFilePaths.size}/$expectedCount files from @$finalUsername",
@@ -796,7 +802,7 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
                                 priority = com.devson.vedinsta.database.NotificationPriority.NORMAL,
                                 postId = groupTag,
                                 postUrl = postUrl,
-                                thumbnailPath = completedFilePaths.firstOrNull() ?: ""
+                                thumbnailPath = safeThumb
                             )
                         } catch (e: Exception) {
                             Log.e(TAG, "Failed to insert batch success notification to DB", e)
@@ -907,7 +913,7 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
                     priority = com.devson.vedinsta.database.NotificationPriority.NORMAL,
                     postId = tag,
                     postUrl = postUrl,
-                    thumbnailPath = filePath
+                    thumbnailPath = com.devson.vedinsta.ui.ThumbnailHelper.getSafeThumbnailPath(context, filePath)
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to insert single success notification to DB", e)
@@ -916,7 +922,11 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
             // Show completion feedback on Main thread
             withContext(Dispatchers.Main) {
                 Toast.makeText(context, "Download complete: $fileName", Toast.LENGTH_SHORT).show()
-                notificationManager.showDownloadCompleted(notificationId = notificationId, fileName = finalUsername, totalFiles = 1)
+                notificationManager.showDownloadCompleted(
+                    notificationId = notificationId,
+                    title = "Download Completed",
+                    message = "Saved $mediaTypeWord from @$finalUsername"
+                )
             }
         }
     }
@@ -978,11 +988,16 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
                 val newFirstVideoPath = downloadedFiles.firstOrNull { isVideoFile(it) }
                 val currentThumbnailValid = !existingPost.thumbnailPath.isBlank() && File(existingPost.thumbnailPath).exists()
 
-                val updatedThumbnailPath = when {
+                val rawThumbnailPath = when {
                     newFirstImagePath != null -> newFirstImagePath // Prioritize new image
                     currentThumbnailValid -> existingPost.thumbnailPath // Keep existing valid one
                     newFirstVideoPath != null -> newFirstVideoPath // Use new video as last resort
                     else -> "" // Fallback to empty
+                }
+                val updatedThumbnailPath = if (rawThumbnailPath.isNotEmpty()) {
+                    com.devson.vedinsta.ui.ThumbnailHelper.getSafeThumbnailPath(context, rawThumbnailPath)
+                } else {
+                    ""
                 }
 
                 // Update username only if the existing one is a placeholder
@@ -1014,7 +1029,12 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
                 // Choose thumbnail: prefer first image, else first video, else blank
                 val firstImagePath = downloadedFiles.firstOrNull { !isVideoFile(it) }
                 val firstVideoPath = downloadedFiles.firstOrNull { isVideoFile(it) }
-                val thumbnailPath = firstImagePath ?: firstVideoPath ?: ""
+                val rawThumbnailPath = firstImagePath ?: firstVideoPath ?: ""
+                val thumbnailPath = if (rawThumbnailPath.isNotEmpty()) {
+                    com.devson.vedinsta.ui.ThumbnailHelper.getSafeThumbnailPath(context, rawThumbnailPath)
+                } else {
+                    ""
+                }
 
                 val newPost = DownloadedPost(
                     postId = postId, // Use the provided key

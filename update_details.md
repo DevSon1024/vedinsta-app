@@ -586,3 +586,16 @@
   4. Verified the project compiles successfully using `.\gradlew.bat compileDebugKotlin` and `.\gradlew.bat assembleDebug` with zero errors.
 
 ---
+
+- **Type of Details:** Refactor & UX/UI Improvement
+- **Description:**
+  1. Refactored the Notification Keep Limit Settings sheet warning logic inside `NotificationsScreen.kt` to defer the database pruning action. It now stores selections in temporary state variables (`tempIsUnrestricted`, `tempSliderValue`) and commits the settings update and calls `pruneNotifications` *only* upon sheet dismissal (`onDismissRequest`).
+  2. Implemented a dynamic warning card inside the sheet that warns the user that selecting a limit lower than the current notifications count will delete older database records, while reassuring them that downloaded media files remain safe.
+  3. Cleaned up `MainAppScreen.kt` by completely decoupling and removing the `onPostLongClick` callbacks.
+  4. Updated `HistoryScreen.kt` to invoke `showPostOptions` directly on item long press using `LocalContext.current` as context, and removed the unused `onPostLongClick` parameter from `HistoryScreen` and `FavoritesScreen` definitions.
+  5. Refactored the system tray completion notification in `DownloadService.kt` and `VedInstaApplication.kt` for single downloads to pass the customized `"Saved reel/post from @username"` message instead of the generic `"File saved to gallery"` message.
+  6. Resolved the Main Thread ANR / freeze crash during video thumbnail decoding by implementing a custom asynchronous video frame extraction pipeline inside `ThumbnailHelper.kt`. The helper extracts the first frame of a downloaded video using `MediaMetadataRetriever` on `Dispatchers.IO`, compresses it to a JPEG, and saves it inside the app's cache directory.
+  7. Updated `DownloadService.kt` and `VedInstaApplication.kt` database saving routines and notification preview endpoints to pass video files through `ThumbnailHelper.getSafeThumbnailPath()`, ensuring Coil only loads static JPEG files during UI rendering and eliminates main thread blocks.
+  8. Verified that the project builds and packages successfully using `.\gradlew.bat compileDebugKotlin` and `.\gradlew.bat assembleDebug` with zero errors.
+
+---
