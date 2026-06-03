@@ -11,10 +11,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.devson.vedinsta.database.DownloadedPost
+import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.runtime.getValue
+import com.devson.vedinsta.viewmodel.MainViewModel
 
 @Composable
 fun FavoritesScreen(
-    posts: List<DownloadedPost>,
+    mainViewModel: MainViewModel,
     gridColumnCount: Int,
     onGridColumnsChanged: (Int) -> Unit,
     isListView: Boolean,
@@ -24,6 +27,7 @@ fun FavoritesScreen(
     onPostClick: (DownloadedPost) -> Unit,
     onPostLongClick: (DownloadedPost) -> Unit
 ) {
+    val posts by mainViewModel.allDownloadedPosts.observeAsState(emptyList())
     val favoritePosts = posts.filter { isFavorite(it.postId) }
 
     if (favoritePosts.isEmpty()) {
@@ -50,6 +54,7 @@ fun FavoritesScreen(
         }
     } else {
         HistoryScreen(
+            mainViewModel = mainViewModel,
             posts = favoritePosts,
             gridColumnCount = gridColumnCount,
             onGridColumnsChanged = onGridColumnsChanged,

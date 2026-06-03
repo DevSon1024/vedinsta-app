@@ -523,3 +523,35 @@
   6. **Video Auto-play & Previews** — Configured `VideoPlayer` to sync with the active carousel page, auto-playing only when active, and seeking to `1` millisecond when paused/inactive so that a preview frame renders on the `TextureView` immediately instead of showing a blank screen.
 
 ---
+
+- **Type of Details:** Refactor & Performance Improvement
+- **Description:**
+  1. Enabled Coil disk caching (`CachePolicy.ENABLED`) for video and image thumbnails in both `HomeScreen.kt` and `HistoryScreen.kt`, eliminating CPU spikes and scroll lag.
+  2. Replaced the custom leaky `LiveData.observeAsState` implementation in `MainAppScreen.kt` with the official Compose LiveData dependency (`runtime-livedata`) and updated dependencies in `build.gradle.kts` and `libs.versions.toml`.
+  3. Optimized navigation and recomposition by pushing the posts database observation down from `MainAppScreen.kt` directly to `HomeScreen.kt`, `HistoryScreen.kt`, and `FavoritesScreen.kt`.
+  4. Refactored favorites state tracking in `SettingsManager.kt` from a manual update counter to a reactive `StateFlow<Set<String>>` to prevent global recompositions.
+  5. Solved UI freezing during pinch-to-zoom by wrapping SharedPreferences grid columns writes in `MainAppScreen.kt` in asynchronous `Dispatchers.IO` coroutine blocks.
+  6. Optimized media fetching in `MediaFetcherRepository.kt` and `MediaResult.kt` to parse the raw JSON string into a top-level `InstagramResponse` data class wrapper in a single pass, eliminating double-parsing and redundant serializations.
+  7. Verified the project compiles successfully using `.\gradlew.bat compileDebugKotlin` with zero errors.
+
+---
+
+- **Type of Details:** Refactor & Performance Improvement
+- **Description:**
+  1. Resolved scroll jank in `HistoryScreen` and `FavoritesScreen` by moving favorites tracking state flow entirely from `SettingsManager.kt` to `MainViewModel.kt` to avoid synchronous SharedPreferences reads inside Compose layout passes.
+  2. Fixed UI freeze and ANR risks on post deletion by moving physical file deletion logic (`file.delete()`) from the UI layer to `MainViewModel.deleteDownloadedPost` running on `Dispatchers.IO`.
+  3. Resolved MVVM architectural violation by adding `getPostById` to `MainViewModel.kt` and querying it in `MainAppScreen.kt`'s notification handler instead of instantiating `AppDatabase` directly from the UI.
+  4. Fixed deep link loop on app resume by removing `"POST_URL"` and `"instagram_url"` intent extras immediately after media extraction starts inside `MainAppScreen.kt`.
+  5. Verified the project compiles successfully using `.\gradlew.bat compileDebugKotlin` with zero errors.
+
+---
+
+- **Type of Details:** Refactor
+- **Description:**
+  1. Consolidated settings state architecture by migrating all variables, constants, properties, and helper functions from `SettingsManager.kt` into `SettingsViewModel.kt`.
+  2. Deleted the redundant `SettingsManager.kt` file.
+  3. Refactored `MainAppScreen.kt` and `SettingsScreen.kt` parameters and references to use `settingsViewModel: SettingsViewModel` instead of `settingsManager: SettingsManager`.
+  4. Updated `MainActivity.kt`, `MainViewModel.kt`, `VedInstaApplication.kt`, and `SharedLinkProcessingService.kt` to use `SettingsViewModel` and reference its properties and methods consistently.
+  5. Verified successful build and compilation via Gradle (`assembleDebug` and `compileDebugKotlin` SUCCESS).
+
+---

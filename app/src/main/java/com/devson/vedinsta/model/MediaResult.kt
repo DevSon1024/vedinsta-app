@@ -28,3 +28,12 @@ data class ExtractedPost(
     val postId: String
 ) : Serializable
 
+data class InstagramResponse(
+    @SerializedName("status") val status: String? = null,
+    @SerializedName("message") val message: String? = null,
+    @SerializedName("username") val username: String? = null,
+    @SerializedName("caption") val caption: String? = null,
+    @SerializedName("shortcode") val shortcode: String? = null,
+    @SerializedName("media") val media: List<MediaResult>? = null
+) : Serializable
+

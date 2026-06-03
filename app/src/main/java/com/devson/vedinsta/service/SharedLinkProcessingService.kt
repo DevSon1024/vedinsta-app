@@ -5,7 +5,7 @@ import android.content.Intent
 import android.os.IBinder
 import android.util.Log
 import com.devson.vedinsta.model.ImageCard
-import com.devson.vedinsta.SettingsManager
+import com.devson.vedinsta.viewmodel.SettingsViewModel
 import com.devson.vedinsta.VedInstaApplication
 import com.devson.vedinsta.extractor.InstagramNativeExtractor
 import com.devson.vedinsta.notification.VedInstaNotificationManager
@@ -17,7 +17,7 @@ class SharedLinkProcessingService : Service() {
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private lateinit var notificationManager: VedInstaNotificationManager
-    private lateinit var settingsManager: SettingsManager
+    private lateinit var settingsViewModel: SettingsViewModel
 
     companion object {
         private const val TAG = "SharedLinkService"
@@ -28,7 +28,7 @@ class SharedLinkProcessingService : Service() {
     override fun onCreate() {
         super.onCreate()
         notificationManager = VedInstaNotificationManager.getInstance(this)
-        settingsManager = SettingsManager(this)
+        settingsViewModel = SettingsViewModel(application)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -125,12 +125,12 @@ class SharedLinkProcessingService : Service() {
                     }
 
                     // MULTIPLE CONTENT: Check Settings
-                    when (settingsManager.defaultLinkAction) {
-                        SettingsManager.ACTION_DOWNLOAD_ALL -> {
+                    when (settingsViewModel.defaultLinkAction) {
+                        SettingsViewModel.ACTION_DOWNLOAD_ALL -> {
                             handleDownloadAll(url, -1)
                             shouldStopSelf = false
                         }
-                        SettingsManager.ACTION_OPEN_SELECTION -> {
+                        SettingsViewModel.ACTION_OPEN_SELECTION -> {
                             notificationManager.showMultipleContentOptions(url, mediaCount, autoOpenSelection = true)
                         }
                         else -> {

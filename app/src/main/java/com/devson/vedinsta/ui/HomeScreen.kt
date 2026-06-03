@@ -29,18 +29,22 @@ import coil.request.videoFrameMillis
 import coil.size.Size
 import coil.request.CachePolicy
 import com.devson.vedinsta.database.DownloadedPost
+import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.runtime.getValue
+import com.devson.vedinsta.viewmodel.MainViewModel
 import java.io.File
 import java.util.Calendar
 
 @Composable
 fun HomeScreen(
-    recentPosts: List<DownloadedPost>,
+    mainViewModel: MainViewModel,
     onNavigateToDownloader: () -> Unit,
     onNavigateToFavorites: () -> Unit,
     onNavigateToHistory: () -> Unit,
     onNavigateToSessions: () -> Unit,
     onPostClick: (DownloadedPost) -> Unit
 ) {
+    val recentPosts by mainViewModel.allDownloadedPosts.observeAsState(emptyList())
     val scrollState = rememberScrollState()
     val greeting = remember {
         val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
@@ -340,7 +344,7 @@ fun HomeScreen(
                                     .size(300, 300)
                                     .videoFrameMillis(0L)
                                     .crossfade(true)
-                                    .diskCachePolicy(CachePolicy.DISABLED)
+                                    .diskCachePolicy(CachePolicy.ENABLED)
                                     .memoryCachePolicy(CachePolicy.ENABLED)
                                     .build(),
                                 contentDescription = "Post Thumbnail",

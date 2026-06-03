@@ -38,8 +38,6 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        val settingsManager = SettingsManager(this)
-
         setContent {
             val isDark by settingsViewModel.isDarkTheme.collectAsState()
             val dynamicColor by settingsViewModel.dynamicColor.collectAsState()
@@ -60,7 +58,6 @@ class MainActivity : ComponentActivity() {
                     mainViewModel = mainViewModel,
                     notificationViewModel = notificationViewModel,
                     settingsViewModel = settingsViewModel,
-                    settingsManager = settingsManager,
                     intent = currentIntent.value,
                     onThemeChanged = {
                         // Managed reactively by settingsViewModel!

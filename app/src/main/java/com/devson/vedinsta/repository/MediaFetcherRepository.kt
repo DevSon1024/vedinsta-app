@@ -4,8 +4,8 @@ import android.content.Context
 import android.util.Log
 import com.devson.vedinsta.extractor.InstagramNativeExtractor
 import com.devson.vedinsta.model.MediaResult
+import com.devson.vedinsta.model.InstagramResponse
 import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -23,22 +23,18 @@ class MediaFetcherRepository(private val context: Context) {
             val resultJson = InstagramNativeExtractor.getMediaUrls(urlOrShortcode, cookieFile.absolutePath)
             Log.d("MediaFetcherRepository", "getMediaUrls returned: $resultJson")
 
-            val responseType = object : TypeToken<Map<String, Any>>() {}.type
-            val responseMap: Map<String, Any> = gson.fromJson(resultJson, responseType)
+            val response = gson.fromJson(resultJson, InstagramResponse::class.java)
+                ?: throw Exception("Failed to parse extractor response")
 
-            val status = responseMap["status"] as? String ?: "error"
-            if (status != "success") {
-                val message = responseMap["message"] as? String ?: "Unknown error"
+            if (response.status != "success") {
+                val message = response.message ?: "Unknown error"
                 throw Exception(message)
             }
 
-            val username = responseMap["username"] as? String ?: "unknown"
-            val caption = responseMap["caption"] as? String
-            val postId = responseMap["shortcode"] as? String ?: "unknown"
-
-            val mediaJson = gson.toJson(responseMap["media"])
-            val listType = object : TypeToken<List<MediaResult>>() {}.type
-            val results: List<MediaResult> = gson.fromJson(mediaJson, listType)
+            val username = response.username ?: "unknown"
+            val caption = response.caption
+            val postId = response.shortcode ?: "unknown"
+            val results = response.media ?: emptyList()
 
             val firstError = results.firstOrNull()?.error
             if (firstError != null) {

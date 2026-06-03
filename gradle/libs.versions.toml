@@ -74,6 +74,7 @@ androidx-compose-ui-test-manifest        = { module = "androidx.compose.ui:ui-te
 androidx-compose-ui-test-junit4          = { module = "androidx.compose.ui:ui-test-junit4" }
 androidx-compose-material3               = { module = "androidx.compose.material3:material3" }
 androidx-compose-material-icons-extended = { module = "androidx.compose.material:material-icons-extended" }
+androidx-compose-runtime-livedata       = { module = "androidx.compose.runtime:runtime-livedata" }
 
 # Coil
 coil         = { group = "io.coil-kt", name = "coil",         version.ref = "coil" }

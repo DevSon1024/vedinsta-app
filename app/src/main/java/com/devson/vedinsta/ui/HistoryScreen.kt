@@ -40,12 +40,15 @@ import coil.request.videoFrameMillis
 import coil.size.Size
 import coil.request.CachePolicy
 import com.devson.vedinsta.database.DownloadedPost
+import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.runtime.getValue
+import com.devson.vedinsta.viewmodel.MainViewModel
 import java.io.File
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HistoryScreen(
-    posts: List<DownloadedPost>,
+    mainViewModel: MainViewModel,
     gridColumnCount: Int,
     onGridColumnsChanged: (Int) -> Unit,
     isListView: Boolean,
@@ -53,9 +56,13 @@ fun HistoryScreen(
     isFavorite: (String) -> Boolean,
     onToggleFavorite: (String) -> Unit,
     onPostClick: (DownloadedPost) -> Unit,
-    onPostLongClick: (DownloadedPost) -> Unit
+    onPostLongClick: (DownloadedPost) -> Unit,
+    posts: List<DownloadedPost>? = null
 ) {
-    if (posts.isEmpty()) {
+    val observedPosts by mainViewModel.allDownloadedPosts.observeAsState(emptyList())
+    val displayPosts = posts ?: observedPosts
+
+    if (displayPosts.isEmpty()) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -92,7 +99,7 @@ fun HistoryScreen(
                 ),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(posts, key = { it.postId }) { post ->
+                items(displayPosts, key = { it.postId }) { post ->
                     val fav = isFavorite(post.postId)
                     Card(
                         modifier = Modifier
@@ -123,7 +130,7 @@ fun HistoryScreen(
                                         .size(300, 300) // Downsample to small resolution for smooth scrolling & memory efficiency
                                         .videoFrameMillis(0L)
                                         .crossfade(true)
-                                        .diskCachePolicy(CachePolicy.DISABLED)
+                                        .diskCachePolicy(CachePolicy.ENABLED)
                                         .memoryCachePolicy(CachePolicy.ENABLED)
                                         .build(),
                                     contentDescription = "Post Thumbnail",
@@ -265,7 +272,7 @@ fun HistoryScreen(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(posts, key = { it.postId }) { post ->
+                items(displayPosts, key = { it.postId }) { post ->
                     val fav = isFavorite(post.postId)
                     
                     Card(
@@ -288,7 +295,7 @@ fun HistoryScreen(
                                     .size(300, 300) // Downsample to small resolution for smooth scrolling & memory efficiency
                                     .videoFrameMillis(0L)
                                     .crossfade(true)
-                                    .diskCachePolicy(CachePolicy.DISABLED)
+                                    .diskCachePolicy(CachePolicy.ENABLED)
                                     .memoryCachePolicy(CachePolicy.ENABLED)
                                     .build(),
                                 contentDescription = "Post Thumbnail",

@@ -37,15 +37,16 @@ import android.content.Intent
 import com.devson.vedinsta.extractor.InstagramNativeExtractor
 import com.devson.vedinsta.model.ImageCard
 import com.devson.vedinsta.service.DownloadService
+import com.devson.vedinsta.viewmodel.SettingsViewModel
 
 class VedInstaApplication : Application(), ImageLoaderFactory {
 
-    lateinit var settingsManager: SettingsManager
+    lateinit var settingsViewModel: SettingsViewModel
     // Use SupervisorJob to prevent failure of one child from cancelling others
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate) // Use immediate for faster UI updates from observers
 
     // Cache for temporarily holding username and caption during download initiation
-    private val postMetadataCache = ConcurrentHashMap<String, Pair<String?, String?>>() // Key: postId/tag, Value: Pair(username, caption)
+    private val postMetadataCache = ConcurrentHashMap<String, Pair<String?, String?>>()
 
 
     companion object {
@@ -86,26 +87,13 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
-        settingsManager = SettingsManager(this)
+        settingsViewModel = SettingsViewModel(this)
 
-        // Prune finished WorkManager jobs on app start to clean up
         WorkManager.getInstance(this).pruneWork()
-        // Clear app cache on startup
         clearAppCache(this)
     }
 
-    /**
-     * Provides a global Coil ImageLoader that can decode video files (.mp4 etc.) as
-     * thumbnail frames. This makes AsyncImage work correctly for all video thumbnails
-     * across HistoryScreen, FavoritesScreen, and HomeScreen without any UI changes.
-     *
-     * PERF FIX: Disk cache is now ENABLED with a 20 MB cap so decoded video-frame
-     * thumbnails are persisted between scroll passes.  This eliminates the massive
-     * CPU spikes caused by constant re-extraction of frames on every RecyclerView
-     * bind, which was the primary source of "Skipped N frames" jank.
-     */
     override fun newImageLoader(): ImageLoader {
-        // Dedicated 20 MB disk cache for video-frame thumbnails.
         val videoFrameDiskCache = DiskCache.Builder()
             .directory(File(cacheDir, "coil_video_frames"))
             .maxSizeBytes(20L * 1024 * 1024) // 20 MB cap – prevents storage bloat
@@ -115,14 +103,14 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
             .components {
                 add(VideoFrameDecoder.Factory())
             }
-            .diskCache(videoFrameDiskCache)          // Persist decoded frames to disk
-            .diskCachePolicy(CachePolicy.ENABLED)    // Allow read & write to disk cache
-            .memoryCachePolicy(CachePolicy.ENABLED)  // Keep in-memory cache as well
+            .diskCache(videoFrameDiskCache) // Persist decoded frames to disk
+            .diskCachePolicy(CachePolicy.ENABLED) // Allow read & write to disk cache
+            .memoryCachePolicy(CachePolicy.ENABLED) // Keep in-memory cache as well
             .crossfade(true)
             .build()
     }
 
-    // --- Caching Username and Caption ---
+    // Caching Username and Caption
     fun cachePostMetadata(key: String, username: String?, caption: String?) {
         if (!username.isNullOrBlank() || !caption.isNullOrBlank()) {
             postMetadataCache[key] = Pair(username ?: "unknown", caption) // Store "unknown" if username is null/blank
@@ -415,9 +403,9 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
 
                 // Determine target directory (prioritize SAF URI if set)
                 val targetDirectoryUriString = if (media.type.lowercase() == "video") {
-                    settingsManager.videoDirectoryUri
+                    settingsViewModel.videoDirectoryUri
                 } else {
-                    settingsManager.imageDirectoryUri
+                    settingsViewModel.imageDirectoryUri
                 }
 
                 // Determine the actual file path for the worker (might be cache)
@@ -504,9 +492,9 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
 
             // Determine target directory and worker path
             val targetDirectoryUriString = if (mediaType.lowercase() == "video") {
-                settingsManager.videoDirectoryUri
+                settingsViewModel.videoDirectoryUri
             } else {
-                settingsManager.imageDirectoryUri
+                settingsViewModel.imageDirectoryUri
             }
             val (workerFilePath, requiresManualMove) = determineWorkerFilePath(
                 context, fileName, mediaType, targetDirectoryUriString

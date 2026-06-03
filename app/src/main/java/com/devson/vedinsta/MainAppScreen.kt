@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.Observer
+import androidx.compose.runtime.livedata.observeAsState
 import com.devson.vedinsta.database.DownloadedPost
 import com.devson.vedinsta.ui.*
 import com.devson.vedinsta.viewmodel.*
@@ -53,7 +54,6 @@ fun MainAppScreen(
     mainViewModel: MainViewModel,
     notificationViewModel: NotificationViewModel,
     settingsViewModel: SettingsViewModel,
-    settingsManager: SettingsManager,
     intent: Intent?,
     onThemeChanged: (Int) -> Unit
 ) {
@@ -62,34 +62,31 @@ fun MainAppScreen(
     val currentScreen = screenStack.last()
     val scope = rememberCoroutineScope()
 
-    val posts by mainViewModel.allDownloadedPosts.observeAsState(emptyList())
     val notifications by notificationViewModel.allNotifications.observeAsState(emptyList())
     val unreadCount by notificationViewModel.unreadCount.observeAsState(0)
 
-    var gridColumnCount by remember { mutableStateOf(settingsManager.gridColumnCount) }
-    var isListView by remember { mutableStateOf(settingsManager.isListView) }
+    var gridColumnCount by remember { mutableStateOf(settingsViewModel.gridColumnCount) }
+    var isListView by remember { mutableStateOf(settingsViewModel.isListView) }
     var showViewSettingsSheet by remember { mutableStateOf(false) }
     val viewSettingsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    var maxNotificationsLimit by remember { mutableStateOf(settingsManager.maxNotificationsLimit) }
+    var maxNotificationsLimit by remember { mutableStateOf(settingsViewModel.maxNotificationsLimit) }
     var showNotificationSettingsSheet by remember { mutableStateOf(false) }
     val notificationSettingsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     LaunchedEffect(currentScreen) {
         if (currentScreen is Screen.Notifications) {
-            notificationViewModel.pruneNotifications(settingsManager.maxNotificationsLimit)
+            notificationViewModel.pruneNotifications(settingsViewModel.maxNotificationsLimit)
         }
     }
 
-    // Local states for Favorites tracking using SharedPreferences via SettingsManager
-    val favoritesUpdated = remember { mutableStateOf(0) }
-    val isFavoriteHelper: (String) -> Boolean = { postId ->
-        favoritesUpdated.value // read to trigger recomposition
-        settingsManager.isFavorite(postId)
+    // Local states for Favorites tracking using SharedPreferences via SettingsViewModel
+    val favoritePostIds by mainViewModel.favoritePostIds.collectAsState()
+    val isFavoriteHelper = remember(favoritePostIds) {
+        { postId: String -> favoritePostIds.contains(postId) }
     }
     val toggleFavoriteHelper: (String) -> Unit = { postId ->
-        settingsManager.toggleFavorite(postId)
-        favoritesUpdated.value++
+        mainViewModel.toggleFavorite(postId)
     }
 
     fun navigateTo(screen: Screen) {
@@ -119,6 +116,8 @@ fun MainAppScreen(
         val url = intent?.getStringExtra("POST_URL") ?: intent?.getStringExtra("instagram_url")
         if (!url.isNullOrEmpty()) {
             extractionViewModel.extractMedia(url, authViewModel)
+            intent?.removeExtra("POST_URL")
+            intent?.removeExtra("instagram_url")
             navigateTo(Screen.Downloader)
         }
     }
@@ -276,7 +275,7 @@ fun MainAppScreen(
                 when (targetScreen) {
                     is Screen.Home -> {
                         HomeScreen(
-                            recentPosts = posts,
+                            mainViewModel = mainViewModel,
                             onNavigateToDownloader = { navigateTo(Screen.Downloader) },
                             onNavigateToFavorites = { navigateTo(Screen.Favorites) },
                             onNavigateToHistory = { navigateTo(Screen.History) },
@@ -313,15 +312,17 @@ fun MainAppScreen(
                     }
                     is Screen.History -> {
                         HistoryScreen(
-                            posts = posts,
+                            mainViewModel = mainViewModel,
                             gridColumnCount = gridColumnCount,
                             onGridColumnsChanged = { cols ->
-                                settingsManager.gridColumnCount = cols
                                 gridColumnCount = cols
+                                scope.launch(Dispatchers.IO) {
+                                    settingsViewModel.gridColumnCount = cols
+                                }
                             },
                             isListView = isListView,
                             onListViewChanged = { listMode ->
-                                settingsManager.isListView = listMode
+                                settingsViewModel.isListView = listMode
                                 isListView = listMode
                             },
                             isFavorite = isFavoriteHelper,
@@ -334,15 +335,17 @@ fun MainAppScreen(
                     }
                     is Screen.Favorites -> {
                         FavoritesScreen(
-                            posts = posts,
+                            mainViewModel = mainViewModel,
                             gridColumnCount = gridColumnCount,
                             onGridColumnsChanged = { cols ->
-                                settingsManager.gridColumnCount = cols
                                 gridColumnCount = cols
+                                scope.launch(Dispatchers.IO) {
+                                    settingsViewModel.gridColumnCount = cols
+                                }
                             },
                             isListView = isListView,
                             onListViewChanged = { listMode ->
-                                settingsManager.isListView = listMode
+                                settingsViewModel.isListView = listMode
                                 isListView = listMode
                             },
                             isFavorite = isFavoriteHelper,
@@ -374,7 +377,7 @@ fun MainAppScreen(
                     }
                     is Screen.Settings -> {
                         SettingsScreen(
-                            settingsManager = settingsManager,
+                            settingsViewModel = settingsViewModel,
                             onNavigateToAbout = { navigateTo(Screen.About) },
                             onNavigateToAppearance = { navigateTo(Screen.Appearance) },
                             onNavigateToPrivacyPolicy = { navigateTo(Screen.PrivacyPolicy) },
@@ -403,9 +406,7 @@ fun MainAppScreen(
                                 notificationViewModel.markAsRead(notification.id)
                                 if (notification.type == com.devson.vedinsta.database.NotificationType.DOWNLOAD_COMPLETED && notification.postId != null) {
                                     scope.launch {
-                                        val post = withContext(Dispatchers.IO) {
-                                            com.devson.vedinsta.database.AppDatabase.getDatabase(context).downloadedPostDao().getPostById(notification.postId)
-                                        }
+                                        val post = mainViewModel.getPostById(notification.postId)
                                         if (post != null) {
                                             navigateTo(Screen.PostView(post))
                                         } else {
@@ -425,12 +426,6 @@ fun MainAppScreen(
                             onBackClick = { navigateBack() },
                             onDeletePost = { post ->
                                 mainViewModel.deleteDownloadedPost(post)
-                                post.mediaPaths.forEach { path ->
-                                    try {
-                                        val file = File(path)
-                                        if (file.exists()) file.delete()
-                                    } catch (e: Exception) {}
-                                }
                                 Toast.makeText(context, "Post deleted", Toast.LENGTH_SHORT).show()
                                 navigateBack()
                             }
@@ -447,13 +442,15 @@ fun MainAppScreen(
             sheetState = viewSettingsSheetState,
             isListView = isListView,
             onListViewChanged = { listMode ->
-                settingsManager.isListView = listMode
+                settingsViewModel.isListView = listMode
                 isListView = listMode
             },
             gridColumnCount = gridColumnCount,
             onGridColumnsChanged = { cols ->
-                settingsManager.gridColumnCount = cols
                 gridColumnCount = cols
+                scope.launch(Dispatchers.IO) {
+                    settingsViewModel.gridColumnCount = cols
+                }
             },
             onDismissRequest = { showViewSettingsSheet = false }
         )
@@ -507,7 +504,7 @@ fun MainAppScreen(
                         onCheckedChange = { checked ->
                             isUnrestricted = checked
                             val newLimit = if (checked) 0 else sliderValue.toInt()
-                            settingsManager.maxNotificationsLimit = newLimit
+                            settingsViewModel.maxNotificationsLimit = newLimit
                             maxNotificationsLimit = newLimit
                             notificationViewModel.pruneNotifications(newLimit)
                         }
@@ -534,7 +531,7 @@ fun MainAppScreen(
                         onValueChangeFinished = {
                             if (!isUnrestricted) {
                                 val newLimit = sliderValue.toInt()
-                                settingsManager.maxNotificationsLimit = newLimit
+                                settingsViewModel.maxNotificationsLimit = newLimit
                                 maxNotificationsLimit = newLimit
                                 notificationViewModel.pruneNotifications(newLimit)
                             }
@@ -600,12 +597,6 @@ private fun showPostOptions(
                         .setMessage("Are you sure you want to delete this post and its downloaded files? This cannot be undone.")
                         .setPositiveButton("Delete") { _, _ ->
                             viewModel.deleteDownloadedPost(post)
-                            post.mediaPaths.forEach { path ->
-                                try {
-                                    val f = File(path)
-                                    if (f.exists()) f.delete()
-                                } catch (e: Exception) {}
-                            }
                             Toast.makeText(context, "Post deleted", Toast.LENGTH_SHORT).show()
                         }
                         .setNegativeButton("Cancel", null)
@@ -616,23 +607,7 @@ private fun showPostOptions(
         .show()
 }
 
-// Composable function helper to observe LiveData as State in Compose
-@Composable
-fun <T> LiveData<T>.observeAsState(initial: T): State<T> {
-    val state = remember { mutableStateOf(initial) }
-    DisposableEffect(this) {
-        val observer = Observer<T> { value ->
-            if (value != null) {
-                state.value = value
-            }
-        }
-        observeForever(observer)
-        onDispose {
-            removeObserver(observer)
-        }
-    }
-    return state
-}
+
 
 private fun getScreenOrderValue(screen: Screen): Int {
     return when (screen) {

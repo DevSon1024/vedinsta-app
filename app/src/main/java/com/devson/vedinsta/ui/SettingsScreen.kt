@@ -28,7 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.Coil
-import com.devson.vedinsta.SettingsManager
+import com.devson.vedinsta.viewmodel.SettingsViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -37,7 +37,7 @@ import java.io.File
 
 @Composable
 fun SettingsScreen(
-    settingsManager: SettingsManager,
+    settingsViewModel: SettingsViewModel,
     onNavigateToAbout: () -> Unit,
     onNavigateToAppearance: () -> Unit,
     onNavigateToPrivacyPolicy: () -> Unit,
@@ -47,9 +47,9 @@ fun SettingsScreen(
     val coroutineScope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
 
-    var imagePath by remember { mutableStateOf(settingsManager.getImagePathLabel()) }
-    var videoPath by remember { mutableStateOf(settingsManager.getVideoPathLabel()) }
-    var linkActionLabel by remember { mutableStateOf(settingsManager.getDefaultActionLabel()) }
+    var imagePath by remember { mutableStateOf(settingsViewModel.getImagePathLabel()) }
+    var videoPath by remember { mutableStateOf(settingsViewModel.getVideoPathLabel()) }
+    var linkActionLabel by remember { mutableStateOf(settingsViewModel.getDefaultActionLabel()) }
     var showLinkActionDialog by remember { mutableStateOf(false) }
 
     // Folder Pickers
@@ -61,8 +61,8 @@ fun SettingsScreen(
         if (result.resultCode == Activity.RESULT_OK) {
             result.data?.data?.also { uri ->
                 takePersistablePermissions(context, uri)
-                settingsManager.imageDirectoryUri = uri.toString()
-                imagePath = settingsManager.getImagePathLabel()
+                settingsViewModel.imageDirectoryUri = uri.toString()
+                imagePath = settingsViewModel.getImagePathLabel()
                 Toast.makeText(context, "Image location set", Toast.LENGTH_SHORT).show()
             }
         }
@@ -74,8 +74,8 @@ fun SettingsScreen(
         if (result.resultCode == Activity.RESULT_OK) {
             result.data?.data?.also { uri ->
                 takePersistablePermissions(context, uri)
-                settingsManager.videoDirectoryUri = uri.toString()
-                videoPath = settingsManager.getVideoPathLabel()
+                settingsViewModel.videoDirectoryUri = uri.toString()
+                videoPath = settingsViewModel.getVideoPathLabel()
                 Toast.makeText(context, "Video location set", Toast.LENGTH_SHORT).show()
             }
         }
@@ -171,10 +171,10 @@ fun SettingsScreen(
             "Download All Immediately",
             "Open Media Selection"
         )
-        val currentSelection = when(settingsManager.defaultLinkAction) {
-            SettingsManager.ACTION_ASK_EVERY_TIME -> 0
-            SettingsManager.ACTION_DOWNLOAD_ALL -> 1
-            SettingsManager.ACTION_OPEN_SELECTION -> 2
+        val currentSelection = when(settingsViewModel.defaultLinkAction) {
+            SettingsViewModel.ACTION_ASK_EVERY_TIME -> 0
+            SettingsViewModel.ACTION_DOWNLOAD_ALL -> 1
+            SettingsViewModel.ACTION_OPEN_SELECTION -> 2
             else -> 0
         }
 
@@ -190,13 +190,13 @@ fun SettingsScreen(
                                 .fillMaxWidth()
                                 .clickable {
                                     val newAction = when(index) {
-                                        0 -> SettingsManager.ACTION_ASK_EVERY_TIME
-                                        1 -> SettingsManager.ACTION_DOWNLOAD_ALL
-                                        2 -> SettingsManager.ACTION_OPEN_SELECTION
-                                        else -> SettingsManager.ACTION_ASK_EVERY_TIME
+                                        0 -> SettingsViewModel.ACTION_ASK_EVERY_TIME
+                                        1 -> SettingsViewModel.ACTION_DOWNLOAD_ALL
+                                        2 -> SettingsViewModel.ACTION_OPEN_SELECTION
+                                        else -> SettingsViewModel.ACTION_ASK_EVERY_TIME
                                     }
-                                    settingsManager.defaultLinkAction = newAction
-                                    linkActionLabel = settingsManager.getDefaultActionLabel()
+                                    settingsViewModel.defaultLinkAction = newAction
+                                    linkActionLabel = settingsViewModel.getDefaultActionLabel()
                                     showLinkActionDialog = false
                                 }
                                 .padding(vertical = 12.dp)
