@@ -227,6 +227,20 @@ object InstagramNativeExtractor {
             } else {
                 ""
             }
+            val thumbnailQualities = JSONArray()
+            if (candidates != null) {
+                for (i in 0 until candidates.length()) {
+                    val cand = candidates.getJSONObject(i)
+                    val candUrl = cand.optString("url", "")
+                    if (candUrl.isNotEmpty()) {
+                        thumbnailQualities.put(JSONObject().apply {
+                            put("url", candUrl)
+                            put("width", cand.optInt("width"))
+                            put("height", cand.optInt("height"))
+                        })
+                    }
+                }
+            }
 
             return JSONObject().apply {
                 put("url", first.optString("url", ""))
@@ -235,6 +249,7 @@ object InstagramNativeExtractor {
                 put("height", first.optInt("height"))
                 put("index", index)
                 put("thumbnail_url", thumbnailUrl)
+                put("thumbnail_qualities", thumbnailQualities)
                 put("qualities", qualities)
             }
         } else {

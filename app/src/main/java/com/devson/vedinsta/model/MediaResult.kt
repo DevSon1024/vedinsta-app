@@ -16,6 +16,8 @@ data class MediaResult(
     @SerializedName("height") val height: Int? = null,
     @SerializedName("index") val index: Int? = null,
     @SerializedName("error") val error: String? = null,
+    @SerializedName("thumbnail_url") val thumbnailUrl: String? = null,
+    @SerializedName("thumbnail_qualities") val thumbnailQualities: List<QualityOption>? = null,
     @SerializedName("qualities") val qualities: List<QualityOption>? = null
 ) : Serializable
 

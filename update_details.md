@@ -402,3 +402,48 @@
   7. **Build Verified** — `.\gradlew assembleDebug` completed successfully (`BUILD SUCCESSFUL`) with 0 errors and 3 pre-existing warnings unrelated to this migration.
 
 ---
+
+- **Type of Details:** Performance Improvement & New Update
+- **Description:**
+  1. Optimized preview loading by retrieving lower-resolution media previews instead of high-resolution files or video streams.
+  2. Modified the native extraction parser in `InstagramNativeExtractor.kt` to extract all video thumbnail candidates from `image_versions2.candidates` and include them in a new `thumbnail_qualities` JSON array.
+  3. Updated `MediaResult.kt` model to map `thumbnail_url` and `thumbnail_qualities` fields.
+  4. Implemented low-resolution preview heuristics in `MediaSelectionCarouselScreen.kt` for both images and video thumbnails, selecting the smallest quality option at or above 360px width to ensure visual clarity while saving internet data.
+  5. Switched Coil's disk cache policy to `CachePolicy.ENABLED` in `MediaSelectionCarouselScreen.kt` to cache loaded preview thumbnails locally.
+  6. Verified that the project builds and compiles successfully via `.\gradlew.bat assembleDebug`.
+
+---
+
+- **Type of Details:** New Update & Refactor
+- **Description:**
+  1. Updated `MediaSelectionCarouselScreen.kt` download button click handler to navigate back to `MediaSelectionScreen.kt` using `onNavigateBack()` and show a persistent Toast alert feedback immediately upon download trigger.
+  2. Implemented active download progress tracking in the background database by introducing `updateProgressInDb` and `removeProgressFromDb` in `DownloadService.kt`. The transient `DOWNLOAD_PROGRESS` notification entity keeps real-time percent updates.
+  3. Added progress bar rendering in `NotificationsScreen.kt` using a Material Design 3 `LinearProgressIndicator` bound to active progress notifications, disabling clicks and deletions for active progress rows.
+  4. Modified `NotificationDao.kt` to query and delete progress notifications, and updated unread count and `markAllAsRead` logic to accept a type parameter so that active progress notifications do not trigger or modify the notifications number badge on the HomeScreen.
+  5. Verified the project compiles successfully using `.\gradlew.bat assembleDebug`.
+
+---
+
+- **Type of Details:** New Update & Refactor
+- **Description:**
+  1. Updated progress reporting format from percentage ("X%") to count fraction ("X/Y") for batch downloads across `DownloadService.kt` and `NotificationsScreen.kt`.
+  2. Added the `onNavigateToNotifications` callback to `MediaSelectionCarouselScreen.kt` to route users directly to the Notifications screen upon starting a download.
+  3. Mapped the navigation flow in `MainAppScreen.kt` so that popping the downloader details transitions to the notifications page, while back gestures from the notifications page return users to the input screen.
+  4. Restricted Floating Action Button (FAB) visibility in `MainAppScreen.kt` to hide the download button on the Settings and Notifications screens.
+  5. Adjusted layout padding in `NotificationsScreen.kt` to allow list items to scroll completely behind the transparent system navigation bar at the bottom.
+  6. Verified the project compiles successfully using `.\gradlew.bat assembleDebug`.
+
+---
+
+- **Type of Details:** New Update & Refactor
+- **Description:**
+  1. Added a notification limits settings option in `NotificationsScreen.kt` using a header Card and RadioButton selection dialog to prune older notifications immediately.
+  2. Persisted notification limits configuration under `max_notifications_limit` in `SettingsManager.kt` (options: 10, 25, 50, 100, or Unrestricted).
+  3. Modified the database query in `NotificationDao.kt` to sort active progress indicators to the top, and added the subquery delete operation to clean up history beyond chosen limits.
+  4. Configured automatic pruning on entry of the notifications screen via `LaunchedEffect(maxNotificationsLimit)` in `MainAppScreen.kt`.
+  5. Implemented `showDownloadStartedPopup` in `VedInstaNotificationManager.kt` and integrated it into `DownloadService.kt` to trigger a system heads-up popup banner when downloads start.
+  6. Removed legacy `Toast` popup notification triggers on download initiation from `MediaSelectionCarouselScreen.kt`.
+  7. Verified the project compiles successfully using `.\gradlew.bat assembleDebug`.
+
+---
+

@@ -47,6 +47,10 @@ class SettingsManager(private val context: Context) {
         get() = prefs.getInt("app_theme", 0) // 0 = System, 1 = Light, 2 = Dark
         set(value) = prefs.edit().putInt("app_theme", value).apply()
 
+    var maxNotificationsLimit: Int
+        get() = prefs.getInt("max_notifications_limit", 50)
+        set(value) = prefs.edit().putInt("max_notifications_limit", value).apply()
+
     fun getImagePathLabel(): String {
         return imageDirectoryUri?.let { uriString ->
             DocumentFile.fromTreeUri(context, Uri.parse(uriString))?.name

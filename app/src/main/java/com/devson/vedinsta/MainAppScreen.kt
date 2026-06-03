@@ -66,6 +66,14 @@ fun MainAppScreen(
     var showViewSettingsSheet by remember { mutableStateOf(false) }
     val viewSettingsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
+    var maxNotificationsLimit by remember { mutableStateOf(settingsManager.maxNotificationsLimit) }
+
+    LaunchedEffect(currentScreen) {
+        if (currentScreen is Screen.Notifications) {
+            notificationViewModel.pruneNotifications(settingsManager.maxNotificationsLimit)
+        }
+    }
+
     // Local states for Favorites tracking using SharedPreferences via SettingsManager
     val favoritesUpdated = remember { mutableStateOf(0) }
     val isFavoriteHelper: (String) -> Boolean = { postId ->
@@ -194,7 +202,7 @@ fun MainAppScreen(
             }
         },
         floatingActionButton = {
-            if (currentScreen !is Screen.Downloader && currentScreen !is Screen.DownloaderDetails && currentScreen !is Screen.Login && currentScreen !is Screen.PostView && currentScreen !is Screen.Appearance) {
+            if (currentScreen !is Screen.Downloader && currentScreen !is Screen.DownloaderDetails && currentScreen !is Screen.Login && currentScreen !is Screen.PostView && currentScreen !is Screen.Appearance && currentScreen !is Screen.Settings && currentScreen !is Screen.Notifications) {
                 FloatingActionButton(
                     onClick = { navigateTo(Screen.Downloader) },
                     containerColor = MaterialTheme.colorScheme.primary,
@@ -264,6 +272,14 @@ fun MainAppScreen(
                             onNavigateBack = {
                                 extractionViewModel.reset()
                                 navigateBack()
+                            },
+                            onNavigateToNotifications = {
+                                extractionViewModel.reset()
+                                if (screenStack.lastOrNull() == Screen.DownloaderDetails) {
+                                    screenStack.removeAt(screenStack.lastIndex)
+                                }
+                                notificationViewModel.markAllAsRead()
+                                navigateTo(Screen.Notifications)
                             }
                         )
                     }
@@ -350,8 +366,17 @@ fun MainAppScreen(
                         PrivacyPolicyScreen()
                     }
                     is Screen.Notifications -> {
+                        LaunchedEffect(maxNotificationsLimit) {
+                            notificationViewModel.pruneNotifications(maxNotificationsLimit)
+                        }
                         NotificationsScreen(
                             notifications = notifications,
+                            currentLimit = maxNotificationsLimit,
+                            onLimitChange = { newLimit ->
+                                settingsManager.maxNotificationsLimit = newLimit
+                                maxNotificationsLimit = newLimit
+                                notificationViewModel.pruneNotifications(newLimit)
+                            },
                             onNotificationClick = { id -> notificationViewModel.markAsRead(id) },
                             onDeleteClick = { id -> notificationViewModel.deleteNotification(id) }
                         )

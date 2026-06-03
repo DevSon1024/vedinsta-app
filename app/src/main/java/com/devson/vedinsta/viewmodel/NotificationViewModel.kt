@@ -15,7 +15,7 @@ class NotificationViewModel(application: Application) : AndroidViewModel(applica
 
     val allNotifications: LiveData<List<NotificationEntity>> = notificationDao.getAllNotifications()
     val unreadNotifications: LiveData<List<NotificationEntity>> = notificationDao.getUnreadNotifications()
-    val unreadCount: LiveData<Int> = notificationDao.getUnreadCount()
+    val unreadCount: LiveData<Int> = notificationDao.getUnreadCount(NotificationType.DOWNLOAD_PROGRESS)
 
     fun markAsRead(id: Long) {
         viewModelScope.launch {
@@ -25,7 +25,7 @@ class NotificationViewModel(application: Application) : AndroidViewModel(applica
 
     fun markAllAsRead() {
         viewModelScope.launch {
-            notificationDao.markAllAsRead()
+            notificationDao.markAllAsRead(NotificationType.DOWNLOAD_PROGRESS)
         }
     }
 
@@ -43,6 +43,13 @@ class NotificationViewModel(application: Application) : AndroidViewModel(applica
         viewModelScope.launch {
             val cutoffTime = System.currentTimeMillis() - (30 * 24 * 60 * 60 * 1000L) // 30 days
             notificationDao.deleteOldNotifications(cutoffTime)
+        }
+    }
+
+    fun pruneNotifications(limit: Int) {
+        if (limit <= 0) return
+        viewModelScope.launch {
+            notificationDao.pruneNotifications(limit)
         }
     }
 }

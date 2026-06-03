@@ -45,7 +45,8 @@ import kotlin.math.absoluteValue
 fun MediaSelectionCarouselScreen(
     authViewModel: InstagramAuthViewModel,
     extractionViewModel: MediaExtractionViewModel,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onNavigateToNotifications: () -> Unit
 ) {
     val context = LocalContext.current
     val extractionState by extractionViewModel.extractionState.collectAsState()
@@ -200,13 +201,24 @@ fun MediaSelectionCarouselScreen(
                     ) {
                         Box(modifier = Modifier.fillMaxSize()) {
                             val previewUrl = remember(item) {
-                                val qualities = item.qualities?.filter { !it.url.isNullOrBlank() } ?: emptyList()
-                                if (qualities.isEmpty()) {
-                                    item.url
+                                if (item.type == "video") {
+                                    val tQuals = item.thumbnailQualities?.filter { !it.url.isNullOrBlank() } ?: emptyList()
+                                    if (tQuals.isEmpty()) {
+                                        item.thumbnailUrl ?: item.url
+                                    } else {
+                                        val sorted = tQuals.sortedBy { (it.width ?: 0) * (it.height ?: 0) }
+                                        val target = sorted.find { (it.width ?: 0) >= 360 } ?: sorted.first()
+                                        target.url ?: item.thumbnailUrl ?: item.url
+                                    }
                                 } else {
-                                    val sorted = qualities.sortedBy { (it.width ?: 0) * (it.height ?: 0) }
-                                    val mediumIndex = sorted.size / 2
-                                    sorted[mediumIndex].url ?: item.url
+                                    val qualities = item.qualities?.filter { !it.url.isNullOrBlank() } ?: emptyList()
+                                    if (qualities.isEmpty()) {
+                                        item.url
+                                    } else {
+                                        val sorted = qualities.sortedBy { (it.width ?: 0) * (it.height ?: 0) }
+                                        val target = sorted.find { (it.width ?: 0) >= 360 } ?: sorted.first()
+                                        target.url ?: item.url
+                                    }
                                 }
                             }
 
@@ -223,7 +235,7 @@ fun MediaSelectionCarouselScreen(
                             AsyncImage(
                                 model = ImageRequest.Builder(LocalContext.current)
                                     .data(localFile ?: previewUrl)
-                                    .diskCachePolicy(CachePolicy.DISABLED)
+                                    .diskCachePolicy(CachePolicy.ENABLED)
                                     .memoryCachePolicy(CachePolicy.ENABLED)
                                     .build(),
                                 contentDescription = "Media Preview",
@@ -403,18 +415,8 @@ fun MediaSelectionCarouselScreen(
                         val containsVideo = selectedItems.any { it.type == "video" }
                         val isReel = instagramUrl.contains("/reel/", ignoreCase = true) || instagramUrl.contains("/reels/", ignoreCase = true) || containsVideo
 
-                        val snackbarMessage = if (isReel) {
-                            "Started Reels Downloading"
-                        } else {
-                            val count = selectedItems.size
-                            "$count ${if (count == 1) "Image" else "Images"} Download Started"
-                        }
-
-                        scope.launch {
-                            snackbarHostState.showSnackbar(snackbarMessage)
-                        }
-
                         extractionViewModel.downloadSelected(successState.extractedPost, instagramUrl)
+                        onNavigateToNotifications()
                     },
                     modifier = Modifier
                         .fillMaxWidth()
