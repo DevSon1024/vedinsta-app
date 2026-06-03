@@ -385,3 +385,141 @@
   2. Purged the intermediate build directories using `gradlew clean` to release all open file handles, ensuring a clean state for subsequent compilations.
 
 ---
+
+- **Type of Details:** Major Refactor & Performance Improvement
+- **Description: Complete Python/Chaquopy Removal — Native Kotlin Media Extractor Migration**
+  1. **Created `InstagramNativeExtractor.kt`** — A pure Kotlin `object` singleton replacing the entire `mo3.py` Python script. Uses only `java.net.HttpURLConnection` and `org.json` (zero new external dependencies). Implements:
+     - Mathematical `shortcodeToId()` conversion using `BigInteger` (identical algorithm to the Python implementation).
+     - Netscape/Mozilla cookie file parser (`parseCookies()`) supporting `instagram.com` domain filtering.
+     - Authenticated `performGetRequest()` with correct `User-Agent`, `X-IG-App-ID`, `X-CSRFToken`, and `Cookie` headers.
+     - Full carousel/video/image media parsing via `parseItems()` and `parseBest()`.
+     - Graceful error handling for HTTP 401/403 (`login_required`), 404 (`not_found`), and general exceptions.
+  2. **Purged Chaquopy & Python runtime** — Removed `chaquopy` plugin from `build.gradle.kts` (app) and `build.gradle.kts` (project), deleted `app/src/main/python/mo3.py` and the entire `app/src/main/python/` directory. Stripped all `Python.isStarted()` / `Python.getInstance()` references from `VedInstaApplication.kt`, `InstagramAuthViewModel.kt`, and `SharedLinkProcessingService.kt`.
+  3. **Zero I/O on Main Thread** — All `InstagramNativeExtractor` invocations are wrapped in `withContext(Dispatchers.IO)`: `getPostInfo()` in `VedInstaApplication.kt`, `fetchPostData()` in `SharedLinkProcessingService.kt`, `fetchRealUsernameInBackground()` in `InstagramAuthViewModel.kt`, and `fetchMedia()` in `MediaFetcherRepository.kt`.
+  4. **Stale Python guard removed** — Deleted the Python/Chaquopy directory exclusion guard from the `deleteRecursive()` helper in `VedInstaApplication.kt`, which was dead code after Python removal.
+  5. **Deprecated API suppressed** — Added `@Suppress("DEPRECATION")` to `databaseEnabled = true` in `InstagramLoginScreen.kt` (WebSQL deprecated in API 26+; retained for WebView compat).
+  6. **UI text updates** — Updated `PrivacyPolicyScreen.kt`, `AboutScreen.kt`, and `MediaSelectionScreen.kt` to reflect the native extraction technology.
+  7. **Build Verified** — `.\gradlew assembleDebug` completed successfully (`BUILD SUCCESSFUL`) with 0 errors and 3 pre-existing warnings unrelated to this migration.
+
+---
+
+- **Type of Details:** Performance Improvement & New Update
+- **Description:**
+  1. Optimized preview loading by retrieving lower-resolution media previews instead of high-resolution files or video streams.
+  2. Modified the native extraction parser in `InstagramNativeExtractor.kt` to extract all video thumbnail candidates from `image_versions2.candidates` and include them in a new `thumbnail_qualities` JSON array.
+  3. Updated `MediaResult.kt` model to map `thumbnail_url` and `thumbnail_qualities` fields.
+  4. Implemented low-resolution preview heuristics in `MediaSelectionCarouselScreen.kt` for both images and video thumbnails, selecting the smallest quality option at or above 360px width to ensure visual clarity while saving internet data.
+  5. Switched Coil's disk cache policy to `CachePolicy.ENABLED` in `MediaSelectionCarouselScreen.kt` to cache loaded preview thumbnails locally.
+  6. Verified that the project builds and compiles successfully via `.\gradlew.bat assembleDebug`.
+
+---
+
+- **Type of Details:** New Update & Refactor
+- **Description:**
+  1. Updated `MediaSelectionCarouselScreen.kt` download button click handler to navigate back to `MediaSelectionScreen.kt` using `onNavigateBack()` and show a persistent Toast alert feedback immediately upon download trigger.
+  2. Implemented active download progress tracking in the background database by introducing `updateProgressInDb` and `removeProgressFromDb` in `DownloadService.kt`. The transient `DOWNLOAD_PROGRESS` notification entity keeps real-time percent updates.
+  3. Added progress bar rendering in `NotificationsScreen.kt` using a Material Design 3 `LinearProgressIndicator` bound to active progress notifications, disabling clicks and deletions for active progress rows.
+  4. Modified `NotificationDao.kt` to query and delete progress notifications, and updated unread count and `markAllAsRead` logic to accept a type parameter so that active progress notifications do not trigger or modify the notifications number badge on the HomeScreen.
+  5. Verified the project compiles successfully using `.\gradlew.bat assembleDebug`.
+
+---
+
+- **Type of Details:** New Update & Refactor
+- **Description:**
+  1. Updated progress reporting format from percentage ("X%") to count fraction ("X/Y") for batch downloads across `DownloadService.kt` and `NotificationsScreen.kt`.
+  2. Added the `onNavigateToNotifications` callback to `MediaSelectionCarouselScreen.kt` to route users directly to the Notifications screen upon starting a download.
+  3. Mapped the navigation flow in `MainAppScreen.kt` so that popping the downloader details transitions to the notifications page, while back gestures from the notifications page return users to the input screen.
+  4. Restricted Floating Action Button (FAB) visibility in `MainAppScreen.kt` to hide the download button on the Settings and Notifications screens.
+  5. Adjusted layout padding in `NotificationsScreen.kt` to allow list items to scroll completely behind the transparent system navigation bar at the bottom.
+  6. Verified the project compiles successfully using `.\gradlew.bat assembleDebug`.
+
+---
+
+- **Type of Details:** New Update & Refactor
+- **Description:**
+  1. Added a notification limits settings option in `NotificationsScreen.kt` using a header Card and RadioButton selection dialog to prune older notifications immediately.
+  2. Persisted notification limits configuration under `max_notifications_limit` in `SettingsManager.kt` (options: 10, 25, 50, 100, or Unrestricted).
+  3. Modified the database query in `NotificationDao.kt` to sort active progress indicators to the top, and added the subquery delete operation to clean up history beyond chosen limits.
+  4. Configured automatic pruning on entry of the notifications screen via `LaunchedEffect(maxNotificationsLimit)` in `MainAppScreen.kt`.
+  5. Implemented `showDownloadStartedPopup` in `VedInstaNotificationManager.kt` and integrated it into `DownloadService.kt` to trigger a system heads-up popup banner when downloads start.
+  6. Removed legacy `Toast` popup notification triggers on download initiation from `MediaSelectionCarouselScreen.kt`.
+  7. Verified the project compiles successfully using `.\gradlew.bat assembleDebug`.
+
+---
+
+- **Type of Details:** Error Solving & UI Alignment
+- **Description:**
+  1. Resolved the off-center number placement in the notification badge on the Home Screen top app bar in `MainAppScreen.kt`.
+  2. Nested the badge `Box` directly inside the `IconButton` content relative to the 24.dp `Icon` boundaries with a refined offset (`offset(x = 4.dp, y = (-4).dp)`).
+  3. Utilized `CircleShape` and set `includeFontPadding = false` within `PlatformTextStyle` to completely eliminate default Android font padding and center single-digit/badge numbers perfectly.
+  4. Verified the project compiles successfully using `.\gradlew.bat assembleDebug`.
+
+---
+
+- **Type of Details:** New Update & Refactor
+- **Description:**
+  1. Updated the default playing state of the video player in `PostViewScreen.kt` to paused.
+  2. The video will now load in a paused state showing the play overlay button, and will begin playing only when the user taps/clicks the play overlay icon.
+
+---
+
+- **Type of Details:** New Update & Refactor
+- **Description:**
+  1. Relocated Notification Settings to a TopAppBar Tune icon action on the Notifications screen, which opens a bottom sheet with an Unrestricted toggle and limit count slider.
+  2. Integrated media thumbnail previews in completed notifications utilizing Coil `AsyncImage` to load crop-focused previews of local download files.
+  3. Configured direct post-view navigation from notifications list tapping, which resolves the corresponding `DownloadedPost` from the database.
+  4. Added a horizontal three-dots `MoreHoriz` IconButton next to the Share button on the post detail viewer screen.
+  5. Implemented dynamic backdrop blur on the main view container in `PostViewScreen.kt` when the options bottom sheet is visible.
+  6. Added "Open in Instagram" option to launch the official Instagram app targeting the post ID with a safe web browser fallback.
+  7. Resolved compilation deprecation warnings for `Launch` icon by migrating to `Icons.AutoMirrored.Filled.Launch`.
+  8. Verified the project compiles and runs successfully with zero Kotlin compilation errors.
+
+---
+
+- **Type of Details:** Major UI Refactor / New Update
+- **Description:** Refactored `PostViewScreen.kt` for premium native immersive media presentation:
+  1. **Removed Scaffold + VedInstaTopAppBar** — Replaced with a raw `Box` root container for a fully immersive, chromeless layout.
+  2. **Edge-to-Edge Media Carousel** — Media viewport now extends under the system status bar with zero top padding, maximizing visual immersion.
+  3. **Floating Back Button** — Added a semi-transparent circular back button (`Icons.AutoMirrored.Filled.ArrowBack`) overlaid on the media surface at `Alignment.TopStart` with `statusBarsPadding()` to avoid hardware notch clipping.
+  4. **Carousel Pager Dot Indicators** — Replaced the old "1/N" text bubble with native horizontally centered dot indicators. Active dots use `MaterialTheme.colorScheme.primary` at 8.dp; inactive dots use muted colors at 6.dp. Only visible when media count > 1.
+  5. **Integrated Username + Caption Typography** — Combined `@username` (bold, primary color) and post description into a single semantic `Text` element using `buildAnnotatedString` with `SpanStyle`. Clickable to open the full description bottom sheet.
+  6. **Bottom Utilities Action Bar** — Sleek horizontal action dock at the bottom edge with `navigationBarsPadding()`. Contains Delete (left), Menu with circular outlined border (center), and Share with dropdown (right) actions spaced with `Arrangement.SpaceEvenly`.
+  7. **Animated Contextual Backdrop Blur** — Replaced the hard-toggle blur with smooth `animateDpAsState` (300ms `tween` with `FastOutSlowInEasing`). Added `Build.VERSION.SDK_INT` check: uses `Modifier.blur()` on API 31+ and a semi-transparent dark overlay (`animateFloatAsState`) as fallback on older devices.
+  8. **Relocated Actions** — Moved Copy Link and Favorite toggle into the More Options `ModalBottomSheet`, cleaning up the old top app bar.
+  9. Verified the project compiles successfully using `.\gradlew assembleDebug` with zero errors.
+
+---
+
+- **Type of Details:** UI Polish / Performance Improvement
+- **Description:** Follow-up fixes to `PostViewScreen.kt` and `MainAppScreen.kt`:
+  1. **Light status bar icons** — Added `DisposableEffect` using `WindowCompat.getInsetsController` to force white status bar icons over dark media content, restored on screen exit.
+  2. **Dynamic media sizing** — Computed `mediaAspectRatio` from the first image file via `BitmapFactory.decodeFile(inJustDecodeBounds)`. Media viewport now uses `aspectRatio(ratio)` instead of `weight(1f)`, so the container wraps the actual content dimensions (clamped to 0.5–2.0 ratio range).
+  3. **ContentScale.Fit** — Images are no longer cropped; they fit within the viewport preserving their native aspect ratio.
+  4. **Scrollable content** — Media, dots, and caption are wrapped in a scrollable `Column` with `weight(1f)` so the bottom action bar stays pinned while tall content can scroll.
+  5. **Page counter** — Added `"X/Y"` text next to the dot indicators for explicit page numbering.
+  6. **Removed blurred background** — Eliminated the triple-layer blur (blurred bg + dimming overlay + foreground fit) from media rendering. Single `AsyncImage` with `ContentScale.Fit` replaces it.
+  7. **Instant blur close** — Blur dismissal uses `snap()` (instant) instead of `tween(300ms)` for responsive sheet close feel.
+  8. **Navigation transition fix** — Changed `MainAppScreen.kt` `AnimatedContent.transitionSpec` to use smooth 250ms `fadeIn`/`fadeOut` for PostView transitions, eliminating the jarring "ditch effect" from the edge-to-edge layout sliding against padded screens.
+  9. Verified build with `.\gradlew assembleDebug` — BUILD SUCCESSFUL with zero errors.
+
+---
+
+- **Type of Details:** Feature Update / UI Polish
+- **Description:** Immersive UI improvements on `PostViewScreen.kt`:
+  1. **Disabled device top status bar** — Added status bar hiding using `WindowInsetsCompat.Type.statusBars()` within `DisposableEffect` so the device's top status bar is disabled completely on this screen, making it clean, and restored on exit.
+  2. **TextureView-based VideoPlayer** — Replaced `VideoView` with `TextureView` and `MediaPlayer` inside `VideoPlayer` so that background videos are affected by Compose's backdrop blur modifier when the More Options bottom sheet is opened.
+  3. **Back button padding** — Fine-tuned the floating back button's padding (top = 16.dp, start = 16.dp) to adapt cleanly to full-screen immersive view when the status bar is disabled.
+
+---
+
+- **Type of Details:** Feature Update / UI & UX Polish
+- **Description:** Interactive features and display fixes on `PostViewScreen.kt`:
+  1. **Delete Confirmation Dialog** — Introduced an `AlertDialog` to prompt for deletion confirmation before triggering post deletion.
+  2. **Pinch-to-Zoom (Instagram Style)** — Integrated a custom pointer input gesture tracker using Compose `Animatable` states. Users can pinch to zoom images or videos up to 5x. Pager horizontal swiping is automatically locked during zoom and everything snaps back with a 200ms animation on release.
+  3. **Video Aspect Ratio Fix** — Integrated `MediaMetadataRetriever` to fetch the video's exact width, height, and rotation orientation. Calculated the corrected aspect ratio dynamically for both the parent layout and the internal player to fully resolve video stretching.
+
+  4. **Compilation Fix** — Added missing `kotlinx.coroutines.launch` import to resolve the unresolved reference compilation errors in the pinch-to-zoom gesture coroutine blocks.
+  5. **Swipe-lock Bypass** — Prevented 1-finger swipes from being consumed when scale is 1f, allowing default page transitions of `HorizontalPager` to work normally unless pinching or actively zoomed in.
+  6. **Video Auto-play & Previews** — Configured `VideoPlayer` to sync with the active carousel page, auto-playing only when active, and seeking to `1` millisecond when paused/inactive so that a preview frame renders on the `TextureView` immediately instead of showing a blank screen.
+
+---

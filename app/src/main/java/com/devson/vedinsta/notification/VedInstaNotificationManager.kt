@@ -197,6 +197,31 @@ class VedInstaNotificationManager private constructor(private val context: Conte
 
     // --- Alert/Popup Notifications ---
 
+    fun showDownloadStartedPopup(title: String, message: String) {
+        val notificationId = System.currentTimeMillis().toInt()
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            notificationId,
+            intent,
+            pendingIntentFlags
+        )
+
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID_ALERT)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .build()
+
+        notify(notificationId, notification)
+    }
+
     fun showMultipleContentOptions(url: String, itemCount: Int, autoOpenSelection: Boolean = false) {
         val downloadAllIntent = Intent(context, SharedLinkProcessingService::class.java).apply {
             action = SharedLinkProcessingService.ACTION_DOWNLOAD_ALL
@@ -346,11 +371,25 @@ class VedInstaNotificationManager private constructor(private val context: Conte
         }
     }
 
-    suspend fun addCustomNotification(title: String, message: String, type: NotificationType, priority: NotificationPriority = NotificationPriority.NORMAL) {
+    suspend fun addCustomNotification(
+        title: String,
+        message: String,
+        type: NotificationType,
+        priority: NotificationPriority = NotificationPriority.NORMAL,
+        postId: String? = null,
+        postUrl: String? = null,
+        thumbnailPath: String? = null
+    ) {
         try {
             database.notificationDao().insertNotification(
                 NotificationEntity(
-                    title = title, message = message, type = type, priority = priority
+                    title = title,
+                    message = message,
+                    type = type,
+                    priority = priority,
+                    postId = postId,
+                    postUrl = postUrl,
+                    thumbnailPath = thumbnailPath
                 )
             )
         } catch (e: Exception) {

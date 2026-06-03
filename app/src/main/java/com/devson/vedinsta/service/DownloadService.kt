@@ -123,9 +123,20 @@ class DownloadService : Service() {
                 val isBatch = postId != null && totalImages > 1
                 val notificationId = if (isBatch) postId!!.hashCode() else 4242
 
+                val displayUsername = username ?: "unknown"
+                val startMsg = if (isBatch) {
+                    "Downloading $totalImages files from @$displayUsername"
+                } else {
+                    "Downloading media from @$displayUsername"
+                }
+                notificationManager.showDownloadStartedPopup("Download Started", startMsg)
+
                 if (isBatch) {
                     batchProgressMap.putIfAbsent(postId!!, Pair(AtomicInteger(0), AtomicInteger(0)))
                     batchCompletedFilesMap.putIfAbsent(postId, CopyOnWriteArrayList())
+                    updateProgressInDb(postId, username, "0/$totalImages")
+                } else {
+                    updateProgressInDb(postId ?: fileNames.firstOrNull(), username, "0/1")
                 }
 
                 val currentTaskCount = activeTasks.addAndGet(urls.size)
@@ -207,6 +218,14 @@ class DownloadService : Service() {
                 if (url != null && filePath != null && fileName != null) {
                     val isBatch = postId != null && totalImages > 1
                     val notificationId = if (isBatch) postId.hashCode() else 4242
+
+                    val displayUsername = username ?: "unknown"
+                    val startMsg = if (isBatch) {
+                        "Downloading $totalImages files from @$displayUsername"
+                    } else {
+                        "Downloading media from @$displayUsername"
+                    }
+                    notificationManager.showDownloadStartedPopup("Download Started", startMsg)
                     
                     val currentTaskCount = activeTasks.incrementAndGet()
                     val isFirstTask = currentTaskCount == 1
@@ -214,6 +233,9 @@ class DownloadService : Service() {
                     if (isBatch) {
                         batchProgressMap.putIfAbsent(postId!!, Pair(AtomicInteger(0), AtomicInteger(0)))
                         batchCompletedFilesMap.putIfAbsent(postId, CopyOnWriteArrayList())
+                        updateProgressInDb(postId, username, "0/$totalImages")
+                    } else {
+                        updateProgressInDb(postId ?: fileName, username, "0/1")
                     }
 
                     if (isFirstTask) {
@@ -345,6 +367,7 @@ class DownloadService : Service() {
                                     if (now - lastNotificationUpdateTime >= 1000L || progress == 100) {
                                         lastNotificationUpdateTime = now
                                         notificationManager.showSingleDownloadProgress(notificationId, fileName, progress)
+                                        updateProgressInDb(postId ?: fileName, username, "$progress%")
                                     }
                                 }
                             }
@@ -429,19 +452,30 @@ class DownloadService : Service() {
 
                     serviceScope.launch {
                         try {
+                            val completedPaths = batchCompletedFilesMap[postId]
+                            val thumb = completedPaths?.firstOrNull() ?: filePath
+                            val db = com.devson.vedinsta.database.AppDatabase.getDatabase(applicationContext)
+                            val pUrl = db.downloadedPostDao().getPostById(postId)?.postUrl
+
                             notificationManager.addCustomNotification(
                                 title = title,
                                 message = msg,
                                 type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_COMPLETED,
-                                priority = com.devson.vedinsta.database.NotificationPriority.NORMAL
+                                priority = com.devson.vedinsta.database.NotificationPriority.NORMAL,
+                                postId = postId,
+                                postUrl = pUrl,
+                                thumbnailPath = thumb
                             )
                         } catch (e: Exception) {
                             Log.e(TAG, "Failed to insert success batch notification in DB", e)
                         }
                     }
 
+                    removeProgressFromDb(postId)
                     batchProgressMap.remove(postId)
                     batchCompletedFilesMap.remove(postId)
+                } else {
+                    updateProgressInDb(postId, username, "$finished/$totalImages")
                 }
             }
         } else {
@@ -452,16 +486,23 @@ class DownloadService : Service() {
 
             serviceScope.launch {
                 try {
+                    val db = com.devson.vedinsta.database.AppDatabase.getDatabase(applicationContext)
+                    val pUrl = db.downloadedPostDao().getPostById(postId ?: fileName)?.postUrl
+
                     notificationManager.addCustomNotification(
                         title = title,
                         message = msg,
                         type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_COMPLETED,
-                        priority = com.devson.vedinsta.database.NotificationPriority.NORMAL
+                        priority = com.devson.vedinsta.database.NotificationPriority.NORMAL,
+                        postId = postId ?: fileName,
+                        postUrl = pUrl,
+                        thumbnailPath = filePath
                     )
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to insert success single notification in DB", e)
                 }
             }
+            removeProgressFromDb(postId ?: fileName)
         }
     }
 
@@ -529,8 +570,11 @@ class DownloadService : Service() {
                             }
                         }
                     }
+                    removeProgressFromDb(postId)
                     batchProgressMap.remove(postId)
                     batchCompletedFilesMap.remove(postId)
+                } else {
+                    updateProgressInDb(postId, username, "$finished/$totalImages")
                 }
             }
         } else {
@@ -552,6 +596,7 @@ class DownloadService : Service() {
                     Log.e(TAG, "Failed to insert single error notification in DB", e)
                 }
             }
+            removeProgressFromDb(postId ?: fileName)
         }
     }
 
@@ -635,6 +680,49 @@ class DownloadService : Service() {
             }
         } catch (e: Exception) {
             Log.e(TAG, "DATABASE SAVE/UPDATE ERROR for key $postId", e)
+        }
+    }
+
+    private fun updateProgressInDb(postId: String?, username: String?, progressText: String) {
+        if (postId == null) return
+        serviceScope.launch {
+            try {
+                val db = com.devson.vedinsta.database.AppDatabase.getDatabase(applicationContext)
+                val dao = db.notificationDao()
+                val existing = dao.getNotificationByPostIdAndType(postId, com.devson.vedinsta.database.NotificationType.DOWNLOAD_PROGRESS)
+                val title = if (username != null) "Downloading from @$username" else "Downloading Media"
+                val message = progressText
+                
+                if (existing != null) {
+                    dao.updateNotification(existing.copy(
+                        message = message,
+                        timestamp = System.currentTimeMillis()
+                    ))
+                } else {
+                    dao.insertNotification(com.devson.vedinsta.database.NotificationEntity(
+                        title = title,
+                        message = message,
+                        type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_PROGRESS,
+                        postId = postId,
+                        timestamp = System.currentTimeMillis()
+                    ))
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error updating progress in DB", e)
+            }
+        }
+    }
+
+    private fun removeProgressFromDb(postId: String?) {
+        if (postId == null) return
+        serviceScope.launch {
+            try {
+                val db = com.devson.vedinsta.database.AppDatabase.getDatabase(applicationContext)
+                val dao = db.notificationDao()
+                dao.deleteNotificationByPostIdAndType(postId, com.devson.vedinsta.database.NotificationType.DOWNLOAD_PROGRESS)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error removing progress from DB", e)
+            }
         }
     }
 

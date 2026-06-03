@@ -5,6 +5,7 @@ import android.content.Intent
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -25,6 +26,9 @@ import com.devson.vedinsta.database.DownloadedPost
 import com.devson.vedinsta.ui.*
 import com.devson.vedinsta.viewmodel.*
 import java.io.File
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 
 sealed class Screen {
     object Home : Screen()
@@ -56,6 +60,7 @@ fun MainAppScreen(
     val context = LocalContext.current
     val screenStack = remember { mutableStateListOf<Screen>(Screen.Home) }
     val currentScreen = screenStack.last()
+    val scope = rememberCoroutineScope()
 
     val posts by mainViewModel.allDownloadedPosts.observeAsState(emptyList())
     val notifications by notificationViewModel.allNotifications.observeAsState(emptyList())
@@ -65,6 +70,16 @@ fun MainAppScreen(
     var isListView by remember { mutableStateOf(settingsManager.isListView) }
     var showViewSettingsSheet by remember { mutableStateOf(false) }
     val viewSettingsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    var maxNotificationsLimit by remember { mutableStateOf(settingsManager.maxNotificationsLimit) }
+    var showNotificationSettingsSheet by remember { mutableStateOf(false) }
+    val notificationSettingsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    LaunchedEffect(currentScreen) {
+        if (currentScreen is Screen.Notifications) {
+            notificationViewModel.pruneNotifications(settingsManager.maxNotificationsLimit)
+        }
+    }
 
     // Local states for Favorites tracking using SharedPreferences via SettingsManager
     val favoritesUpdated = remember { mutableStateOf(0) }
@@ -129,31 +144,38 @@ fun MainAppScreen(
                     actions = {
                         if (currentScreen == Screen.Home) {
                             // Notification badge icon
-                            Box {
-                                IconButton(onClick = {
-                                    notificationViewModel.markAllAsRead()
-                                    navigateTo(Screen.Notifications)
-                                }) {
+                            IconButton(onClick = {
+                                notificationViewModel.markAllAsRead()
+                                navigateTo(Screen.Notifications)
+                            }) {
+                                Box(modifier = Modifier.wrapContentSize()) {
                                     Icon(
                                         imageVector = Icons.Default.Notifications,
                                         contentDescription = "Notifications",
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
-                                }
-                                if (unreadCount > 0) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(16.dp)
-                                            .align(Alignment.TopEnd)
-                                            .background(MaterialTheme.colorScheme.error, RoundedCornerShape(8.dp)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = if (unreadCount > 9) "9+" else unreadCount.toString(),
-                                            color = MaterialTheme.colorScheme.onError,
-                                            fontSize = 9.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
+                                    if (unreadCount > 0) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(16.dp)
+                                                .align(Alignment.TopEnd)
+                                                .offset(x = 4.dp, y = (-4).dp)
+                                                .background(MaterialTheme.colorScheme.error, androidx.compose.foundation.shape.CircleShape),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = if (unreadCount > 9) "9+" else unreadCount.toString(),
+                                                color = MaterialTheme.colorScheme.onError,
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                                style = androidx.compose.ui.text.TextStyle(
+                                                    platformStyle = androidx.compose.ui.text.PlatformTextStyle(
+                                                        includeFontPadding = false
+                                                    )
+                                                )
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -188,13 +210,21 @@ fun MainAppScreen(
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
+                        } else if (currentScreen == Screen.Notifications) {
+                            IconButton(onClick = { showNotificationSettingsSheet = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.Tune,
+                                    contentDescription = "Notification Settings",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 )
             }
         },
         floatingActionButton = {
-            if (currentScreen !is Screen.Downloader && currentScreen !is Screen.DownloaderDetails && currentScreen !is Screen.Login && currentScreen !is Screen.PostView && currentScreen !is Screen.Appearance) {
+            if (currentScreen !is Screen.Downloader && currentScreen !is Screen.DownloaderDetails && currentScreen !is Screen.Login && currentScreen !is Screen.PostView && currentScreen !is Screen.Appearance && currentScreen !is Screen.Settings && currentScreen !is Screen.Notifications) {
                 FloatingActionButton(
                     onClick = { navigateTo(Screen.Downloader) },
                     containerColor = MaterialTheme.colorScheme.primary,
@@ -222,16 +252,22 @@ fun MainAppScreen(
             AnimatedContent(
                 targetState = currentScreen,
                 transitionSpec = {
-                    val initialOrder = getScreenOrderValue(initialState)
-                    val targetOrder = getScreenOrderValue(targetState)
-                    if (targetOrder > initialOrder) {
-                        // Opening: Left to Right
-                        slideInHorizontally(initialOffsetX = { -it }) + fadeIn() togetherWith
-                            slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
+                    // Use smooth fade for PostView (edge-to-edge) to avoid ditch effect
+                    if (targetState is Screen.PostView || initialState is Screen.PostView) {
+                        fadeIn(animationSpec = tween(250)) togetherWith
+                            fadeOut(animationSpec = tween(250))
                     } else {
-                        // Closing: Right to Left
-                        slideInHorizontally(initialOffsetX = { it }) + fadeIn() togetherWith
-                            slideOutHorizontally(targetOffsetX = { -it }) + fadeOut()
+                        val initialOrder = getScreenOrderValue(initialState)
+                        val targetOrder = getScreenOrderValue(targetState)
+                        if (targetOrder > initialOrder) {
+                            // Opening: Left to Right
+                            slideInHorizontally(initialOffsetX = { -it }) + fadeIn() togetherWith
+                                slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
+                        } else {
+                            // Closing: Right to Left
+                            slideInHorizontally(initialOffsetX = { it }) + fadeIn() togetherWith
+                                slideOutHorizontally(targetOffsetX = { -it }) + fadeOut()
+                        }
                     }
                 },
                 label = "ScreenTransition",
@@ -258,12 +294,20 @@ fun MainAppScreen(
                         )
                     }
                     is Screen.DownloaderDetails -> {
-                        MediaSelectionDetailScreen(
+                        MediaSelectionCarouselScreen(
                             authViewModel = authViewModel,
                             extractionViewModel = extractionViewModel,
                             onNavigateBack = {
                                 extractionViewModel.reset()
                                 navigateBack()
+                            },
+                            onNavigateToNotifications = {
+                                extractionViewModel.reset()
+                                if (screenStack.lastOrNull() == Screen.DownloaderDetails) {
+                                    screenStack.removeAt(screenStack.lastIndex)
+                                }
+                                notificationViewModel.markAllAsRead()
+                                navigateTo(Screen.Notifications)
                             }
                         )
                     }
@@ -350,9 +394,26 @@ fun MainAppScreen(
                         PrivacyPolicyScreen()
                     }
                     is Screen.Notifications -> {
+                        LaunchedEffect(maxNotificationsLimit) {
+                            notificationViewModel.pruneNotifications(maxNotificationsLimit)
+                        }
                         NotificationsScreen(
                             notifications = notifications,
-                            onNotificationClick = { id -> notificationViewModel.markAsRead(id) },
+                            onNotificationClick = { notification ->
+                                notificationViewModel.markAsRead(notification.id)
+                                if (notification.type == com.devson.vedinsta.database.NotificationType.DOWNLOAD_COMPLETED && notification.postId != null) {
+                                    scope.launch {
+                                        val post = withContext(Dispatchers.IO) {
+                                            com.devson.vedinsta.database.AppDatabase.getDatabase(context).downloadedPostDao().getPostById(notification.postId)
+                                        }
+                                        if (post != null) {
+                                            navigateTo(Screen.PostView(post))
+                                        } else {
+                                            Toast.makeText(context, "Post files were deleted or moved", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                }
+                            },
                             onDeleteClick = { id -> notificationViewModel.deleteNotification(id) }
                         )
                     }
@@ -396,6 +457,102 @@ fun MainAppScreen(
             },
             onDismissRequest = { showViewSettingsSheet = false }
         )
+    }
+
+    // Notification Settings Bottom Sheet
+    if (showNotificationSettingsSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showNotificationSettingsSheet = false },
+            sheetState = notificationSettingsSheetState,
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "Notification Settings",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                var isUnrestricted by remember { mutableStateOf(maxNotificationsLimit == 0) }
+                var sliderValue by remember { mutableStateOf(if (maxNotificationsLimit > 0) maxNotificationsLimit.toFloat() else 50f) }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "Unrestricted Keep Limit",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Keep all notifications history indefinitely",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = isUnrestricted,
+                        onCheckedChange = { checked ->
+                            isUnrestricted = checked
+                            val newLimit = if (checked) 0 else sliderValue.toInt()
+                            settingsManager.maxNotificationsLimit = newLimit
+                            maxNotificationsLimit = newLimit
+                            notificationViewModel.pruneNotifications(newLimit)
+                        }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Maximum Keep Count: ${sliderValue.toInt()}",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = if (isUnrestricted) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f) else MaterialTheme.colorScheme.onSurface
+                    )
+                    Slider(
+                        value = sliderValue,
+                        onValueChange = { valRounded ->
+                            sliderValue = valRounded
+                        },
+                        onValueChangeFinished = {
+                            if (!isUnrestricted) {
+                                val newLimit = sliderValue.toInt()
+                                settingsManager.maxNotificationsLimit = newLimit
+                                maxNotificationsLimit = newLimit
+                                notificationViewModel.pruneNotifications(newLimit)
+                            }
+                        },
+                        valueRange = 10f..200f,
+                        steps = 18,
+                        enabled = !isUnrestricted,
+                        colors = SliderDefaults.colors(
+                            thumbColor = MaterialTheme.colorScheme.primary,
+                            activeTrackColor = MaterialTheme.colorScheme.primary,
+                            inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+        }
     }
 }
 

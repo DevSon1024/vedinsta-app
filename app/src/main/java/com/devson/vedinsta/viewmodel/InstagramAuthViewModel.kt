@@ -5,7 +5,8 @@ import android.util.Log
 import android.webkit.CookieManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.chaquo.python.Python
+import com.devson.vedinsta.extractor.InstagramNativeExtractor
+
 import com.devson.vedinsta.repository.CookieFileWriter
 import com.devson.vedinsta.repository.SecurePreferences
 import kotlinx.coroutines.Dispatchers
@@ -93,27 +94,16 @@ class InstagramAuthViewModel(application: Application) : AndroidViewModel(applic
     private fun fetchRealUsernameInBackground(dsUserId: String) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                // Wait for Python to start up in the background if it's still initializing
-                var retries = 0
-                while (!Python.isStarted() && retries < 50) {
-                    kotlinx.coroutines.delay(100)
-                    retries++
-                }
-                if (Python.isStarted()) {
-                    val python = Python.getInstance()
-                    val mo3Module = python.getModule("mo3")
-                    val cookieFile = java.io.File(context.filesDir, "instagram_cookies.txt")
-                    val usernamePy = mo3Module.callAttr("get_logged_in_username", cookieFile.absolutePath)
-                    val realUsername = usernamePy?.toString()?.trim() ?: ""
+                val cookieFile = java.io.File(context.filesDir, "instagram_cookies.txt")
+                val realUsername = InstagramNativeExtractor.getLoggedInUsername(cookieFile.absolutePath).trim()
+                
+                if (realUsername.isNotEmpty()) {
+                    securePrefs.saveUsername(realUsername)
                     
-                    if (realUsername.isNotEmpty()) {
-                        securePrefs.saveUsername(realUsername)
-                        
-                        // Update state to use new username if currently LoggedIn
-                        val currentState = _authState.value
-                        if (currentState is InstagramAuthState.LoggedIn && currentState.dsUserId == dsUserId) {
-                            _authState.value = InstagramAuthState.LoggedIn(dsUserId, realUsername)
-                        }
+                    // Update state to use new username if currently LoggedIn
+                    val currentState = _authState.value
+                    if (currentState is InstagramAuthState.LoggedIn && currentState.dsUserId == dsUserId) {
+                        _authState.value = InstagramAuthState.LoggedIn(dsUserId, realUsername)
                     }
                 }
             } catch (e: Exception) {

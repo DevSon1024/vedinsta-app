@@ -43,7 +43,7 @@ fun PrivacyPolicyScreen() {
 
         PrivacySectionCard(
             title = "1. Local On-Device Execution",
-            content = "All post extraction and media downloading are performed directly on your Android device. The app hosts a local Python extraction sandbox (via Chaquopy) to fetch video/image URLs. Your URLs, account data, or downloaded media are never transmitted to any external servers hosted by the developers."
+            content = "All post extraction and media downloading are performed directly on your Android device. The app uses a secure native media extractor to fetch video/image URLs. Your URLs, account data, or downloaded media are never transmitted to any external servers hosted by the developers."
         )
 
         Spacer(modifier = Modifier.height(16.dp))
