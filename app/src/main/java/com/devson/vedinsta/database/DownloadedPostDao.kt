@@ -20,6 +20,9 @@ interface DownloadedPostDao {
     @Query("SELECT * FROM downloaded_posts ORDER BY downloadDate DESC")
     fun getAllDownloadedPosts(): LiveData<List<DownloadedPost>>
 
+    @Query("SELECT * FROM downloaded_posts ORDER BY downloadDate DESC LIMIT :limit")
+    fun getRecentDownloadedPosts(limit: Int): LiveData<List<DownloadedPost>>
+
     @Query("SELECT * FROM downloaded_posts WHERE postId = :postId")
     suspend fun getPostById(postId: String): DownloadedPost?
 

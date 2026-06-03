@@ -88,9 +88,6 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         settingsViewModel = SettingsViewModel(this)
-
-        WorkManager.getInstance(this).pruneWork()
-        clearAppCache(this)
     }
 
     override fun newImageLoader(): ImageLoader {

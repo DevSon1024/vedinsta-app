@@ -9,6 +9,9 @@ class DownloadRepository(private val downloadedPostDao: DownloadedPostDao) {
     fun getAllDownloadedPosts(): LiveData<List<DownloadedPost>> =
         downloadedPostDao.getAllDownloadedPosts()
 
+    fun getRecentDownloadedPosts(limit: Int): LiveData<List<DownloadedPost>> =
+        downloadedPostDao.getRecentDownloadedPosts(limit)
+
     suspend fun insertDownloadedPost(post: DownloadedPost) =
         downloadedPostDao.insert(post)
 

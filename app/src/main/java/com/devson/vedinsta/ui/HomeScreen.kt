@@ -44,7 +44,7 @@ fun HomeScreen(
     onNavigateToSessions: () -> Unit,
     onPostClick: (DownloadedPost) -> Unit
 ) {
-    val recentPosts by mainViewModel.allDownloadedPosts.observeAsState(emptyList())
+    val recentPosts by mainViewModel.recentPostsHome.observeAsState(emptyList())
     val scrollState = rememberScrollState()
     val greeting = remember {
         val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
@@ -324,7 +324,6 @@ fun HomeScreen(
                 }
             }
         } else {
-            val topDownloads = remember(recentPosts) { recentPosts.take(8) }
             LazyRow(
                 contentPadding = PaddingValues(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -332,7 +331,7 @@ fun HomeScreen(
                     .fillMaxWidth()
                     .height(180.dp)
             ) {
-                items(topDownloads, key = { it.postId }) { post ->
+                items(recentPosts, key = { it.postId }) { post ->
                     Card(
                         modifier = Modifier
                             .width(135.dp)
@@ -348,10 +347,12 @@ fun HomeScreen(
                                 model = ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
                                     .data(if (post.thumbnailPath.isNotEmpty()) File(post.thumbnailPath) else null)
                                     .size(300, 300)
-                                    .videoFrameMillis(0L)
                                     .crossfade(true)
                                     .diskCachePolicy(CachePolicy.ENABLED)
                                     .memoryCachePolicy(CachePolicy.ENABLED)
+                                    .memoryCacheKey(post.thumbnailPath)
+                                    .diskCacheKey(post.thumbnailPath)
+                                    .error(android.R.drawable.ic_menu_report_image)
                                     .build(),
                                 contentDescription = "Post Thumbnail",
                                 modifier = Modifier.fillMaxSize(),

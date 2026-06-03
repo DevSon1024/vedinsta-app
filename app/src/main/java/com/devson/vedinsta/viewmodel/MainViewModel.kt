@@ -18,6 +18,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: DownloadRepository
     val allDownloadedPosts: LiveData<List<DownloadedPost>>
+    val recentPostsHome: LiveData<List<DownloadedPost>>
     
     private val settingsViewModel: SettingsViewModel
     private val _favoritePostIds = MutableStateFlow<Set<String>>(emptySet())
@@ -27,6 +28,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val dao = AppDatabase.getDatabase(application).downloadedPostDao()
         repository = DownloadRepository(dao)
         allDownloadedPosts = repository.getAllDownloadedPosts()
+        recentPostsHome = repository.getRecentDownloadedPosts(8)
         settingsViewModel = SettingsViewModel(application)
         
         viewModelScope.launch(Dispatchers.IO) {

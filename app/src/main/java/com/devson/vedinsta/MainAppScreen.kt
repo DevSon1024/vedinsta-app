@@ -178,7 +178,7 @@ fun MainAppScreen(
                     actions = {
                         if (currentScreen == Screen.Home) {
                             // Notification badge icon
-                            NotificationBadgeIcon(
+                            NotificationBadge(
                                 notificationViewModel = notificationViewModel,
                                 onClick = {
                                     notificationViewModel.markAllAsRead()
@@ -506,7 +506,7 @@ private fun getScreenOrderValue(screen: Screen): Int {
 }
 
 @Composable
-fun NotificationBadgeIcon(
+fun NotificationBadge(
     notificationViewModel: NotificationViewModel,
     onClick: () -> Unit
 ) {

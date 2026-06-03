@@ -685,3 +685,14 @@
   6. Verified the project compiles successfully using `.\gradlew compileDebugKotlin` and `.\gradlew assembleDebug` with zero errors.
 
 ---
+
+- **Type of Details:** Performance Improvement
+- **Description:**
+  1. Resolved startup freezes and ANR bottlenecks on application launch by removing synchronous `clearAppCache(this)` and `WorkManager.pruneWork()` calls from `VedInstaApplication.onCreate()`.
+  2. Optimized Home Screen database loading by implementing a limited Room query (`getRecentDownloadedPosts(limit)`) inside `DownloadedPostDao.kt` and exposing it via `DownloadRepository.kt` and `MainViewModel.kt` (`recentPostsHome`).
+  3. Bound the limited recent posts database list directly to the `LazyRow` carousel in `HomeScreen.kt`, avoiding loading all downloaded records and slicing in memory.
+  4. Enhanced Coil image loading in `HomeScreen.kt` and `HistoryScreen.kt` by removing the redundant `.videoFrameMillis(0L)` decoders and adding explicit String cache keys (`.memoryCacheKey` and `.diskCacheKey`) to bypass Coil's disk-check queries on the main thread, while using `android.R.drawable.ic_menu_report_image` as a fallback.
+  5. Renamed the isolated composable to `NotificationBadge` in `MainAppScreen.kt`.
+  6. Verified compilation using `.\gradlew compileDebugKotlin`.
+
+---
