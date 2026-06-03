@@ -10,6 +10,8 @@ import com.devson.vedinsta.notification.VedInstaNotificationManager
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -63,7 +65,6 @@ class DownloadService : Service() {
         const val EXTRA_FILE_NAMES_LIST = "file_names_list"
         const val EXTRA_MEDIA_TYPES_LIST = "media_types_list"
 
-        private val dbMutex = Mutex()
         private const val TAG = "DownloadService"
         private const val USER_AGENT = "Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.193 Mobile Safari/537.36 Instagram 314.0.0.19.113 Android (34/14; 450dpi; 1440x3088; samsung; SM-S918B; dm3q; qcom; en_US; 557876543)"
 
@@ -76,30 +77,34 @@ class DownloadService : Service() {
         super.onCreate()
         notificationManager = VedInstaNotificationManager.getInstance(this)
 
-        // PERF FIX: Start a single worker coroutine to process queued download requests sequentially on Dispatchers.IO.
-        // This avoids simultaneous network bandwidth saturation and random concurrent disk writes (I/O lockups),
-        // which completely eliminates system-wide UI freezing when multiple downloads are started in a batch.
+        // PERF FIX: Start bounded concurrent processors using Semaphore(3) to read from downloadChannel.
+        // This allows up to 3 concurrent downloads in parallel, while keeping it from overloading the network/CPU.
+        val semaphore = Semaphore(3)
         serviceScope.launch {
             for (request in downloadChannel) {
-                try {
-                    downloadFile(
-                        url = request.url,
-                        filePath = request.filePath,
-                        fileName = request.fileName,
-                        notificationId = request.notificationId,
-                        postId = request.postId,
-                        postUrl = request.postUrl,
-                        username = request.username,
-                        caption = request.caption,
-                        totalImages = request.totalImages,
-                        hasVideo = request.hasVideo
-                    )
-                } finally {
-                    val remaining = activeTasks.decrementAndGet()
-                    if (remaining <= 0) {
-                        ServiceCompat.stopForeground(this@DownloadService, ServiceCompat.STOP_FOREGROUND_REMOVE)
-                        com.devson.vedinsta.VedInstaApplication.clearAppCache(applicationContext)
-                        stopSelf()
+                launch {
+                    semaphore.withPermit {
+                        try {
+                            downloadFile(
+                                url = request.url,
+                                filePath = request.filePath,
+                                fileName = request.fileName,
+                                notificationId = request.notificationId,
+                                postId = request.postId,
+                                postUrl = request.postUrl,
+                                username = request.username,
+                                caption = request.caption,
+                                totalImages = request.totalImages,
+                                hasVideo = request.hasVideo
+                            )
+                        } finally {
+                            val remaining = activeTasks.decrementAndGet()
+                            if (remaining <= 0) {
+                                ServiceCompat.stopForeground(this@DownloadService, ServiceCompat.STOP_FOREGROUND_REMOVE)
+                                com.devson.vedinsta.VedInstaApplication.clearAppCache(applicationContext)
+                                stopSelf()
+                            }
+                        }
                     }
                 }
             }
@@ -161,20 +166,24 @@ class DownloadService : Service() {
                         createForegroundNotification(fileNames.firstOrNull() ?: "media")
                     }
 
-                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                        ServiceCompat.startForeground(
-                            this,
-                            notificationId,
-                            notification,
-                            android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-                        )
-                    } else {
-                        ServiceCompat.startForeground(
-                            this,
-                            notificationId,
-                            notification,
-                            0
-                        )
+                    try {
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                            ServiceCompat.startForeground(
+                                this,
+                                notificationId,
+                                notification,
+                                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                            )
+                        } else {
+                            ServiceCompat.startForeground(
+                                this,
+                                notificationId,
+                                notification,
+                                0
+                            )
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to start foreground service", e)
                     }
                 }
 
@@ -257,20 +266,24 @@ class DownloadService : Service() {
                             createForegroundNotification(fileName)
                         }
 
-                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                            ServiceCompat.startForeground(
-                                this,
-                                notificationId,
-                                notification,
-                                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-                            )
-                        } else {
-                            ServiceCompat.startForeground(
-                                this,
-                                notificationId,
-                                notification,
-                                0
-                            )
+                        try {
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                                ServiceCompat.startForeground(
+                                    this,
+                                    notificationId,
+                                    notification,
+                                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                                )
+                            } else {
+                                ServiceCompat.startForeground(
+                                    this,
+                                    notificationId,
+                                    notification,
+                                    0
+                                )
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to start foreground service", e)
                         }
                     }
 
@@ -352,10 +365,13 @@ class DownloadService : Service() {
 
                 body.byteStream().use { inputStream ->
                     FileOutputStream(file).use { outputStream ->
-                        val buffer = ByteArray(8192)
+                        val buffer = ByteArray(64 * 1024)
                         var bytesRead: Int
 
                         while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                            if (!currentCoroutineContext().isActive) {
+                                throw CancellationException("Download cancelled by service scope")
+                            }
                             outputStream.write(buffer, 0, bytesRead)
                             currentTotalBytesRead += bytesRead
 
@@ -399,6 +415,22 @@ class DownloadService : Service() {
             handleDownloadSuccess(postId, totalImages, username, fileName, notificationId, filePath)
 
         } catch (e: Exception) {
+            if (e is CancellationException) {
+                Log.d(TAG, "Download of $fileName cancelled silently")
+                if (!downloadSuccess) {
+                    fileToClean?.let {
+                        if (it.exists()) {
+                            try {
+                                it.delete()
+                                Log.d(TAG, "Cleaned up cancelled incomplete file: ${it.absolutePath}")
+                            } catch (ex: Exception) {
+                                Log.e(TAG, "Failed to delete incomplete file on cancel", ex)
+                            }
+                        }
+                    }
+                }
+                return
+            }
             Log.e(TAG, "Failed to download $fileName", e)
             if (!downloadSuccess) {
                 fileToClean?.let {
@@ -623,82 +655,80 @@ class DownloadService : Service() {
     ) {
         if (downloadedFiles.isEmpty()) return
         try {
-            dbMutex.withLock {
-                withContext(Dispatchers.IO) {
-                    val db = com.devson.vedinsta.database.AppDatabase.getDatabase(applicationContext)
-                    val dao = db.downloadedPostDao()
-                    val existingPost = dao.getPostById(postId)
+            withContext(Dispatchers.IO) {
+                val db = com.devson.vedinsta.database.AppDatabase.getDatabase(applicationContext)
+                val dao = db.downloadedPostDao()
+                val existingPost = dao.getPostById(postId)
 
-                    if (existingPost != null) {
-                        val updatedPaths = (existingPost.mediaPaths + downloadedFiles).distinct()
-                        
-                        val isVideo = { path: String ->
-                            val ext = path.substringAfterLast('.', "").lowercase()
-                            ext in listOf("mp4", "mov", "avi", "mkv", "webm")
-                        }
-                        val newFirstImagePath = downloadedFiles.firstOrNull { !isVideo(it) }
-                        val newFirstVideoPath = downloadedFiles.firstOrNull { isVideo(it) }
-                        val currentThumbnailValid = existingPost.thumbnailPath.isNotBlank() && File(existingPost.thumbnailPath).exists()
-
-                        val rawThumbnailPath = when {
-                            newFirstImagePath != null -> newFirstImagePath
-                            currentThumbnailValid -> existingPost.thumbnailPath
-                            newFirstVideoPath != null -> newFirstVideoPath
-                            else -> ""
-                        }
-                        val updatedThumbnailPath = if (rawThumbnailPath.isNotEmpty()) {
-                            com.devson.vedinsta.ui.ThumbnailHelper.getSafeThumbnailPath(applicationContext, rawThumbnailPath)
-                        } else {
-                            ""
-                        }
-
-                        val updatedUsername = if (existingPost.username == "unknown" || existingPost.username == "downloading...") {
-                            username
-                        } else {
-                            existingPost.username
-                        }
-
-                        val updatedCaption = existingPost.caption.takeIf { !it.isNullOrBlank() } ?: caption
-
-                        val updatedPost = existingPost.copy(
-                            mediaPaths = updatedPaths,
-                            totalImages = updatedPaths.size,
-                            downloadDate = System.currentTimeMillis(),
-                            thumbnailPath = updatedThumbnailPath,
-                            username = updatedUsername,
-                            caption = updatedCaption,
-                            hasVideo = existingPost.hasVideo || hasVideo
-                        )
-                        dao.insertOrReplace(updatedPost)
-                        Log.d(TAG, "Updated existing post $postId in DB. Total media: ${updatedPaths.size}")
-                    } else {
-                        val isVideo = { path: String ->
-                            val ext = path.substringAfterLast('.', "").lowercase()
-                            ext in listOf("mp4", "mov", "avi", "mkv", "webm")
-                        }
-                        val firstImagePath = downloadedFiles.firstOrNull { !isVideo(it) }
-                        val firstVideoPath = downloadedFiles.firstOrNull { isVideo(it) }
-                        val rawThumbnailPath = firstImagePath ?: firstVideoPath ?: ""
-                        val thumbnailPath = if (rawThumbnailPath.isNotEmpty()) {
-                            com.devson.vedinsta.ui.ThumbnailHelper.getSafeThumbnailPath(applicationContext, rawThumbnailPath)
-                        } else {
-                            ""
-                        }
-
-                        val newPost = com.devson.vedinsta.database.DownloadedPost(
-                            postId = postId,
-                            postUrl = postUrl,
-                            thumbnailPath = thumbnailPath,
-                            totalImages = downloadedFiles.size,
-                            downloadDate = System.currentTimeMillis(),
-                            hasVideo = hasVideo,
-                            username = username,
-                            caption = caption,
-                            mediaPaths = downloadedFiles.distinct()
-                        )
-                        dao.insert(newPost)
-                        Log.d(TAG, "Inserted new post $postId in DB with ${downloadedFiles.size} media.")
+                if (existingPost != null) {
+                    val updatedPaths = (existingPost.mediaPaths + downloadedFiles).distinct()
+                    
+                    val isVideo = { path: String ->
+                        val ext = path.substringAfterLast('.', "").lowercase()
+                        ext in listOf("mp4", "mov", "avi", "mkv", "webm")
                     }
+                    val newFirstImagePath = downloadedFiles.firstOrNull { !isVideo(it) }
+                    val newFirstVideoPath = downloadedFiles.firstOrNull { isVideo(it) }
+                    val currentThumbnailValid = existingPost.thumbnailPath.isNotBlank() && File(existingPost.thumbnailPath).exists()
+
+                    val rawThumbnailPath = when {
+                        newFirstImagePath != null -> newFirstImagePath
+                        currentThumbnailValid -> existingPost.thumbnailPath
+                        newFirstVideoPath != null -> newFirstVideoPath
+                        else -> ""
+                    }
+                    val updatedThumbnailPath = if (rawThumbnailPath.isNotEmpty()) {
+                        com.devson.vedinsta.ui.ThumbnailHelper.getSafeThumbnailPath(applicationContext, rawThumbnailPath)
+                    } else {
+                        ""
+                    }
+
+                    val updatedUsername = if (existingPost.username == "unknown" || existingPost.username == "downloading...") {
+                        username
+                    } else {
+                        existingPost.username
+                    }
+
+                    val updatedCaption = existingPost.caption.takeIf { !it.isNullOrBlank() } ?: caption
+
+                    val updatedPost = existingPost.copy(
+                        mediaPaths = updatedPaths,
+                        totalImages = updatedPaths.size,
+                        downloadDate = System.currentTimeMillis(),
+                        thumbnailPath = updatedThumbnailPath,
+                        username = updatedUsername,
+                        caption = updatedCaption,
+                        hasVideo = existingPost.hasVideo || hasVideo
+                    )
+                    dao.insertOrReplace(updatedPost)
+                    Log.d(TAG, "Updated existing post $postId in DB. Total media: ${updatedPaths.size}")
+                } else {
+                    val isVideo = { path: String ->
+                        val ext = path.substringAfterLast('.', "").lowercase()
+                        ext in listOf("mp4", "mov", "avi", "mkv", "webm")
+                    }
+                    val firstImagePath = downloadedFiles.firstOrNull { !isVideo(it) }
+                    val firstVideoPath = downloadedFiles.firstOrNull { isVideo(it) }
+                    val rawThumbnailPath = firstImagePath ?: firstVideoPath ?: ""
+                    val thumbnailPath = if (rawThumbnailPath.isNotEmpty()) {
+                        com.devson.vedinsta.ui.ThumbnailHelper.getSafeThumbnailPath(applicationContext, rawThumbnailPath)
+                    } else {
+                        ""
+                    }
+
+                    val newPost = com.devson.vedinsta.database.DownloadedPost(
+                        postId = postId,
+                        postUrl = postUrl,
+                        thumbnailPath = thumbnailPath,
+                        totalImages = downloadedFiles.size,
+                        downloadDate = System.currentTimeMillis(),
+                        hasVideo = hasVideo,
+                        username = username,
+                        caption = caption,
+                        mediaPaths = downloadedFiles.distinct()
+                    )
+                    dao.insert(newPost)
+                    Log.d(TAG, "Inserted new post $postId in DB with ${downloadedFiles.size} media.")
                 }
             }
         } catch (e: Exception) {

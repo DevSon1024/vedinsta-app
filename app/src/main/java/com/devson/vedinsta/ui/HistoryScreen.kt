@@ -103,8 +103,9 @@ fun HistoryScreen(
                 derivedStateOf {
                     val layoutInfo = listState.layoutInfo
                     val totalItemsNumber = layoutInfo.totalItemsCount
-                    val lastVisibleItemIndex = (layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0)
-                    totalItemsNumber > 0 && lastVisibleItemIndex >= totalItemsNumber - 4
+                    val firstVisibleItemIndex = listState.firstVisibleItemIndex
+                    val visibleItemsCount = layoutInfo.visibleItemsInfo.size
+                    totalItemsNumber > 0 && firstVisibleItemIndex + visibleItemsCount >= totalItemsNumber - 4
                 }
             }
             LaunchedEffect(shouldLoadMore.value) {
@@ -129,153 +130,21 @@ fun HistoryScreen(
                 items(paginatedPosts, key = { it.postId }) { post ->
                     val fav = isFavorite(post.postId)
                     val context = androidx.compose.ui.platform.LocalContext.current
-
-                    val animatableAlpha = remember { Animatable(0f) }
-                    val animatableScale = remember { Animatable(0.92f) }
-
-                    LaunchedEffect(post.postId) {
-                        launch {
-                            animatableAlpha.animateTo(
-                                targetValue = 1f,
-                                animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing)
+                    HistoryListCard(
+                        post = post,
+                        isFavorite = fav,
+                        onClick = { onPostClick(post) },
+                        onLongClick = {
+                            showPostOptions(
+                                context = context,
+                                post = post,
+                                viewModel = mainViewModel,
+                                onToggleFavorite = onToggleFavorite,
+                                isFavorite = fav
                             )
-                        }
-                        launch {
-                            animatableScale.animateTo(
-                                targetValue = 1f,
-                                animationSpec = tween(durationMillis = 250, easing = FastOutSlowInEasing)
-                            )
-                        }
-                    }
-
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .graphicsLayer {
-                                alpha = animatableAlpha.value
-                                scaleX = animatableScale.value
-                                scaleY = animatableScale.value
-                            }
-                            .clip(RoundedCornerShape(12.dp))
-                            .combinedClickable(
-                                onClick = { onPostClick(post) },
-                                onLongClick = {
-                                    showPostOptions(
-                                        context = context,
-                                        post = post,
-                                        viewModel = mainViewModel,
-                                        onToggleFavorite = onToggleFavorite,
-                                        isFavorite = fav
-                                    )
-                                }
-                            ),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // Thumbnail Container
-                            Box(
-                                modifier = Modifier
-                                    .size(76.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                            ) {
-                                AsyncImage(
-                                    model = ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
-                                        .data(if (post.thumbnailPath.isNotEmpty()) File(post.thumbnailPath) else null)
-                                        .size(300, 300) // Downsample to small resolution for smooth scrolling & memory efficiency
-                                        .videoFrameMillis(0L)
-                                        .crossfade(true)
-                                        .diskCachePolicy(CachePolicy.ENABLED)
-                                        .memoryCachePolicy(CachePolicy.ENABLED)
-                                        .build(),
-                                    contentDescription = "Post Thumbnail",
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop
-                                )
-
-                                // Badge Overlay - Type at top-left corner
-                                if (post.hasVideo) {
-                                    Box(
-                                        modifier = Modifier
-                                            .align(Alignment.TopStart)
-                                            .padding(4.dp)
-                                            .size(20.dp)
-                                            .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(10.dp)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.PlayArrow,
-                                            contentDescription = "Video",
-                                            tint = Color.White,
-                                            modifier = Modifier.size(12.dp)
-                                        )
-                                    }
-                                } else if (post.totalImages > 1) {
-                                    Box(
-                                        modifier = Modifier
-                                            .align(Alignment.TopStart)
-                                            .padding(4.dp)
-                                            .size(20.dp)
-                                            .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(4.dp)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Collections,
-                                            contentDescription = "Carousel",
-                                            tint = Color.White,
-                                            modifier = Modifier.size(12.dp)
-                                        )
-                                    }
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.width(12.dp))
-
-                            // Text Content Column
-                            Column(
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text(
-                                    text = "@${post.username}",
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                
-                                Spacer(modifier = Modifier.height(4.dp))
-                                
-                                Text(
-                                    text = post.caption?.ifEmpty { "No description" } ?: "No description",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                                    fontSize = 13.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.width(8.dp))
-
-                            // Action heart icon button
-                            IconButton(
-                                onClick = { onToggleFavorite(post.postId) },
-                                modifier = Modifier.size(32.dp)
-                            ) {
-                                Icon(
-                                    imageVector = if (fav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                    contentDescription = "Favorite",
-                                    tint = if (fav) Color.Red else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                        }
-                    }
+                        },
+                        onToggleFavorite = { onToggleFavorite(post.postId) }
+                    )
                 }
             }
         } else {
@@ -285,8 +154,9 @@ fun HistoryScreen(
                 derivedStateOf {
                     val layoutInfo = gridState.layoutInfo
                     val totalItemsNumber = layoutInfo.totalItemsCount
-                    val lastVisibleItemIndex = (layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0)
-                    totalItemsNumber > 0 && lastVisibleItemIndex >= totalItemsNumber - 6
+                    val firstVisibleItemIndex = gridState.firstVisibleItemIndex
+                    val visibleItemsCount = layoutInfo.visibleItemsInfo.size
+                    totalItemsNumber > 0 && firstVisibleItemIndex + visibleItemsCount >= totalItemsNumber - 6
                 }
             }
             LaunchedEffect(shouldLoadMore.value) {
@@ -351,121 +221,22 @@ fun HistoryScreen(
                 items(paginatedPosts, key = { it.postId }) { post ->
                     val fav = isFavorite(post.postId)
                     val context = androidx.compose.ui.platform.LocalContext.current
-
-                    val animatableAlpha = remember { Animatable(0f) }
-                    val animatableScale = remember { Animatable(0.92f) }
-
-                    LaunchedEffect(post.postId) {
-                        launch {
-                            animatableAlpha.animateTo(
-                                targetValue = 1f,
-                                animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing)
+                    HistoryGridCard(
+                        post = post,
+                        isFavorite = fav,
+                        gridColumnCount = gridColumnCount,
+                        onClick = { onPostClick(post) },
+                        onLongClick = {
+                            showPostOptions(
+                                context = context,
+                                post = post,
+                                viewModel = mainViewModel,
+                                onToggleFavorite = onToggleFavorite,
+                                isFavorite = fav
                             )
-                        }
-                        launch {
-                            animatableScale.animateTo(
-                                targetValue = 1f,
-                                animationSpec = tween(durationMillis = 250, easing = FastOutSlowInEasing)
-                            )
-                        }
-                    }
-
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(1f)
-                            .graphicsLayer {
-                                alpha = animatableAlpha.value
-                                scaleX = animatableScale.value
-                                scaleY = animatableScale.value
-                            }
-                            .clip(RoundedCornerShape(20.dp))
-                            .combinedClickable(
-                                onClick = { onPostClick(post) },
-                                onLongClick = {
-                                    showPostOptions(
-                                        context = context,
-                                        post = post,
-                                        viewModel = mainViewModel,
-                                        onToggleFavorite = onToggleFavorite,
-                                        isFavorite = fav
-                                    )
-                                }
-                            ),
-                        shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                    ) {
-                        Box(modifier = Modifier.fillMaxSize()) {
-                            // Thumbnail
-                            AsyncImage(
-                                model = ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
-                                    .data(if (post.thumbnailPath.isNotEmpty()) File(post.thumbnailPath) else null)
-                                    .size(300, 300) // Downsample to small resolution for smooth scrolling & memory efficiency
-                                    .videoFrameMillis(0L)
-                                    .crossfade(true)
-                                    .diskCachePolicy(CachePolicy.ENABLED)
-                                    .memoryCachePolicy(CachePolicy.ENABLED)
-                                    .build(),
-                                contentDescription = "Post Thumbnail",
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop
-                            )
-
-                            // Hide all overlays & favorite heart when grid column count is 4
-                            if (gridColumnCount < 4) {
-                                if (post.hasVideo) {
-                                    Box(
-                                        modifier = Modifier
-                                            .align(Alignment.TopStart)
-                                            .padding(8.dp)
-                                            .size(28.dp)
-                                            .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(14.dp)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.PlayArrow,
-                                            contentDescription = "Video",
-                                            tint = Color.White,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
-                                } else if (post.totalImages > 1) {
-                                    Box(
-                                        modifier = Modifier
-                                            .align(Alignment.TopStart)
-                                            .padding(8.dp)
-                                            .size(28.dp)
-                                            .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(8.dp)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Collections,
-                                            contentDescription = "Carousel",
-                                            tint = Color.White,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
-                                }
-
-                                // Favorite Button
-                                IconButton(
-                                    onClick = { onToggleFavorite(post.postId) },
-                                    modifier = Modifier
-                                        .align(Alignment.TopEnd)
-                                        .padding(8.dp)
-                                        .size(28.dp)
-                                        .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(14.dp))
-                                ) {
-                                    Icon(
-                                        imageVector = if (fav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                        contentDescription = "Favorite",
-                                        tint = if (fav) Color.Red else Color.White,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
+                        },
+                        onToggleFavorite = { onToggleFavorite(post.postId) }
+                    )
                 }
             }
         }
@@ -595,3 +366,225 @@ fun ViewSettingBottomSheet(
         }
     }
 }
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun HistoryListCard(
+    post: DownloadedPost,
+    isFavorite: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onToggleFavorite: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            ),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Thumbnail Container
+            Box(
+                modifier = Modifier
+                    .size(76.dp)
+                    .clip(RoundedCornerShape(8.dp))
+            ) {
+                AsyncImage(
+                    model = ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+                        .data(if (post.thumbnailPath.isNotEmpty()) File(post.thumbnailPath) else null)
+                        .size(300, 300) // Downsample to small resolution for smooth scrolling & memory efficiency
+                        .videoFrameMillis(0L)
+                        .crossfade(true)
+                        .diskCachePolicy(CachePolicy.ENABLED)
+                        .memoryCachePolicy(CachePolicy.ENABLED)
+                        .build(),
+                    contentDescription = "Post Thumbnail",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+
+                // Badge Overlay - Type at top-left corner
+                if (post.hasVideo) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(4.dp)
+                            .size(20.dp)
+                            .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(10.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = "Video",
+                            tint = Color.White,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
+                } else if (post.totalImages > 1) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(4.dp)
+                            .size(20.dp)
+                            .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(4.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Collections,
+                            contentDescription = "Carousel",
+                            tint = Color.White,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            // Text Content Column
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = "@${post.username}",
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                
+                Spacer(modifier = Modifier.height(4.dp))
+                
+                Text(
+                    text = post.caption?.ifEmpty { "No description" } ?: "No description",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // Action heart icon button
+            IconButton(
+                onClick = onToggleFavorite,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                    contentDescription = "Favorite",
+                    tint = if (isFavorite) Color.Red else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun HistoryGridCard(
+    post: DownloadedPost,
+    isFavorite: Boolean,
+    gridColumnCount: Int,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onToggleFavorite: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(1f)
+            .clip(RoundedCornerShape(20.dp))
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            ),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Thumbnail
+            AsyncImage(
+                model = ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+                    .data(if (post.thumbnailPath.isNotEmpty()) File(post.thumbnailPath) else null)
+                    .size(300, 300) // Downsample to small resolution for smooth scrolling & memory efficiency
+                    .videoFrameMillis(0L)
+                    .crossfade(true)
+                    .diskCachePolicy(CachePolicy.ENABLED)
+                    .memoryCachePolicy(CachePolicy.ENABLED)
+                    .build(),
+                contentDescription = "Post Thumbnail",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+
+            // Hide all overlays & favorite heart when grid column count is 4
+            if (gridColumnCount < 4) {
+                if (post.hasVideo) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(8.dp)
+                            .size(28.dp)
+                            .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(14.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = "Video",
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                } else if (post.totalImages > 1) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(8.dp)
+                            .size(28.dp)
+                            .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(8.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Collections,
+                            contentDescription = "Carousel",
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+
+                // Favorite Button
+                IconButton(
+                    onClick = onToggleFavorite,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp)
+                        .size(28.dp)
+                        .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(14.dp))
+                ) {
+                    Icon(
+                        imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        contentDescription = "Favorite",
+                        tint = if (isFavorite) Color.Red else Color.White,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+

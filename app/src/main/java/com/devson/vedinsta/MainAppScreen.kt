@@ -84,9 +84,7 @@ fun MainAppScreen(
 
     // Local states for Favorites tracking using SharedPreferences via SettingsViewModel
     val favoritePostIds by mainViewModel.favoritePostIds.collectAsState()
-    val isFavoriteHelper = remember(favoritePostIds) {
-        { postId: String -> favoritePostIds.contains(postId) }
-    }
+    val isFavoriteHelper = { postId: String -> favoritePostIds.contains(postId) }
     val toggleFavoriteHelper: (String) -> Unit = { postId ->
         mainViewModel.toggleFavorite(postId)
     }

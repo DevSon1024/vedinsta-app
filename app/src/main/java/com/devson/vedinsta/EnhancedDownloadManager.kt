@@ -37,6 +37,37 @@ class EnhancedDownloadManager(
         const val PROGRESS = "Progress"
         private const val NOTIFICATION_ID_OFFSET = 1000
         private const val NOTIFICATION_UPDATE_INTERVAL_MS = 1500L
+
+        private val sharedHttpClient by lazy { createEnhancedOkHttpClient() }
+
+        private fun createEnhancedOkHttpClient(): OkHttpClient {
+            return OkHttpClient.Builder()
+                .connectTimeout(30, TimeUnit.SECONDS)
+                .readTimeout(120, TimeUnit.SECONDS)
+                .writeTimeout(60, TimeUnit.SECONDS)
+                .retryOnConnectionFailure(true)
+                .addInterceptor { chain ->
+                    val originalRequest = chain.request()
+                    val newRequest = originalRequest.newBuilder()
+                        .header("User-Agent", "Mozilla/5.0 (Linux; Android 12; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36 Instagram 308.0.0.34.113 Android")
+                        .header("Accept", "*/*")
+                        .header("Accept-Language", "en-US,en;q=0.9")
+                        .header("Accept-Encoding", "gzip, deflate, br")
+                        .header("Connection", "keep-alive")
+                        .header("Referer", "https://www.instagram.com/")
+                        .header("Origin", "https://www.instagram.com")
+                        .header("Sec-Fetch-Dest", "empty")
+                        .header("Sec-Fetch-Mode", "cors")
+                        .header("Sec-Fetch-Site", "cross-site")
+                        .header("sec-ch-ua", "\"Google Chrome\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\"")
+                        .header("sec-ch-ua-mobile", "?1")
+                        .header("sec-ch-ua-platform", "\"Android\"")
+                        .removeHeader("DNT")
+                        .build()
+                    chain.proceed(newRequest)
+                }
+                .build()
+        }
     }
 
     private val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -105,7 +136,7 @@ class EnhancedDownloadManager(
         notificationId: Int,
         isBatch: Boolean
     ): Boolean = withContext(Dispatchers.IO) {
-        val client = createEnhancedOkHttpClient()
+        val client = sharedHttpClient
         val request = createEnhancedRequest(url)
         var file: File? = null
         var currentTotalBytesRead = 0L
@@ -129,7 +160,7 @@ class EnhancedDownloadManager(
 
                 body.byteStream().use { inputStream ->
                     FileOutputStream(file).use { outputStream ->
-                        val buffer = ByteArray(8 * 1024)
+                        val buffer = ByteArray(64 * 1024)
                         var bytesRead: Int
                         currentTotalBytesRead = 0L
                         var lastProgress = -1
@@ -220,35 +251,6 @@ class EnhancedDownloadManager(
             .setProgress(100, if (indeterminate) 0 else progress, indeterminate)
             .setContentIntent(contentPendingIntent)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Cancel", cancelPendingIntent)
-            .build()
-    }
-
-    private fun createEnhancedOkHttpClient(): OkHttpClient {
-        return OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(120, TimeUnit.SECONDS)
-            .writeTimeout(60, TimeUnit.SECONDS)
-            .retryOnConnectionFailure(true)
-            .addInterceptor { chain ->
-                val originalRequest = chain.request()
-                val newRequest = originalRequest.newBuilder()
-                    .header("User-Agent", "Mozilla/5.0 (Linux; Android 12; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36 Instagram 308.0.0.34.113 Android")
-                    .header("Accept", "*/*")
-                    .header("Accept-Language", "en-US,en;q=0.9")
-                    .header("Accept-Encoding", "gzip, deflate, br")
-                    .header("Connection", "keep-alive")
-                    .header("Referer", "https://www.instagram.com/")
-                    .header("Origin", "https://www.instagram.com")
-                    .header("Sec-Fetch-Dest", "empty")
-                    .header("Sec-Fetch-Mode", "cors")
-                    .header("Sec-Fetch-Site", "cross-site")
-                    .header("sec-ch-ua", "\"Google Chrome\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\"")
-                    .header("sec-ch-ua-mobile", "?1")
-                    .header("sec-ch-ua-platform", "\"Android\"")
-                    .removeHeader("DNT")
-                    .build()
-                chain.proceed(newRequest)
-            }
             .build()
     }
 
