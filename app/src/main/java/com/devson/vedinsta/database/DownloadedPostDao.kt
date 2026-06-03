@@ -67,4 +67,7 @@ interface DownloadedPostDao {
     """)
 
     suspend fun updatePostMetadataOnlyIfEmpty(postId: String, username: String, caption: String?)
+
+    @Query("SELECT * FROM downloaded_posts")
+    suspend fun getAllDownloadedPostsDirect(): List<DownloadedPost>
 }

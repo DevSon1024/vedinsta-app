@@ -402,11 +402,15 @@ fun HistoryListCard(
                 AsyncImage(
                     model = ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
                         .data(if (post.thumbnailPath.isNotEmpty()) File(post.thumbnailPath) else null)
-                        .size(300, 300) // Downsample to small resolution for smooth scrolling & memory efficiency
+                        .size(300, 300)
                         .videoFrameMillis(0L)
                         .crossfade(true)
                         .diskCachePolicy(CachePolicy.ENABLED)
                         .memoryCachePolicy(CachePolicy.ENABLED)
+                        .memoryCacheKey(post.thumbnailPath)
+                        .diskCacheKey(post.thumbnailPath)
+                        .error(com.devson.vedinsta.R.drawable.ic_error)
+                        .fallback(com.devson.vedinsta.R.drawable.ic_error)
                         .build(),
                     contentDescription = "Post Thumbnail",
                     modifier = Modifier.fillMaxSize(),
@@ -520,11 +524,15 @@ fun HistoryGridCard(
             AsyncImage(
                 model = ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
                     .data(if (post.thumbnailPath.isNotEmpty()) File(post.thumbnailPath) else null)
-                    .size(300, 300) // Downsample to small resolution for smooth scrolling & memory efficiency
+                    .size(300, 300)
                     .videoFrameMillis(0L)
                     .crossfade(true)
                     .diskCachePolicy(CachePolicy.ENABLED)
                     .memoryCachePolicy(CachePolicy.ENABLED)
+                    .memoryCacheKey(post.thumbnailPath)
+                    .diskCacheKey(post.thumbnailPath)
+                    .error(com.devson.vedinsta.R.drawable.ic_error)
+                    .fallback(com.devson.vedinsta.R.drawable.ic_error)
                     .build(),
                 contentDescription = "Post Thumbnail",
                 modifier = Modifier.fillMaxSize(),

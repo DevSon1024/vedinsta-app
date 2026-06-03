@@ -20,4 +20,7 @@ class DownloadRepository(private val downloadedPostDao: DownloadedPostDao) {
 
     suspend fun deleteDownloadedPost(post: DownloadedPost) =
         downloadedPostDao.delete(post)
+
+    suspend fun getAllDownloadedPostsDirect(): List<DownloadedPost> =
+        downloadedPostDao.getAllDownloadedPostsDirect()
 }

@@ -7,7 +7,6 @@
 
 ---
 
-
 - **Type of Details:** Performance Improvement & Error Solving
 - **Description:**
   1. Resolved OkHttpClient memory leaks and thread resource exhaustion by extracting the creation of the OkHttpClient instance in EnhancedDownloadManager.kt to a lazy-initialized singleton in the companion object.
@@ -17,7 +16,6 @@
   5. Verified the project compiles successfully using `./gradlew compileDebugKotlin`.
 
 ---
-
 
 - **Type of Details:** Performance Improvement & Refactor
 - **Description:**
@@ -29,7 +27,6 @@
   6. Verified the project compiles successfully using `./gradlew compileDebugKotlin`.
 
 ---
-
 
 - **Type of Details:** New Update & Refactor
 - **Description:**
@@ -198,7 +195,7 @@
   1. **Where session files are stored**  instagram_cookies.txt lives in the app-level internal storage sandbox (context.filesDir ? /data/data/com.devson.vedinsta/files/), enforced by Android's Linux kernel permissions. Not accessible by any other app, file manager, or ADB on non-rooted devices. NOT in the user-visible Android/data/ external storage.
   2. **Uninstall behavior**  Android auto-deletes the entire app sandbox (/data/data/<package>/) on uninstall, wiping the cookie file, EncryptedSharedPreferences, and Room DB.
   3. **"Log Out Session" vs. Instagram account logout**  Tapping the button only removes local cookies inside VedInsta. It does NOT revoke the session on Instagram's servers; the account stays active on other devices and the Instagram app.
-  Inline code comments were also added explaining each behaviour for future developers.
+     Inline code comments were also added explaining each behaviour for future developers.
 
 ---
 
@@ -237,7 +234,7 @@
 - **Type of Details:** UI Enhancement / Settings
 - **Description:** Updated PostViewScreen.kt and SettingsScreen.kt:
   - **Large Username Title**: Increased the username font size from 16.sp to 22.sp in the Post Viewer top app bar to match other screens' titles.
-  - **Transparent Bottom Navbar**: Added 	ransparent_navbar toggle preference in SettingsManager.kt. When enabled via the newly added "Transparent Bottom Bar" switch item in SettingsScreen.kt, the bottom bar container (Surface) in PostViewScreen.kt becomes completely transparent and omits the extra navigation bar padding, creating a modern edge-to-edge transparent layout where the media extends all the way down.
+  - **Transparent Bottom Navbar**: Added ransparent_navbar toggle preference in SettingsManager.kt. When enabled via the newly added "Transparent Bottom Bar" switch item in SettingsScreen.kt, the bottom bar container (Surface) in PostViewScreen.kt becomes completely transparent and omits the extra navigation bar padding, creating a modern edge-to-edge transparent layout where the media extends all the way down.
 
 ---
 
@@ -622,7 +619,7 @@
 
 - **Type of Details:** Refactor & UX/UI Improvement
 - **Description:**
-  1. Refactored the Notification Keep Limit Settings sheet warning logic inside `NotificationsScreen.kt` to defer the database pruning action. It now stores selections in temporary state variables (`tempIsUnrestricted`, `tempSliderValue`) and commits the settings update and calls `pruneNotifications` *only* upon sheet dismissal (`onDismissRequest`).
+  1. Refactored the Notification Keep Limit Settings sheet warning logic inside `NotificationsScreen.kt` to defer the database pruning action. It now stores selections in temporary state variables (`tempIsUnrestricted`, `tempSliderValue`) and commits the settings update and calls `pruneNotifications` _only_ upon sheet dismissal (`onDismissRequest`).
   2. Implemented a dynamic warning card inside the sheet that warns the user that selecting a limit lower than the current notifications count will delete older database records, while reassuring them that downloaded media files remain safe.
   3. Cleaned up `MainAppScreen.kt` by completely decoupling and removing the `onPostLongClick` callbacks.
   4. Updated `HistoryScreen.kt` to invoke `showPostOptions` directly on item long press using `LocalContext.current` as context, and removed the unused `onPostLongClick` parameter from `HistoryScreen` and `FavoritesScreen` definitions.
@@ -644,18 +641,17 @@
 
 - **Type of Details:** Refactor / UX Improvement
 - **Description:**
-  1. Completely removed `Screen.Downloader` sealed object and `MediaSelectionScreen` from the in-app navigation flow  users no longer navigate to a separate download screen.
+  1. Completely removed `Screen.Downloader` sealed object and `MediaSelectionScreen` from the in-app navigation flow users no longer navigate to a separate download screen.
   2. Rewrote the `FloatingActionButton` in `MainAppScreen.kt` to be exclusively shown when `currentScreen is Screen.Home`, eliminating its presence on all other screens.
   3. FAB click now reads the system clipboard using `ClipboardManager`, validates whether the text is an Instagram URL, and calls `extractionViewModel.extractMedia()`. An informative Toast is shown if the clipboard is empty or not an Instagram link.
   4. Added `AnimatedContent` inside the FAB body: shows a `CircularProgressIndicator` during extraction and the `Download` icon at idle.
   5. Added a top-level reactive `LaunchedEffect(extractionState)` router: navigates to `Screen.DownloaderDetails` for multi-item posts, auto-fires `downloadSelected()` for single-item posts, or shows an error Toast on failure.
-  6. Updated deep-link handler  removed `navigateTo(Screen.Downloader)` so the reactive router handles navigation post-extraction.
-  7. Updated `getScreenOrderValue()`  removed `Screen.Downloader` entry and re-numbered all remaining screens.
+  6. Updated deep-link handler removed `navigateTo(Screen.Downloader)` so the reactive router handles navigation post-extraction.
+  7. Updated `getScreenOrderValue()` removed `Screen.Downloader` entry and re-numbered all remaining screens.
   8. Updated `HomeScreen.kt`: replaced `onNavigateToDownloader` with `onFabAction`, updated empty-state button to 'Paste & Download' with `ContentPaste` icon.
   9. Verified the project compiles and packages successfully with zero errors.
 
 ---
-
 
 - **Type of Details:** New Update / Dependency Upgrade
 - **Description:**
@@ -663,10 +659,18 @@
   2. Polygon sequence pre-computed once via `remember {}` to prevent per-frame allocations: (1) rounded 6-point star, (2) soft 12-vertex circle, (3) squircle-like 4-vertex blob.
   3. FAB `onClick` guarded with `if (!isLoading)` to prevent overlapping extraction triggers.
   4. Upgraded Compose BOM from `2024.09.00` to `2025.05.01` in `libs.versions.toml`.
-  5. Pinned `material3` to `1.5.0-alpha04` explicitly to override BOM stable mapping  required since `LoadingIndicator` and `ExperimentalMaterial3ExpressiveApi` are only available from alpha04+.
+  5. Pinned `material3` to `1.5.0-alpha04` explicitly to override BOM stable mapping required since `LoadingIndicator` and `ExperimentalMaterial3ExpressiveApi` are only available from alpha04+.
   6. Added `androidx.graphics:graphics-shapes:1.0.1` dependency (provides `RoundedPolygon`, `CornerRounding`).
   7. Added `-opt-in=androidx.compose.material3.ExperimentalMaterial3ExpressiveApi` to `freeCompilerArgs` in `app/build.gradle.kts`.
   8. Verified the project compiles and packages successfully with zero errors.
 
 ---
 
+- **Type of Details:** Performance Improvement & Error Solving
+- **Description:**
+  1. Resolved scroll stuttering and Main Thread disk I/O ANRs in HistoryScreen.kt by configuring Coil AsyncImage builders in HistoryListCard and HistoryGridCard to use explicit String memoryCacheKey and diskCacheKey, bypassing Coil's blocking FileKeyer.
+  2. Handled missing files gracefully in HistoryScreen.kt by adding fallback drawables (.error and .fallback) using a custom-created ic_error vector drawable for posts whose physical files have been deleted.
+  3. Implemented a background "ghost file" cleanup utility in MainViewModel.kt (cleanUpGhostRecords) that asynchronously queries all downloaded posts via a new direct room query (getAllDownloadedPostsDirect in DownloadedPostDao and DownloadRepository) and deletes database records for any deleted physical thumbnail files on Dispatchers.IO.
+  4. Verified the project compiles successfully using `.\gradlew compileDebugKotlin`.
+
+---

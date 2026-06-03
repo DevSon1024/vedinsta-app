@@ -32,6 +32,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             _favoritePostIds.value = settingsViewModel.favoritePostIds
         }
+        cleanUpGhostRecords()
     }
 
     fun insertDownloadedPost(post: DownloadedPost) = viewModelScope.launch {
@@ -64,5 +65,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     suspend fun getPostById(postId: String): DownloadedPost? {
         return repository.getPostById(postId)
+    }
+
+    fun cleanUpGhostRecords() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val posts = repository.getAllDownloadedPostsDirect()
+                for (post in posts) {
+                    val exists = java.io.File(post.thumbnailPath).exists()
+                    if (!exists) {
+                        repository.deleteDownloadedPost(post)
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("MainViewModel", "Error in cleanUpGhostRecords", e)
+            }
+        }
     }
 }
