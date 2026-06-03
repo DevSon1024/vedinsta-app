@@ -287,7 +287,10 @@ fun PostViewScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             if (isVideo) {
-                                VideoPlayer(file = file)
+                                VideoPlayer(
+                                    file = file,
+                                    isCurrentPage = pagerState.currentPage == page
+                                )
                             } else {
                                 AsyncImage(
                                     model = ImageRequest.Builder(LocalContext.current)
@@ -769,10 +772,15 @@ fun PostViewScreen(
 }
 
 @Composable
-fun VideoPlayer(file: File) {
+fun VideoPlayer(file: File, isCurrentPage: Boolean) {
     var isPlaying by remember { mutableStateOf(false) }
     var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
     var isPrepared by remember { mutableStateOf(false) }
+ 
+    // Synchronize playback state with the active page
+    LaunchedEffect(isCurrentPage) {
+        isPlaying = isCurrentPage
+    }
 
     val videoAspectRatio = remember(file) {
         val retriever = MediaMetadataRetriever()
@@ -829,6 +837,8 @@ fun VideoPlayer(file: File) {
                                         isPrepared = true
                                         if (isPlaying) {
                                             start()
+                                        } else {
+                                            seekTo(1)
                                         }
                                     }
                                     prepareAsync()

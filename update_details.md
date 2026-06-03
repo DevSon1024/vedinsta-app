@@ -520,5 +520,6 @@
 
   4. **Compilation Fix** — Added missing `kotlinx.coroutines.launch` import to resolve the unresolved reference compilation errors in the pinch-to-zoom gesture coroutine blocks.
   5. **Swipe-lock Bypass** — Prevented 1-finger swipes from being consumed when scale is 1f, allowing default page transitions of `HorizontalPager` to work normally unless pinching or actively zoomed in.
+  6. **Video Auto-play & Previews** — Configured `VideoPlayer` to sync with the active carousel page, auto-playing only when active, and seeking to `1` millisecond when paused/inactive so that a preview frame renders on the `TextureView` immediately instead of showing a blank screen.
 
 ---
