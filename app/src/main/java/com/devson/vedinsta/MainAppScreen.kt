@@ -5,6 +5,7 @@ import android.content.Intent
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -251,16 +252,22 @@ fun MainAppScreen(
             AnimatedContent(
                 targetState = currentScreen,
                 transitionSpec = {
-                    val initialOrder = getScreenOrderValue(initialState)
-                    val targetOrder = getScreenOrderValue(targetState)
-                    if (targetOrder > initialOrder) {
-                        // Opening: Left to Right
-                        slideInHorizontally(initialOffsetX = { -it }) + fadeIn() togetherWith
-                            slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
+                    // Use smooth fade for PostView (edge-to-edge) to avoid ditch effect
+                    if (targetState is Screen.PostView || initialState is Screen.PostView) {
+                        fadeIn(animationSpec = tween(250)) togetherWith
+                            fadeOut(animationSpec = tween(250))
                     } else {
-                        // Closing: Right to Left
-                        slideInHorizontally(initialOffsetX = { it }) + fadeIn() togetherWith
-                            slideOutHorizontally(targetOffsetX = { -it }) + fadeOut()
+                        val initialOrder = getScreenOrderValue(initialState)
+                        val targetOrder = getScreenOrderValue(targetState)
+                        if (targetOrder > initialOrder) {
+                            // Opening: Left to Right
+                            slideInHorizontally(initialOffsetX = { -it }) + fadeIn() togetherWith
+                                slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
+                        } else {
+                            // Closing: Right to Left
+                            slideInHorizontally(initialOffsetX = { it }) + fadeIn() togetherWith
+                                slideOutHorizontally(targetOffsetX = { -it }) + fadeOut()
+                        }
                     }
                 },
                 label = "ScreenTransition",

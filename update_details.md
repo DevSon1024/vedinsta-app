@@ -476,5 +476,49 @@
 
 ---
 
+- **Type of Details:** Major UI Refactor / New Update
+- **Description:** Refactored `PostViewScreen.kt` for premium native immersive media presentation:
+  1. **Removed Scaffold + VedInstaTopAppBar** — Replaced with a raw `Box` root container for a fully immersive, chromeless layout.
+  2. **Edge-to-Edge Media Carousel** — Media viewport now extends under the system status bar with zero top padding, maximizing visual immersion.
+  3. **Floating Back Button** — Added a semi-transparent circular back button (`Icons.AutoMirrored.Filled.ArrowBack`) overlaid on the media surface at `Alignment.TopStart` with `statusBarsPadding()` to avoid hardware notch clipping.
+  4. **Carousel Pager Dot Indicators** — Replaced the old "1/N" text bubble with native horizontally centered dot indicators. Active dots use `MaterialTheme.colorScheme.primary` at 8.dp; inactive dots use muted colors at 6.dp. Only visible when media count > 1.
+  5. **Integrated Username + Caption Typography** — Combined `@username` (bold, primary color) and post description into a single semantic `Text` element using `buildAnnotatedString` with `SpanStyle`. Clickable to open the full description bottom sheet.
+  6. **Bottom Utilities Action Bar** — Sleek horizontal action dock at the bottom edge with `navigationBarsPadding()`. Contains Delete (left), Menu with circular outlined border (center), and Share with dropdown (right) actions spaced with `Arrangement.SpaceEvenly`.
+  7. **Animated Contextual Backdrop Blur** — Replaced the hard-toggle blur with smooth `animateDpAsState` (300ms `tween` with `FastOutSlowInEasing`). Added `Build.VERSION.SDK_INT` check: uses `Modifier.blur()` on API 31+ and a semi-transparent dark overlay (`animateFloatAsState`) as fallback on older devices.
+  8. **Relocated Actions** — Moved Copy Link and Favorite toggle into the More Options `ModalBottomSheet`, cleaning up the old top app bar.
+  9. Verified the project compiles successfully using `.\gradlew assembleDebug` with zero errors.
 
+---
 
+- **Type of Details:** UI Polish / Performance Improvement
+- **Description:** Follow-up fixes to `PostViewScreen.kt` and `MainAppScreen.kt`:
+  1. **Light status bar icons** — Added `DisposableEffect` using `WindowCompat.getInsetsController` to force white status bar icons over dark media content, restored on screen exit.
+  2. **Dynamic media sizing** — Computed `mediaAspectRatio` from the first image file via `BitmapFactory.decodeFile(inJustDecodeBounds)`. Media viewport now uses `aspectRatio(ratio)` instead of `weight(1f)`, so the container wraps the actual content dimensions (clamped to 0.5–2.0 ratio range).
+  3. **ContentScale.Fit** — Images are no longer cropped; they fit within the viewport preserving their native aspect ratio.
+  4. **Scrollable content** — Media, dots, and caption are wrapped in a scrollable `Column` with `weight(1f)` so the bottom action bar stays pinned while tall content can scroll.
+  5. **Page counter** — Added `"X/Y"` text next to the dot indicators for explicit page numbering.
+  6. **Removed blurred background** — Eliminated the triple-layer blur (blurred bg + dimming overlay + foreground fit) from media rendering. Single `AsyncImage` with `ContentScale.Fit` replaces it.
+  7. **Instant blur close** — Blur dismissal uses `snap()` (instant) instead of `tween(300ms)` for responsive sheet close feel.
+  8. **Navigation transition fix** — Changed `MainAppScreen.kt` `AnimatedContent.transitionSpec` to use smooth 250ms `fadeIn`/`fadeOut` for PostView transitions, eliminating the jarring "ditch effect" from the edge-to-edge layout sliding against padded screens.
+  9. Verified build with `.\gradlew assembleDebug` — BUILD SUCCESSFUL with zero errors.
+
+---
+
+- **Type of Details:** Feature Update / UI Polish
+- **Description:** Immersive UI improvements on `PostViewScreen.kt`:
+  1. **Disabled device top status bar** — Added status bar hiding using `WindowInsetsCompat.Type.statusBars()` within `DisposableEffect` so the device's top status bar is disabled completely on this screen, making it clean, and restored on exit.
+  2. **TextureView-based VideoPlayer** — Replaced `VideoView` with `TextureView` and `MediaPlayer` inside `VideoPlayer` so that background videos are affected by Compose's backdrop blur modifier when the More Options bottom sheet is opened.
+  3. **Back button padding** — Fine-tuned the floating back button's padding (top = 16.dp, start = 16.dp) to adapt cleanly to full-screen immersive view when the status bar is disabled.
+
+---
+
+- **Type of Details:** Feature Update / UI & UX Polish
+- **Description:** Interactive features and display fixes on `PostViewScreen.kt`:
+  1. **Delete Confirmation Dialog** — Introduced an `AlertDialog` to prompt for deletion confirmation before triggering post deletion.
+  2. **Pinch-to-Zoom (Instagram Style)** — Integrated a custom pointer input gesture tracker using Compose `Animatable` states. Users can pinch to zoom images or videos up to 5x. Pager horizontal swiping is automatically locked during zoom and everything snaps back with a 200ms animation on release.
+  3. **Video Aspect Ratio Fix** — Integrated `MediaMetadataRetriever` to fetch the video's exact width, height, and rotation orientation. Calculated the corrected aspect ratio dynamically for both the parent layout and the internal player to fully resolve video stretching.
+
+  4. **Compilation Fix** — Added missing `kotlinx.coroutines.launch` import to resolve the unresolved reference compilation errors in the pinch-to-zoom gesture coroutine blocks.
+  5. **Swipe-lock Bypass** — Prevented 1-finger swipes from being consumed when scale is 1f, allowing default page transitions of `HorizontalPager` to work normally unless pinching or actively zoomed in.
+
+---
