@@ -1,5 +1,8 @@
 package com.devson.vedinsta.ui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -11,9 +14,11 @@ import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Collections
@@ -28,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -43,6 +49,7 @@ import com.devson.vedinsta.database.DownloadedPost
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.getValue
 import com.devson.vedinsta.viewmodel.MainViewModel
+import kotlinx.coroutines.launch
 import java.io.File
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -60,6 +67,11 @@ fun HistoryScreen(
 ) {
     val observedPosts by mainViewModel.allDownloadedPosts.observeAsState(emptyList())
     val displayPosts = posts ?: observedPosts
+
+    var visibleLimit by remember { mutableStateOf(20) }
+    val paginatedPosts = remember(displayPosts, visibleLimit) {
+        displayPosts.take(visibleLimit)
+    }
 
     if (displayPosts.isEmpty()) {
         Box(
@@ -86,7 +98,23 @@ fun HistoryScreen(
     } else {
         if (isListView) {
             // LIST VIEW LAYOUT
+            val listState = rememberLazyListState()
+            val shouldLoadMore = remember {
+                derivedStateOf {
+                    val layoutInfo = listState.layoutInfo
+                    val totalItemsNumber = layoutInfo.totalItemsCount
+                    val lastVisibleItemIndex = (layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0)
+                    totalItemsNumber > 0 && lastVisibleItemIndex >= totalItemsNumber - 4
+                }
+            }
+            LaunchedEffect(shouldLoadMore.value) {
+                if (shouldLoadMore.value && visibleLimit < displayPosts.size) {
+                    visibleLimit = (visibleLimit + 20).coerceAtMost(displayPosts.size)
+                }
+            }
+
             LazyColumn(
+                state = listState,
                 modifier = Modifier
                     .fillMaxSize()
                     .background(MaterialTheme.colorScheme.background),
@@ -98,12 +126,36 @@ fun HistoryScreen(
                 ),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(displayPosts, key = { it.postId }) { post ->
+                items(paginatedPosts, key = { it.postId }) { post ->
                     val fav = isFavorite(post.postId)
                     val context = androidx.compose.ui.platform.LocalContext.current
+
+                    val animatableAlpha = remember { Animatable(0f) }
+                    val animatableScale = remember { Animatable(0.92f) }
+
+                    LaunchedEffect(post.postId) {
+                        launch {
+                            animatableAlpha.animateTo(
+                                targetValue = 1f,
+                                animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing)
+                            )
+                        }
+                        launch {
+                            animatableScale.animateTo(
+                                targetValue = 1f,
+                                animationSpec = tween(durationMillis = 250, easing = FastOutSlowInEasing)
+                            )
+                        }
+                    }
+
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .graphicsLayer {
+                                alpha = animatableAlpha.value
+                                scaleX = animatableScale.value
+                                scaleY = animatableScale.value
+                            }
                             .clip(RoundedCornerShape(12.dp))
                             .combinedClickable(
                                 onClick = { onPostClick(post) },
@@ -228,6 +280,21 @@ fun HistoryScreen(
             }
         } else {
             // GRID VIEW LAYOUT
+            val gridState = rememberLazyGridState()
+            val shouldLoadMore = remember {
+                derivedStateOf {
+                    val layoutInfo = gridState.layoutInfo
+                    val totalItemsNumber = layoutInfo.totalItemsCount
+                    val lastVisibleItemIndex = (layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0)
+                    totalItemsNumber > 0 && lastVisibleItemIndex >= totalItemsNumber - 6
+                }
+            }
+            LaunchedEffect(shouldLoadMore.value) {
+                if (shouldLoadMore.value && visibleLimit < displayPosts.size) {
+                    visibleLimit = (visibleLimit + 20).coerceAtMost(displayPosts.size)
+                }
+            }
+
             var accumulatedZoom by remember { mutableStateOf(1f) }
             val animatedColumns by animateIntAsState(
                 targetValue = gridColumnCount,
@@ -235,6 +302,7 @@ fun HistoryScreen(
                 label = "columns_anim"
             )
             LazyVerticalGrid(
+                state = gridState,
                 columns = GridCells.Fixed(animatedColumns.coerceIn(2, 4)),
                 modifier = Modifier
                     .fillMaxSize()
@@ -280,13 +348,37 @@ fun HistoryScreen(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(displayPosts, key = { it.postId }) { post ->
+                items(paginatedPosts, key = { it.postId }) { post ->
                     val fav = isFavorite(post.postId)
                     val context = androidx.compose.ui.platform.LocalContext.current
+
+                    val animatableAlpha = remember { Animatable(0f) }
+                    val animatableScale = remember { Animatable(0.92f) }
+
+                    LaunchedEffect(post.postId) {
+                        launch {
+                            animatableAlpha.animateTo(
+                                targetValue = 1f,
+                                animationSpec = tween(durationMillis = 200, easing = LinearOutSlowInEasing)
+                            )
+                        }
+                        launch {
+                            animatableScale.animateTo(
+                                targetValue = 1f,
+                                animationSpec = tween(durationMillis = 250, easing = FastOutSlowInEasing)
+                            )
+                        }
+                    }
+
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(1f)
+                            .graphicsLayer {
+                                alpha = animatableAlpha.value
+                                scaleX = animatableScale.value
+                                scaleY = animatableScale.value
+                            }
                             .clip(RoundedCornerShape(20.dp))
                             .combinedClickable(
                                 onClick = { onPostClick(post) },

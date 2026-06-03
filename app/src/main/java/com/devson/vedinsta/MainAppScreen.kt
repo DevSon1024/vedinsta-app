@@ -1,5 +1,6 @@
 package com.devson.vedinsta
 
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.widget.Toast
@@ -23,6 +24,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.Observer
 import androidx.compose.runtime.livedata.observeAsState
+import androidx.graphics.shapes.CornerRounding
+import androidx.graphics.shapes.RoundedPolygon
+import androidx.graphics.shapes.star
 import com.devson.vedinsta.database.DownloadedPost
 import com.devson.vedinsta.ui.*
 import com.devson.vedinsta.viewmodel.*
@@ -33,7 +37,6 @@ import kotlinx.coroutines.Dispatchers
 
 sealed class Screen {
     object Home : Screen()
-    object Downloader : Screen()
     object DownloaderDetails : Screen()
     object History : Screen()
     object Favorites : Screen()
@@ -70,6 +73,9 @@ fun MainAppScreen(
     var showViewSettingsSheet by remember { mutableStateOf(false) }
     val viewSettingsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
+    // Collect extraction state for FAB animation and reactive routing
+    val extractionState by extractionViewModel.extractionState.collectAsState()
+
     LaunchedEffect(currentScreen) {
         if (currentScreen is Screen.Notifications) {
             notificationViewModel.pruneNotifications(settingsViewModel.maxNotificationsLimit)
@@ -86,7 +92,7 @@ fun MainAppScreen(
     }
 
     fun navigateTo(screen: Screen) {
-        if (screen is Screen.Home || screen is Screen.Downloader || screen is Screen.History ||
+        if (screen is Screen.Home || screen is Screen.History ||
             screen is Screen.Favorites || screen is Screen.Sessions ||
             screen is Screen.Settings) {
             screenStack.clear()
@@ -102,6 +108,22 @@ fun MainAppScreen(
         }
     }
 
+    // Clipboard extraction action — invoked from FAB and HomeScreen
+    val onFabAction: () -> Unit = {
+        if (extractionState !is ExtractionState.Loading) {
+            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = clipboard.primaryClip
+            val rawText = clip?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty().trim()
+            val isInstagramUrl = rawText.contains("instagram.com", ignoreCase = true) ||
+                rawText.contains("instagr.am", ignoreCase = true)
+            if (rawText.isNotEmpty() && isInstagramUrl) {
+                extractionViewModel.extractMedia(rawText, authViewModel)
+            } else {
+                Toast.makeText(context, "Please copy an Instagram link first!", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     // Handle system back button
     BackHandler(enabled = currentScreen !is Screen.Home) {
         navigateBack()
@@ -114,17 +136,39 @@ fun MainAppScreen(
             extractionViewModel.extractMedia(url, authViewModel)
             intent?.removeExtra("POST_URL")
             intent?.removeExtra("instagram_url")
-            navigateTo(Screen.Downloader)
+            // Navigation is handled by the reactive extractionState router below
+        }
+    }
+
+    //  Reactive extraction router 
+    LaunchedEffect(extractionState) {
+        when (val state = extractionState) {
+            is ExtractionState.Success -> {
+                val extractedPost = state.extractedPost
+                if (extractedPost.mediaList.size > 1) {
+                    // Multiple items → send to Carousel selection screen
+                    navigateTo(Screen.DownloaderDetails)
+                } else {
+                    // Single item → auto-download immediately, stay on HomeScreen
+                    extractionViewModel.downloadSelected(extractedPost, extractionViewModel.lastExtractedUrl)
+                    Toast.makeText(context, "Download started!", Toast.LENGTH_SHORT).show()
+                    extractionViewModel.reset()
+                }
+            }
+            is ExtractionState.Error -> {
+                Toast.makeText(context, state.message, Toast.LENGTH_LONG).show()
+                extractionViewModel.reset()
+            }
+            else -> { /* Idle / Loading — no routing action needed */ }
         }
     }
 
     Scaffold(
         topBar = {
-            if (currentScreen !is Screen.PostView && currentScreen !is Screen.Login && currentScreen !is Screen.Appearance && currentScreen !is Screen.Downloader && currentScreen !is Screen.DownloaderDetails) {
+            if (currentScreen !is Screen.PostView && currentScreen !is Screen.Login && currentScreen !is Screen.Appearance && currentScreen !is Screen.DownloaderDetails) {
                 VedInstaTopAppBar(
                     title = when(currentScreen) {
                         Screen.Home -> "Home"
-                        Screen.Downloader -> "Downloader"
                         Screen.History -> "History"
                         Screen.Favorites -> "Favorites"
                         Screen.Sessions -> "Sessions"
@@ -211,23 +255,69 @@ fun MainAppScreen(
             }
         },
         floatingActionButton = {
-            if (currentScreen !is Screen.Downloader && currentScreen !is Screen.DownloaderDetails && currentScreen !is Screen.Login && currentScreen !is Screen.PostView && currentScreen !is Screen.Appearance && currentScreen !is Screen.Settings && currentScreen !is Screen.Notifications) {
+            // FAB is only visible on the HomeScreen
+            if (currentScreen is Screen.Home) {
+                val isLoading = extractionState is ExtractionState.Loading
+
+                // Pre-compute the morphing polygon list once — avoids per-frame allocations
+                // and keeps the GPU-driven animation fully smooth at 60/120fps.
+                val loadingPolygons = remember {
+                    listOf(
+                        // 1. Rounded star with 6 points
+                        RoundedPolygon.star(
+                            numVerticesPerRadius = 6,
+                            innerRadius = 0.55f,
+                            rounding = CornerRounding(radius = 0.15f)
+                        ),
+                        // 2. Soft circle (12-sided with heavy rounding → looks circular)
+                        RoundedPolygon(
+                            numVertices = 12,
+                            rounding = CornerRounding(radius = 1f)
+                        ),
+                        // 3. Squircle-like blob (4 vertices, heavy rounding)
+                        RoundedPolygon(
+                            numVertices = 4,
+                            rounding = CornerRounding(radius = 0.5f)
+                        )
+                    )
+                }
+
                 FloatingActionButton(
-                    onClick = { navigateTo(Screen.Downloader) },
-                    containerColor = MaterialTheme.colorScheme.primary,
+                    onClick = { if (!isLoading) onFabAction() },
+                    containerColor = if (isLoading)
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.75f)
+                    else
+                        MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
                     shape = RoundedCornerShape(16.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Download,
-                        contentDescription = "New Download"
-                    )
+                    AnimatedContent(
+                        targetState = isLoading,
+                        transitionSpec = {
+                            fadeIn(tween(220)) togetherWith fadeOut(tween(160))
+                        },
+                        label = "FabContentAnim"
+                    ) { loading ->
+                        if (loading) {
+                            // Material3 Expressive morphing LoadingIndicator
+                            LoadingIndicator(
+                                modifier = Modifier.size(28.dp),
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                polygons = loadingPolygons
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Download,
+                                contentDescription = "Paste & Download"
+                            )
+                        }
+                    }
                 }
             }
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
-        val applyPadding = currentScreen !is Screen.PostView && currentScreen !is Screen.Login && currentScreen !is Screen.Appearance && currentScreen !is Screen.Downloader && currentScreen !is Screen.DownloaderDetails
+        val applyPadding = currentScreen !is Screen.PostView && currentScreen !is Screen.Login && currentScreen !is Screen.Appearance && currentScreen !is Screen.DownloaderDetails
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -264,20 +354,11 @@ fun MainAppScreen(
                     is Screen.Home -> {
                         HomeScreen(
                             mainViewModel = mainViewModel,
-                            onNavigateToDownloader = { navigateTo(Screen.Downloader) },
+                            onFabAction = onFabAction,
                             onNavigateToFavorites = { navigateTo(Screen.Favorites) },
                             onNavigateToHistory = { navigateTo(Screen.History) },
                             onNavigateToSessions = { navigateTo(Screen.Sessions) },
                             onPostClick = { post -> navigateTo(Screen.PostView(post)) }
-                        )
-                    }
-                    is Screen.Downloader -> {
-                        MediaSelectionScreen(
-                            authViewModel = authViewModel,
-                            extractionViewModel = extractionViewModel,
-                            onNavigateToLogin = { navigateTo(Screen.Login) },
-                            onNavigateToDetails = { navigateTo(Screen.DownloaderDetails) },
-                            onNavigateBack = { navigateBack() }
                         )
                     }
                     is Screen.DownloaderDetails -> {
@@ -442,17 +523,16 @@ fun MainAppScreen(
 private fun getScreenOrderValue(screen: Screen): Int {
     return when (screen) {
         is Screen.Home -> 0
-        is Screen.Downloader -> 1
-        is Screen.DownloaderDetails -> 2
-        is Screen.History -> 3
-        is Screen.Favorites -> 4
-        is Screen.Sessions -> 5
-        is Screen.Settings -> 6
-        is Screen.Appearance -> 7
-        is Screen.Notifications -> 8
-        is Screen.About -> 9
-        is Screen.Login -> 10
-        is Screen.PostView -> 11
-        is Screen.PrivacyPolicy -> 12
+        is Screen.DownloaderDetails -> 1
+        is Screen.History -> 2
+        is Screen.Favorites -> 3
+        is Screen.Sessions -> 4
+        is Screen.Settings -> 5
+        is Screen.Appearance -> 6
+        is Screen.Notifications -> 7
+        is Screen.About -> 8
+        is Screen.Login -> 9
+        is Screen.PostView -> 10
+        is Screen.PrivacyPolicy -> 11
     }
 }

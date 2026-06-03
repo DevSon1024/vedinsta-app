@@ -38,7 +38,7 @@ import java.util.Calendar
 @Composable
 fun HomeScreen(
     mainViewModel: MainViewModel,
-    onNavigateToDownloader: () -> Unit,
+    onFabAction: () -> Unit,
     onNavigateToFavorites: () -> Unit,
     onNavigateToHistory: () -> Unit,
     onNavigateToSessions: () -> Unit,
@@ -307,13 +307,19 @@ fun HomeScreen(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Button(
-                        onClick = { onNavigateToDownloader() },
+                        onClick = { onFabAction() },
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primary
                         ),
                         shape = RoundedCornerShape(8.dp)
                     ) {
-                        Text("Paste First Link")
+                        Icon(
+                            imageVector = Icons.Default.ContentPaste,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Paste & Download")
                     }
                 }
             }
