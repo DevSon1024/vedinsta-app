@@ -371,11 +371,25 @@ class VedInstaNotificationManager private constructor(private val context: Conte
         }
     }
 
-    suspend fun addCustomNotification(title: String, message: String, type: NotificationType, priority: NotificationPriority = NotificationPriority.NORMAL) {
+    suspend fun addCustomNotification(
+        title: String,
+        message: String,
+        type: NotificationType,
+        priority: NotificationPriority = NotificationPriority.NORMAL,
+        postId: String? = null,
+        postUrl: String? = null,
+        thumbnailPath: String? = null
+    ) {
         try {
             database.notificationDao().insertNotification(
                 NotificationEntity(
-                    title = title, message = message, type = type, priority = priority
+                    title = title,
+                    message = message,
+                    type = type,
+                    priority = priority,
+                    postId = postId,
+                    postUrl = postUrl,
+                    thumbnailPath = thumbnailPath
                 )
             )
         } catch (e: Exception) {

@@ -48,7 +48,7 @@ class SettingsManager(private val context: Context) {
         set(value) = prefs.edit().putInt("app_theme", value).apply()
 
     var maxNotificationsLimit: Int
-        get() = prefs.getInt("max_notifications_limit", 50)
+        get() = prefs.getInt("max_notifications_limit", 0)
         set(value) = prefs.edit().putInt("max_notifications_limit", value).apply()
 
     fun getImagePathLabel(): String {

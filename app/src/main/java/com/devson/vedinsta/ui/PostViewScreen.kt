@@ -25,6 +25,8 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.automirrored.filled.Launch
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -82,6 +84,8 @@ fun PostViewScreen(
     var showCaptionSheet by remember { mutableStateOf(false) }
     var showShareMenu by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var showMoreOptionsSheet by remember { mutableStateOf(false) }
+    val moreOptionsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     
     val dateString = remember(post.downloadDate) {
         val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
@@ -135,6 +139,7 @@ fun PostViewScreen(
                 .fillMaxSize()
                 .padding(top = paddingValues.calculateTopPadding()) // Pad only for the TopAppBar
                 .background(MaterialTheme.colorScheme.background)
+                .blur(if (showMoreOptionsSheet) 12.dp else 0.dp)
         ) {
             // Media Viewport
             Box(
@@ -316,6 +321,16 @@ fun PostViewScreen(
                                     }
                                 }
                             }
+
+                            // More Options Icon
+                            IconButton(onClick = { showMoreOptionsSheet = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.MoreHoriz,
+                                    contentDescription = "More Options",
+                                    tint = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
                         }
 
                         // Description/Caption indicator button
@@ -486,11 +501,76 @@ fun PostViewScreen(
             }
         }
     }
+
+    // Modal Bottom Sheet for More Options
+    if (showMoreOptionsSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showMoreOptionsSheet = false },
+            sheetState = moreOptionsSheetState,
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "Post Options",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+
+                // Option: Open in Instagram
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            showMoreOptionsSheet = false
+                            val instagramUri = Uri.parse("https://www.instagram.com/p/${post.postId}/")
+                            val intent = Intent(Intent.ACTION_VIEW, instagramUri).apply {
+                                setPackage("com.instagram.android")
+                            }
+                            try {
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                // Fallback to web browser
+                                val webIntent = Intent(Intent.ACTION_VIEW, instagramUri)
+                                context.startActivity(webIntent)
+                            }
+                        }
+                        .padding(vertical = 12.dp, horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Launch,
+                        contentDescription = "Open in Instagram",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text(
+                        text = "Open in Instagram",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+        }
+    }
 }
 
 @Composable
 fun VideoPlayer(file: File) {
-    var isPlaying by remember { mutableStateOf(true) }
+    var isPlaying by remember { mutableStateOf(false) }
     
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         AndroidView(

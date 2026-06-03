@@ -452,11 +452,19 @@ class DownloadService : Service() {
 
                     serviceScope.launch {
                         try {
+                            val completedPaths = batchCompletedFilesMap[postId]
+                            val thumb = completedPaths?.firstOrNull() ?: filePath
+                            val db = com.devson.vedinsta.database.AppDatabase.getDatabase(applicationContext)
+                            val pUrl = db.downloadedPostDao().getPostById(postId)?.postUrl
+
                             notificationManager.addCustomNotification(
                                 title = title,
                                 message = msg,
                                 type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_COMPLETED,
-                                priority = com.devson.vedinsta.database.NotificationPriority.NORMAL
+                                priority = com.devson.vedinsta.database.NotificationPriority.NORMAL,
+                                postId = postId,
+                                postUrl = pUrl,
+                                thumbnailPath = thumb
                             )
                         } catch (e: Exception) {
                             Log.e(TAG, "Failed to insert success batch notification in DB", e)
@@ -478,11 +486,17 @@ class DownloadService : Service() {
 
             serviceScope.launch {
                 try {
+                    val db = com.devson.vedinsta.database.AppDatabase.getDatabase(applicationContext)
+                    val pUrl = db.downloadedPostDao().getPostById(postId ?: fileName)?.postUrl
+
                     notificationManager.addCustomNotification(
                         title = title,
                         message = msg,
                         type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_COMPLETED,
-                        priority = com.devson.vedinsta.database.NotificationPriority.NORMAL
+                        priority = com.devson.vedinsta.database.NotificationPriority.NORMAL,
+                        postId = postId ?: fileName,
+                        postUrl = pUrl,
+                        thumbnailPath = filePath
                     )
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to insert success single notification in DB", e)

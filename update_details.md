@@ -447,3 +447,34 @@
 
 ---
 
+- **Type of Details:** Error Solving & UI Alignment
+- **Description:**
+  1. Resolved the off-center number placement in the notification badge on the Home Screen top app bar in `MainAppScreen.kt`.
+  2. Nested the badge `Box` directly inside the `IconButton` content relative to the 24.dp `Icon` boundaries with a refined offset (`offset(x = 4.dp, y = (-4).dp)`).
+  3. Utilized `CircleShape` and set `includeFontPadding = false` within `PlatformTextStyle` to completely eliminate default Android font padding and center single-digit/badge numbers perfectly.
+  4. Verified the project compiles successfully using `.\gradlew.bat assembleDebug`.
+
+---
+
+- **Type of Details:** New Update & Refactor
+- **Description:**
+  1. Updated the default playing state of the video player in `PostViewScreen.kt` to paused.
+  2. The video will now load in a paused state showing the play overlay button, and will begin playing only when the user taps/clicks the play overlay icon.
+
+---
+
+- **Type of Details:** New Update & Refactor
+- **Description:**
+  1. Relocated Notification Settings to a TopAppBar Tune icon action on the Notifications screen, which opens a bottom sheet with an Unrestricted toggle and limit count slider.
+  2. Integrated media thumbnail previews in completed notifications utilizing Coil `AsyncImage` to load crop-focused previews of local download files.
+  3. Configured direct post-view navigation from notifications list tapping, which resolves the corresponding `DownloadedPost` from the database.
+  4. Added a horizontal three-dots `MoreHoriz` IconButton next to the Share button on the post detail viewer screen.
+  5. Implemented dynamic backdrop blur on the main view container in `PostViewScreen.kt` when the options bottom sheet is visible.
+  6. Added "Open in Instagram" option to launch the official Instagram app targeting the post ID with a safe web browser fallback.
+  7. Resolved compilation deprecation warnings for `Launch` icon by migrating to `Icons.AutoMirrored.Filled.Launch`.
+  8. Verified the project compiles and runs successfully with zero Kotlin compilation errors.
+
+---
+
+
+
