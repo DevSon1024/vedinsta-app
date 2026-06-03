@@ -258,7 +258,7 @@ fun MainAppScreen(
                         )
                     }
                     is Screen.DownloaderDetails -> {
-                        MediaSelectionDetailScreen(
+                        MediaSelectionCarouselScreen(
                             authViewModel = authViewModel,
                             extractionViewModel = extractionViewModel,
                             onNavigateBack = {

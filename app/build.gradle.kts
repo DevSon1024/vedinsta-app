@@ -1,7 +1,6 @@
 import java.io.FileInputStream
 import java.util.Properties
 
-// VedInsta - app/build.gradle.kts
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -9,11 +8,7 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
-// Version constants - single source of truth
-val appVersionCode = 2
-val appVersionName = "1.0.1"
-val appName        = "VedInsta"
-
+val appName = "VedInsta"
 val keystorePropertiesFile = rootProject.file("keystore.properties")
 val keystoreProperties = Properties()
 if (keystorePropertiesFile.exists()) {
@@ -28,34 +23,15 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId          = "com.devson.vedinsta"
-        minSdk                 = 26
-        targetSdk              = 36
-        versionCode            = appVersionCode
-        versionName            = appVersionName
+        applicationId = "com.devson.vedinsta"
+        minSdk = 26
+        targetSdk = 36
+        versionCode = 2
+        versionName = "1.0.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         vectorDrawables {
             useSupportLibrary = true
-        }
-
-        ndk {
-            if (splitApks) {
-                abiFilters.addAll(listOf("arm64-v8a", "x86_64"))
-            } else {
-                abiFilters.add("arm64-v8a")
-            }
-        }
-    }
-
-    if (splitApks) {
-        splits {
-            abi {
-                isEnable = true
-                reset()
-                include("arm64-v8a", "x86_64")
-                isUniversalApk = true
-            }
         }
     }
 
@@ -100,6 +76,14 @@ android {
             applicationIdSuffix = ".debug"
             versionNameSuffix  = "-debug"
             resValue("string", "app_name", "VedInsta Beta")
+        }
+        splits {
+            abi {
+                isEnable = true
+                reset()
+                include("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+                isUniversalApk = true
+            }
         }
     }
 
@@ -154,8 +138,6 @@ android {
     ndkVersion = "27.0.12077973"
 }
 
-
-
 // Dependencies
 dependencies {
     // --- AndroidX Core ---
@@ -178,37 +160,37 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 
-    // --- Room Database ---
+    // Room Database
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
 
-    // --- WorkManager ---
+    // WorkManager
     implementation(libs.androidx.work.runtime.ktx)
 
-    // --- Security (EncryptedSharedPreferences) ---
+    // Security (EncryptedSharedPreferences)
     implementation(libs.androidx.security.crypto)
 
-    // --- App Startup ---
+    // App Startup
     implementation(libs.androidx.startup.runtime)
 
-    // --- Material Components (provides XML Theme.Material3.* for Activity window setup) ---
+    // Material Components (provides XML Theme.Material3.* for Activity window setup)
     implementation(libs.material.components)
 
-    // --- Coil (image + video thumbnails + Compose) ---
+    // Coil (image + video thumbnails + Compose)
     implementation(libs.coil)
     implementation(libs.coil.video)
     implementation(libs.coil.compose)
 
-    // --- Networking ---
+    // Networking
     implementation(libs.okhttp)
     implementation(libs.gson)
     debugImplementation(libs.okhttp.logging)   // only in debug builds
 
-    // --- Coroutines ---
+    // Coroutines
     implementation(libs.kotlinx.coroutines.android)
 
-    // --- Testing ---
+    // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

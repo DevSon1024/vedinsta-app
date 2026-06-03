@@ -42,7 +42,7 @@ import kotlin.math.absoluteValue
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MediaSelectionDetailScreen(
+fun MediaSelectionCarouselScreen(
     authViewModel: InstagramAuthViewModel,
     extractionViewModel: MediaExtractionViewModel,
     onNavigateBack: () -> Unit
