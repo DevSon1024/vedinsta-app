@@ -696,3 +696,13 @@
   6. Verified compilation using `.\gradlew compileDebugKotlin`.
 
 ---
+
+- **Type of Details:** Refactor
+- **Description:**
+  1. Separated the legacy merged `MainAppScreen.kt` file into `Screen.kt` and `NavGraph.kt` under the new `com.devson.vedinsta.ui.navigation` package.
+  2. Moved the `Screen` sealed class and `getScreenOrderValue` mapping to `Screen.kt`.
+  3. Relocated `MainAppScreen` composable host and `NotificationBadge` component to `NavGraph.kt`.
+  4. Updated imports in `MainActivity.kt` to load `MainAppScreen` from the new package.
+  5. Verified compilation using `.\gradlew compileDebugKotlin`.
+
+---

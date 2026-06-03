@@ -1,4 +1,4 @@
-package com.devson.vedinsta
+package com.devson.vedinsta.ui.navigation
 
 import android.content.ClipboardManager
 import android.content.Context
@@ -21,8 +21,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.Observer
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.graphics.shapes.CornerRounding
 import androidx.graphics.shapes.RoundedPolygon
@@ -32,24 +30,9 @@ import com.devson.vedinsta.ui.*
 import com.devson.vedinsta.viewmodel.*
 import java.io.File
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 
-sealed class Screen {
-    object Home : Screen()
-    object DownloaderDetails : Screen()
-    object History : Screen()
-    object Favorites : Screen()
-    object Sessions : Screen()
-    object Settings : Screen()
-    object Appearance : Screen()
-    data class PostView(val post: DownloadedPost) : Screen()
-    object About : Screen()
-    object Notifications : Screen()
-    object Login : Screen()
-    object PrivacyPolicy : Screen()
-}
-
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainAppScreen(
     authViewModel: InstagramAuthViewModel,
@@ -484,24 +467,6 @@ fun MainAppScreen(
             },
             onDismissRequest = { showViewSettingsSheet = false }
         )
-    }
-
-}
-
-private fun getScreenOrderValue(screen: Screen): Int {
-    return when (screen) {
-        is Screen.Home -> 0
-        is Screen.DownloaderDetails -> 1
-        is Screen.History -> 2
-        is Screen.Favorites -> 3
-        is Screen.Sessions -> 4
-        is Screen.Settings -> 5
-        is Screen.Appearance -> 6
-        is Screen.Notifications -> 7
-        is Screen.About -> 8
-        is Screen.Login -> 9
-        is Screen.PostView -> 10
-        is Screen.PrivacyPolicy -> 11
     }
 }
 

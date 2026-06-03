@@ -11,6 +11,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import com.devson.vedinsta.ui.theme.NosvedPlayerTheme
+import com.devson.vedinsta.ui.navigation.MainAppScreen
 import com.devson.vedinsta.viewmodel.InstagramAuthViewModel
 import com.devson.vedinsta.viewmodel.MainViewModel
 import com.devson.vedinsta.viewmodel.MediaExtractionViewModel
