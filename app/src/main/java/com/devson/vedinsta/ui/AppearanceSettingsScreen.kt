@@ -26,6 +26,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,11 +48,11 @@ fun AppearanceSettingsScreen(
     onNavigateBack: () -> Unit,
     settingsViewModel: SettingsViewModel
 ) {
-    val isDark        by settingsViewModel.isDarkTheme.collectAsState()
-    val dynamicColor  by settingsViewModel.dynamicColor.collectAsState()
-    val selectedPalette by settingsViewModel.selectedPalette.collectAsState()
-    val navBarTransparent by settingsViewModel.isNavBarTransparent.collectAsState()
-    val isAmoledTheme by settingsViewModel.isAmoledTheme.collectAsState()
+    val isDark        by settingsViewModel.isDarkTheme.collectAsStateWithLifecycle()
+    val dynamicColor  by settingsViewModel.dynamicColor.collectAsStateWithLifecycle()
+    val selectedPalette by settingsViewModel.selectedPalette.collectAsStateWithLifecycle()
+    val navBarTransparent by settingsViewModel.isNavBarTransparent.collectAsStateWithLifecycle()
+    val isAmoledTheme by settingsViewModel.isAmoledTheme.collectAsStateWithLifecycle()
     val isEffectivelyDark = isDark ?: isSystemInDarkTheme()
 
     Scaffold(

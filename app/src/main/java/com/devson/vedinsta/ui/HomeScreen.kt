@@ -343,8 +343,9 @@ fun HomeScreen(
                     ) {
                         Box(modifier = Modifier.fillMaxSize()) {
                             // Thumbnail Image
-                            AsyncImage(
-                                model = ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+                            val context = androidx.compose.ui.platform.LocalContext.current
+                            val imageRequest = remember(post.thumbnailPath) {
+                                ImageRequest.Builder(context)
                                     .data(if (post.thumbnailPath.isNotEmpty()) File(post.thumbnailPath) else null)
                                     .size(300, 300)
                                     .crossfade(true)
@@ -353,7 +354,10 @@ fun HomeScreen(
                                     .memoryCacheKey(post.thumbnailPath)
                                     .diskCacheKey(post.thumbnailPath)
                                     .error(android.R.drawable.ic_menu_report_image)
-                                    .build(),
+                                    .build()
+                            }
+                            AsyncImage(
+                                model = imageRequest,
                                 contentDescription = "Post Thumbnail",
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop

@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import coil.compose.AsyncImage
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.request.CachePolicy
 import coil.request.ImageRequest
 import com.devson.vedinsta.viewmodel.ExtractionState
@@ -49,9 +50,9 @@ fun MediaSelectionCarouselScreen(
     onNavigateToNotifications: () -> Unit
 ) {
     val context = LocalContext.current
-    val extractionState by extractionViewModel.extractionState.collectAsState()
-    val selectedIndexes by extractionViewModel.selectedIndexes.collectAsState()
-    val chosenQualities by extractionViewModel.chosenQualities.collectAsState()
+    val extractionState by extractionViewModel.extractionState.collectAsStateWithLifecycle()
+    val selectedIndexes by extractionViewModel.selectedIndexes.collectAsStateWithLifecycle()
+    val chosenQualities by extractionViewModel.chosenQualities.collectAsStateWithLifecycle()
 
     val localPaths by produceState<List<String>>(initialValue = emptyList(), extractionState) {
         value = if (extractionState is ExtractionState.Success) {
@@ -232,12 +233,16 @@ fun MediaSelectionCarouselScreen(
                                 }
                             }
 
-                            AsyncImage(
-                                model = ImageRequest.Builder(LocalContext.current)
+                            val context = LocalContext.current
+                            val imageRequest = remember(localFile, previewUrl) {
+                                ImageRequest.Builder(context)
                                     .data(localFile ?: previewUrl)
                                     .diskCachePolicy(CachePolicy.ENABLED)
                                     .memoryCachePolicy(CachePolicy.ENABLED)
-                                    .build(),
+                                    .build()
+                            }
+                            AsyncImage(
+                                model = imageRequest,
                                 contentDescription = "Media Preview",
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop

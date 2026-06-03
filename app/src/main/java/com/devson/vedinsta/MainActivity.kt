@@ -7,7 +7,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import com.devson.vedinsta.ui.theme.NosvedPlayerTheme
@@ -40,11 +40,11 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            val isDark by settingsViewModel.isDarkTheme.collectAsState()
-            val dynamicColor by settingsViewModel.dynamicColor.collectAsState()
-            val selectedPalette by settingsViewModel.selectedPalette.collectAsState()
-            val navBarTransparent by settingsViewModel.isNavBarTransparent.collectAsState()
-            val isAmoledTheme by settingsViewModel.isAmoledTheme.collectAsState()
+            val isDark by settingsViewModel.isDarkTheme.collectAsStateWithLifecycle()
+            val dynamicColor by settingsViewModel.dynamicColor.collectAsStateWithLifecycle()
+            val selectedPalette by settingsViewModel.selectedPalette.collectAsStateWithLifecycle()
+            val navBarTransparent by settingsViewModel.isNavBarTransparent.collectAsStateWithLifecycle()
+            val isAmoledTheme by settingsViewModel.isAmoledTheme.collectAsStateWithLifecycle()
 
             NosvedPlayerTheme(
                 forceDark = isDark,

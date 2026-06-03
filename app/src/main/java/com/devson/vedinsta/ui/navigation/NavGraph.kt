@@ -22,6 +22,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.graphics.shapes.CornerRounding
 import androidx.graphics.shapes.RoundedPolygon
 import androidx.graphics.shapes.star
@@ -47,6 +49,7 @@ fun MainAppScreen(
     val screenStack = remember { mutableStateListOf<Screen>(Screen.Home) }
     val currentScreen = screenStack.last()
     val scope = rememberCoroutineScope()
+    val saveableStateHolder = rememberSaveableStateHolder()
 
     var gridColumnCount by remember { mutableStateOf(settingsViewModel.gridColumnCount) }
     var isListView by remember { mutableStateOf(settingsViewModel.isListView) }
@@ -54,7 +57,7 @@ fun MainAppScreen(
     val viewSettingsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     // Collect extraction state for FAB animation and reactive routing
-    val extractionState by extractionViewModel.extractionState.collectAsState()
+    val extractionState by extractionViewModel.extractionState.collectAsStateWithLifecycle()
 
     LaunchedEffect(currentScreen) {
         if (currentScreen is Screen.Notifications) {
@@ -63,7 +66,7 @@ fun MainAppScreen(
     }
 
     // Local states for Favorites tracking using SharedPreferences via SettingsViewModel
-    val favoritePostIds by mainViewModel.favoritePostIds.collectAsState()
+    val favoritePostIds by mainViewModel.favoritePostIds.collectAsStateWithLifecycle()
     val isFavoriteHelper = { postId: String -> favoritePostIds.contains(postId) }
     val toggleFavoriteHelper: (String) -> Unit = { postId ->
         mainViewModel.toggleFavorite(postId)
@@ -300,149 +303,151 @@ fun MainAppScreen(
                 label = "ScreenTransition",
                 modifier = Modifier.fillMaxSize()
             ) { targetScreen ->
-                when (targetScreen) {
-                    is Screen.Home -> {
-                        HomeScreen(
-                            mainViewModel = mainViewModel,
-                            onFabAction = onFabAction,
-                            onNavigateToFavorites = { navigateTo(Screen.Favorites) },
-                            onNavigateToHistory = { navigateTo(Screen.History) },
-                            onNavigateToSessions = { navigateTo(Screen.Sessions) },
-                            onPostClick = { post -> navigateTo(Screen.PostView(post)) }
-                        )
-                    }
-                    is Screen.DownloaderDetails -> {
-                        MediaSelectionCarouselScreen(
-                            authViewModel = authViewModel,
-                            extractionViewModel = extractionViewModel,
-                            onNavigateBack = {
-                                extractionViewModel.reset()
-                                navigateBack()
-                            },
-                            onNavigateToNotifications = {
-                                extractionViewModel.reset()
-                                if (screenStack.lastOrNull() == Screen.DownloaderDetails) {
-                                    screenStack.removeAt(screenStack.lastIndex)
+                saveableStateHolder.SaveableStateProvider(targetScreen::class.java.name) {
+                    when (targetScreen) {
+                        is Screen.Home -> {
+                            HomeScreen(
+                                mainViewModel = mainViewModel,
+                                onFabAction = onFabAction,
+                                onNavigateToFavorites = { navigateTo(Screen.Favorites) },
+                                onNavigateToHistory = { navigateTo(Screen.History) },
+                                onNavigateToSessions = { navigateTo(Screen.Sessions) },
+                                onPostClick = { post -> navigateTo(Screen.PostView(post)) }
+                            )
+                        }
+                        is Screen.DownloaderDetails -> {
+                            MediaSelectionCarouselScreen(
+                                authViewModel = authViewModel,
+                                extractionViewModel = extractionViewModel,
+                                onNavigateBack = {
+                                    extractionViewModel.reset()
+                                    navigateBack()
+                                },
+                                onNavigateToNotifications = {
+                                    extractionViewModel.reset()
+                                    if (screenStack.lastOrNull() == Screen.DownloaderDetails) {
+                                        screenStack.removeAt(screenStack.lastIndex)
+                                    }
+                                    notificationViewModel.markAllAsRead()
+                                    navigateTo(Screen.Notifications)
                                 }
-                                notificationViewModel.markAllAsRead()
-                                navigateTo(Screen.Notifications)
-                            }
-                        )
-                    }
-                    is Screen.History -> {
-                        HistoryScreen(
-                            mainViewModel = mainViewModel,
-                            gridColumnCount = gridColumnCount,
-                            onGridColumnsChanged = { cols ->
-                                gridColumnCount = cols
-                                scope.launch(Dispatchers.IO) {
-                                    settingsViewModel.gridColumnCount = cols
+                            )
+                        }
+                        is Screen.History -> {
+                            HistoryScreen(
+                                mainViewModel = mainViewModel,
+                                gridColumnCount = gridColumnCount,
+                                onGridColumnsChanged = { cols ->
+                                    gridColumnCount = cols
+                                    scope.launch(Dispatchers.IO) {
+                                        settingsViewModel.gridColumnCount = cols
+                                    }
+                                },
+                                isListView = isListView,
+                                onListViewChanged = { listMode ->
+                                    settingsViewModel.isListView = listMode
+                                    isListView = listMode
+                                },
+                                isFavorite = isFavoriteHelper,
+                                onToggleFavorite = toggleFavoriteHelper,
+                                onPostClick = { post -> navigateTo(Screen.PostView(post)) }
+                            )
+                        }
+                        is Screen.Favorites -> {
+                            FavoritesScreen(
+                                mainViewModel = mainViewModel,
+                                gridColumnCount = gridColumnCount,
+                                onGridColumnsChanged = { cols ->
+                                    gridColumnCount = cols
+                                    scope.launch(Dispatchers.IO) {
+                                        settingsViewModel.gridColumnCount = cols
+                                    }
+                                },
+                                isListView = isListView,
+                                onListViewChanged = { listMode ->
+                                    settingsViewModel.isListView = listMode
+                                    isListView = listMode
+                                },
+                                isFavorite = isFavoriteHelper,
+                                onToggleFavorite = toggleFavoriteHelper,
+                                onPostClick = { post -> navigateTo(Screen.PostView(post)) }
+                            )
+                        }
+                        is Screen.Sessions -> {
+                            SessionsScreen(
+                                authViewModel = authViewModel,
+                                onNavigateToLogin = { navigateTo(Screen.Login) }
+                            )
+                        }
+                        is Screen.Login -> {
+                            InstagramLoginScreen(
+                                authViewModel = authViewModel,
+                                onBackClick = { navigateBack() }
+                            )
+                            // Navigate back automatically on login completion
+                            val authState by authViewModel.authState.collectAsStateWithLifecycle()
+                            LaunchedEffect(authState) {
+                                if (authState is InstagramAuthState.LoggedIn) {
+                                    navigateBack()
                                 }
-                            },
-                            isListView = isListView,
-                            onListViewChanged = { listMode ->
-                                settingsViewModel.isListView = listMode
-                                isListView = listMode
-                            },
-                            isFavorite = isFavoriteHelper,
-                            onToggleFavorite = toggleFavoriteHelper,
-                            onPostClick = { post -> navigateTo(Screen.PostView(post)) }
-                        )
-                    }
-                    is Screen.Favorites -> {
-                        FavoritesScreen(
-                            mainViewModel = mainViewModel,
-                            gridColumnCount = gridColumnCount,
-                            onGridColumnsChanged = { cols ->
-                                gridColumnCount = cols
-                                scope.launch(Dispatchers.IO) {
-                                    settingsViewModel.gridColumnCount = cols
-                                }
-                            },
-                            isListView = isListView,
-                            onListViewChanged = { listMode ->
-                                settingsViewModel.isListView = listMode
-                                isListView = listMode
-                            },
-                            isFavorite = isFavoriteHelper,
-                            onToggleFavorite = toggleFavoriteHelper,
-                            onPostClick = { post -> navigateTo(Screen.PostView(post)) }
-                        )
-                    }
-                    is Screen.Sessions -> {
-                        SessionsScreen(
-                            authViewModel = authViewModel,
-                            onNavigateToLogin = { navigateTo(Screen.Login) }
-                        )
-                    }
-                    is Screen.Login -> {
-                        InstagramLoginScreen(
-                            authViewModel = authViewModel,
-                            onBackClick = { navigateBack() }
-                        )
-                        // Navigate back automatically on login completion
-                        val authState by authViewModel.authState.collectAsState()
-                        LaunchedEffect(authState) {
-                            if (authState is InstagramAuthState.LoggedIn) {
-                                navigateBack()
                             }
                         }
-                    }
-                    is Screen.Settings -> {
-                        SettingsScreen(
-                            settingsViewModel = settingsViewModel,
-                            onNavigateToAbout = { navigateTo(Screen.About) },
-                            onNavigateToAppearance = { navigateTo(Screen.Appearance) },
-                            onNavigateToPrivacyPolicy = { navigateTo(Screen.PrivacyPolicy) },
-                            onThemeChanged = onThemeChanged
-                        )
-                    }
-                    is Screen.Appearance -> {
-                        AppearanceSettingsScreen(
-                            onNavigateBack = { navigateBack() },
-                            settingsViewModel = settingsViewModel
-                        )
-                    }
-                    is Screen.About -> {
-                        AboutScreen()
-                    }
-                    is Screen.PrivacyPolicy -> {
-                        PrivacyPolicyScreen()
-                    }
-                    is Screen.Notifications -> {
-                        val notifications by notificationViewModel.allNotifications.observeAsState(emptyList())
-                        NotificationsScreen(
-                            notifications = notifications,
-                            onNotificationClick = { notification ->
-                                notificationViewModel.markAsRead(notification.id)
-                                if (notification.type == com.devson.vedinsta.database.NotificationType.DOWNLOAD_COMPLETED && notification.postId != null) {
-                                    scope.launch {
-                                        val post = mainViewModel.getPostById(notification.postId)
-                                        if (post != null) {
-                                            navigateTo(Screen.PostView(post))
-                                        } else {
-                                            Toast.makeText(context, "Post files were deleted or moved", Toast.LENGTH_SHORT).show()
+                        is Screen.Settings -> {
+                            SettingsScreen(
+                                settingsViewModel = settingsViewModel,
+                                onNavigateToAbout = { navigateTo(Screen.About) },
+                                onNavigateToAppearance = { navigateTo(Screen.Appearance) },
+                                onNavigateToPrivacyPolicy = { navigateTo(Screen.PrivacyPolicy) },
+                                onThemeChanged = onThemeChanged
+                            )
+                        }
+                        is Screen.Appearance -> {
+                            AppearanceSettingsScreen(
+                                onNavigateBack = { navigateBack() },
+                                settingsViewModel = settingsViewModel
+                            )
+                        }
+                        is Screen.About -> {
+                            AboutScreen()
+                        }
+                        is Screen.PrivacyPolicy -> {
+                            PrivacyPolicyScreen()
+                        }
+                        is Screen.Notifications -> {
+                            val notifications by notificationViewModel.allNotifications.observeAsState(emptyList())
+                            NotificationsScreen(
+                                notifications = notifications,
+                                onNotificationClick = { notification ->
+                                    notificationViewModel.markAsRead(notification.id)
+                                    if (notification.type == com.devson.vedinsta.database.NotificationType.DOWNLOAD_COMPLETED && notification.postId != null) {
+                                        scope.launch {
+                                            val post = mainViewModel.getPostById(notification.postId)
+                                            if (post != null) {
+                                                navigateTo(Screen.PostView(post))
+                                            } else {
+                                                Toast.makeText(context, "Post files were deleted or moved", Toast.LENGTH_SHORT).show()
+                                            }
                                         }
                                     }
+                                },
+                                onDeleteClick = { id -> notificationViewModel.deleteNotification(id) },
+                                settingsViewModel = settingsViewModel,
+                                notificationViewModel = notificationViewModel
+                            )
+                        }
+                        is Screen.PostView -> {
+                            PostViewScreen(
+                                post = targetScreen.post,
+                                isFavorite = isFavoriteHelper,
+                                onToggleFavorite = toggleFavoriteHelper,
+                                onBackClick = { navigateBack() },
+                                onDeletePost = { post ->
+                                    mainViewModel.deleteDownloadedPost(post)
+                                    Toast.makeText(context, "Post deleted", Toast.LENGTH_SHORT).show()
+                                    navigateBack()
                                 }
-                            },
-                            onDeleteClick = { id -> notificationViewModel.deleteNotification(id) },
-                            settingsViewModel = settingsViewModel,
-                            notificationViewModel = notificationViewModel
-                        )
-                    }
-                    is Screen.PostView -> {
-                        PostViewScreen(
-                            post = targetScreen.post,
-                            isFavorite = isFavoriteHelper,
-                            onToggleFavorite = toggleFavoriteHelper,
-                            onBackClick = { navigateBack() },
-                            onDeletePost = { post ->
-                                mainViewModel.deleteDownloadedPost(post)
-                                Toast.makeText(context, "Post deleted", Toast.LENGTH_SHORT).show()
-                                navigateBack()
-                            }
-                        )
+                            )
+                        }
                     }
                 }
             }

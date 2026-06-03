@@ -399,8 +399,9 @@ fun HistoryListCard(
                     .size(76.dp)
                     .clip(RoundedCornerShape(8.dp))
             ) {
-                AsyncImage(
-                    model = ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+                val context = androidx.compose.ui.platform.LocalContext.current
+                val imageRequest = remember(post.thumbnailPath) {
+                    ImageRequest.Builder(context)
                         .data(if (post.thumbnailPath.isNotEmpty()) File(post.thumbnailPath) else null)
                         .size(300, 300)
                         .crossfade(true)
@@ -410,7 +411,10 @@ fun HistoryListCard(
                         .diskCacheKey(post.thumbnailPath)
                         .error(android.R.drawable.ic_menu_report_image)
                         .fallback(android.R.drawable.ic_menu_report_image)
-                        .build(),
+                        .build()
+                }
+                AsyncImage(
+                    model = imageRequest,
                     contentDescription = "Post Thumbnail",
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
@@ -520,8 +524,9 @@ fun HistoryGridCard(
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             // Thumbnail
-            AsyncImage(
-                model = ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val imageRequest = remember(post.thumbnailPath) {
+                ImageRequest.Builder(context)
                     .data(if (post.thumbnailPath.isNotEmpty()) File(post.thumbnailPath) else null)
                     .size(300, 300)
                     .crossfade(true)
@@ -531,7 +536,10 @@ fun HistoryGridCard(
                     .diskCacheKey(post.thumbnailPath)
                     .error(android.R.drawable.ic_menu_report_image)
                     .fallback(android.R.drawable.ic_menu_report_image)
-                    .build(),
+                    .build()
+            }
+            AsyncImage(
+                model = imageRequest,
                 contentDescription = "Post Thumbnail",
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop

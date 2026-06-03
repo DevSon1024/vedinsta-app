@@ -299,13 +299,17 @@ fun PostViewScreen(
                                     isCurrentPage = pagerState.currentPage == page
                                 )
                             } else {
-                                AsyncImage(
-                                    model = ImageRequest.Builder(LocalContext.current)
+                                val context = LocalContext.current
+                                val imageRequest = remember(file) {
+                                    ImageRequest.Builder(context)
                                         .data(file)
                                         .diskCachePolicy(CachePolicy.DISABLED)
                                         .memoryCachePolicy(CachePolicy.ENABLED)
                                         .crossfade(true)
-                                        .build(),
+                                        .build()
+                                }
+                                AsyncImage(
+                                    model = imageRequest,
                                     contentDescription = "Post Media",
                                     modifier = Modifier.fillMaxSize(),
                                     contentScale = ContentScale.Fit

@@ -47,6 +47,7 @@ androidx-activity-compose         = { group = "androidx.activity",       name = 
 androidx-lifecycle-runtime-ktx    = { group = "androidx.lifecycle",      name = "lifecycle-runtime-ktx",   version.ref = "lifecycleRuntimeKtx" }
 androidx-lifecycle-viewmodel-ktx  = { group = "androidx.lifecycle",      name = "lifecycle-viewmodel-ktx", version.ref = "lifecycleVm" }
 androidx-lifecycle-livedata-ktx   = { group = "androidx.lifecycle",      name = "lifecycle-livedata-ktx",  version.ref = "lifecycleVm" }
+androidx-lifecycle-runtime-compose = { group = "androidx.lifecycle",      name = "lifecycle-runtime-compose", version.ref = "lifecycleRuntimeKtx" }
 androidx-documentfile             = { group = "androidx.documentfile",   name = "documentfile",            version.ref = "documentfile" }
 
 # Room

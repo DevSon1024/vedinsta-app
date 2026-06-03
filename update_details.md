@@ -1,3 +1,13 @@
+- **Type of Details:** Performance Improvement & Refactor
+- **Description:**
+  1. Implemented state preservation across custom navigation transitions in `NavGraph.kt` using `SaveableStateHolder.SaveableStateProvider`, resolving scroll-state amnesia.
+  2. Eliminated inline Coil `ImageRequest` allocations inside scrollable lists/pagers in `HomeScreen.kt`, `HistoryScreen.kt`, `NotificationsScreen.kt`, `MediaSelectionCarouselScreen.kt`, and `PostViewScreen.kt` by hoisting them into `remember` blocks tied to the media/thumbnail paths.
+  3. Added the `androidx.lifecycle:lifecycle-runtime-compose` dependency to `libs.versions.toml` and `app/build.gradle.kts`.
+  4. Migrated Flow collections across the UI layer (`MainActivity.kt`, `NavGraph.kt`, `SessionsScreen.kt`, `MediaSelectionScreen.kt`, `MediaSelectionCarouselScreen.kt`, and `AppearanceSettingsScreen.kt`) from `.collectAsState()` to lifecycle-aware `.collectAsStateWithLifecycle()` to prevent background state leakage.
+  5. Verified the project compiles successfully using `.\gradlew compileDebugKotlin`.
+
+---
+
 - **Type of Details:** Error Solving & Refactor
 - **Description:**
   1. Fixed the silent "zombie download" bug in DownloadService.kt (downloadFile) by adding standard coroutine cancellation checks (!currentCoroutineContext().isActive) inside the download stream file writing loop, allowing downloads to abort cleanly and discard partially downloaded files.

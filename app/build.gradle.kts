@@ -26,8 +26,8 @@ android {
         applicationId = "com.devson.vedinsta"
         minSdk = 26
         targetSdk = 36
-        versionCode = 4 
-        versionName = "1.0.4"
+        versionCode = 5
+        versionName = "1.0.5"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         vectorDrawables {
@@ -150,6 +150,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
     implementation(libs.androidx.lifecycle.livedata.ktx)
+    implementation(libs.androidx.lifecycle.runtime.compose)
 
     // --- Jetpack Compose (BOM aligns all Compose versions) ---
     implementation(platform(libs.androidx.compose.bom))

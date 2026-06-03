@@ -120,11 +120,15 @@ fun NotificationsScreen(
                             if (!item.thumbnailPath.isNullOrBlank()) {
                                 val f = File(item.thumbnailPath)
                                 if (f.exists() && f.canRead()) {
-                                    AsyncImage(
-                                        model = ImageRequest.Builder(LocalContext.current)
+                                    val context = LocalContext.current
+                                    val imageRequest = remember(item.thumbnailPath) {
+                                        ImageRequest.Builder(context)
                                             .data(f)
                                             .crossfade(true)
-                                            .build(),
+                                            .build()
+                                    }
+                                    AsyncImage(
+                                        model = imageRequest,
                                         contentDescription = "Preview",
                                         modifier = Modifier
                                             .size(48.dp)
