@@ -160,16 +160,24 @@ class VedInstaNotificationManager private constructor(private val context: Conte
 
     fun showBatchDownloadComplete(totalFiles: Int) {
         cancelBatchDownloadNotification()
-        showDownloadCompleted("Download Complete", "Saved $totalFiles file(s)")
+        showDownloadCompleted(NOTIFICATION_ID_BATCH_DOWNLOAD, "Download Complete", "Saved $totalFiles file(s)")
     }
 
     fun showDownloadCompleted(fileName: String, totalFiles: Int, postUrl: String? = null, filePaths: List<String> = emptyList()) {
         val countText = if (totalFiles > 1) "$totalFiles files saved" else "File saved to gallery"
-        showDownloadCompleted("Download Complete", countText)
+        showDownloadCompleted(System.currentTimeMillis().toInt(), "Download Complete", countText)
+    }
+
+    fun showDownloadCompleted(notificationId: Int, fileName: String, totalFiles: Int) {
+        val countText = if (totalFiles > 1) "$totalFiles files saved" else "File saved to gallery"
+        showDownloadCompleted(notificationId, "Download Complete", countText)
     }
 
     fun showDownloadCompleted(title: String, message: String) {
-        val notificationId = System.currentTimeMillis().toInt()
+        showDownloadCompleted(System.currentTimeMillis().toInt(), title, message)
+    }
+
+    fun showDownloadCompleted(notificationId: Int, title: String, message: String) {
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
@@ -217,6 +225,7 @@ class VedInstaNotificationManager private constructor(private val context: Conte
             .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
+            .setTimeoutAfter(3000) // Auto-vanish after 3 seconds
             .build()
 
         notify(notificationId, notification)
@@ -254,7 +263,7 @@ class VedInstaNotificationManager private constructor(private val context: Conte
 
         // ALERT CHANNEL (Heads-up)
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_ALERT)
-            .setSmallIcon(R.drawable.ic_multiple_images)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
             .setContentTitle("Found $itemCount items")
             .setContentText("Tap to Select or Download All")
             .setPriority(NotificationCompat.PRIORITY_HIGH) // Popup
@@ -317,7 +326,10 @@ class VedInstaNotificationManager private constructor(private val context: Conte
     }
 
     fun showDownloadError(fileName: String, error: String, postUrl: String? = null) {
-        val notificationId = System.currentTimeMillis().toInt()
+        showDownloadError(System.currentTimeMillis().toInt(), fileName, error, postUrl)
+    }
+
+    fun showDownloadError(notificationId: Int, fileName: String, error: String, postUrl: String? = null) {
         val intent = Intent(context, MainActivity::class.java)
         val pendingIntent: PendingIntent = PendingIntent.getActivity(
             context, notificationId, intent, pendingIntentFlags
@@ -394,6 +406,43 @@ class VedInstaNotificationManager private constructor(private val context: Conte
             )
         } catch (e: Exception) {
             Log.e(TAG, "Error adding custom notification to DB", e)
+        }
+    }
+
+    suspend fun updateProgressInDb(postId: String?, username: String?, progressText: String) {
+        if (postId == null) return
+        try {
+            val dao = database.notificationDao()
+            val existing = dao.getNotificationByPostIdAndType(postId, NotificationType.DOWNLOAD_PROGRESS)
+            val title = if (username != null) "Downloading from @$username" else "Downloading Media"
+            val message = progressText
+            
+            if (existing != null) {
+                dao.updateNotification(existing.copy(
+                    message = message,
+                    timestamp = System.currentTimeMillis()
+                ))
+            } else {
+                dao.insertNotification(NotificationEntity(
+                    title = title,
+                    message = message,
+                    type = NotificationType.DOWNLOAD_PROGRESS,
+                    postId = postId,
+                    timestamp = System.currentTimeMillis()
+                ))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating progress in DB", e)
+        }
+    }
+
+    suspend fun removeProgressFromDb(postId: String?) {
+        if (postId == null) return
+        try {
+            val dao = database.notificationDao()
+            dao.deleteNotificationByPostIdAndType(postId, NotificationType.DOWNLOAD_PROGRESS)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error removing progress from DB", e)
         }
     }
 

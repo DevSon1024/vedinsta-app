@@ -555,3 +555,34 @@
   5. Verified successful build and compilation via Gradle (`assembleDebug` and `compileDebugKotlin` SUCCESS).
 
 ---
+
+- **Type of Details:** Refactor & New Update
+- **Description:**
+  1. Auto-dismissed the "Download Started" heads-up notification in `VedInstaNotificationManager.kt` after 3 seconds instead of leaving it in the status bar drawer.
+  2. Implemented dynamic notification ID reusing (using `postId.hashCode()` or `notificationId`) in `DownloadService.kt` and `VedInstaApplication.kt` observers so progress notifications seamlessly morph into completed/error states at the exact same tray slot.
+  3. Added in-app progress updates and cleanups in the local database (`updateProgressInDb` and `removeProgressFromDb`) during WorkManager single and batch download progress monitoring.
+  4. Tagged shared batch download cards with `postId`, `postUrl`, and `thumbnailPath` during DB notification insertion inside `VedInstaApplication.kt` to support media preview rendering and click routing to `PostViewScreen`.
+  5. Commented out intermediate `SYSTEM_INFO` ("Shared Link Processed") and `DOWNLOAD_STARTED` ("Shared Link Batch Download") database notifications in `SharedLinkProcessingService.kt` to prevent cluttering the in-app `NotificationScreen`.
+  6. Verified the project compiles successfully using `.\gradlew.bat compileDebugKotlin` and `.\gradlew.bat assembleDebug` with zero errors.
+
+---
+
+- **Type of Details:** Performance Improvement & ANR Solving
+- **Description:**
+  1. Refactored `PostViewScreen.kt` to load media and video aspect ratios asynchronously using `withContext(Dispatchers.IO)` inside `LaunchedEffect` triggers, removing synchronous `MediaMetadataRetriever` and `BitmapFactory` calls from Compose layout/draw passes.
+  2. Implemented asynchronous `MediaPlayer` release helper in `VideoPlayer` component inside `PostViewScreen.kt` using `CoroutineScope(Dispatchers.IO).launch` to prevent native player release calls from stalling the Choreographer frame (eliminating Davey rendering freezes).
+  3. Converted `getImagePathLabel` and `getVideoPathLabel` in `SettingsViewModel.kt` to suspend functions offloaded to `Dispatchers.IO`.
+  4. Refactored `SettingsScreen.kt` to load save folder name labels asynchronously inside a `LaunchedEffect` coroutine instead of executing synchronous `DocumentFile` queries on the main thread during composition.
+  5. Moved application startup cache exists check inside `clearAppCache` in `VedInstaApplication.kt` entirely to background coroutines (`Dispatchers.IO`), removing all synchronous I/O operations from application cold start `onCreate()`.
+  6. Verified the project compiles successfully using `.\gradlew.bat compileDebugKotlin` and `.\gradlew.bat assembleDebug` with zero errors.
+
+---
+
+- **Type of Details:** Refactor & UX/UI Improvement
+- **Description:**
+  1. Commented out database notification entry for `"Shared Link Auto-Download"` in `SharedLinkProcessingService.kt` to suppress duplicate cards in the in-app `NotificationsScreen` during single shared downloads.
+  2. Implemented dynamic file type check in `DownloadService.kt` and `VedInstaApplication.kt` (resolving endsWith `.mp4`/`.mov`/`.avi`) to categorize single files into `"reel"` (for videos) or `"post"` (for images) inside success notifications.
+  3. Replaced `"Saved {fileName} from @username"` with `"Saved reel/post from @username"` for all single downloads.
+  4. Verified the project compiles successfully using `.\gradlew.bat compileDebugKotlin` and `.\gradlew.bat assembleDebug` with zero errors.
+
+---

@@ -11,6 +11,7 @@ import com.devson.vedinsta.ui.theme.AppThemePaletteHelper
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.withContext
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -58,14 +59,14 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         get() = prefs.getInt("max_notifications_limit", 0)
         set(value) = prefs.edit().putInt("max_notifications_limit", value).apply()
 
-    fun getImagePathLabel(): String {
-        return imageDirectoryUri?.let { uriString ->
+    suspend fun getImagePathLabel(): String = withContext(kotlinx.coroutines.Dispatchers.IO) {
+        imageDirectoryUri?.let { uriString ->
             DocumentFile.fromTreeUri(getApplication(), Uri.parse(uriString))?.name
         } ?: "Default: Pictures/VedInsta/"
     }
 
-    fun getVideoPathLabel(): String {
-        return videoDirectoryUri?.let { uriString ->
+    suspend fun getVideoPathLabel(): String = withContext(kotlinx.coroutines.Dispatchers.IO) {
+        videoDirectoryUri?.let { uriString ->
             DocumentFile.fromTreeUri(getApplication(), Uri.parse(uriString))?.name
         } ?: "Default: Movies/VedInsta/"
     }

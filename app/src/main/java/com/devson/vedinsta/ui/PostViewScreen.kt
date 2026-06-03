@@ -23,6 +23,9 @@ import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -112,43 +115,47 @@ fun PostViewScreen(
         post.mediaPaths.map { File(it) }.filter { it.exists() && it.canRead() && it.length() > 0 }
     }
 
-    // Compute aspect ratio from the first media file so the viewport matches content
-    val mediaAspectRatio = remember(mediaFiles) {
-        val firstFile = mediaFiles.firstOrNull()
-        if (firstFile != null) {
-            val ext = firstFile.extension.lowercase()
-            if (ext in listOf("mp4", "mov", "avi")) {
-                val retriever = MediaMetadataRetriever()
-                try {
-                    retriever.setDataSource(firstFile.absolutePath)
-                    val width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toFloatOrNull() ?: 1f
-                    val height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toFloatOrNull() ?: 1f
-                    val rotation = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
-                    
-                    val actualWidth = if (rotation == 90 || rotation == 270) height else width
-                    val actualHeight = if (rotation == 90 || rotation == 270) width else height
-                    
-                    if (actualWidth > 0 && actualHeight > 0) {
-                        (actualWidth / actualHeight).coerceIn(0.5f, 2f)
-                    } else 9f / 16f
-                } catch (_: Exception) {
-                    9f / 16f
-                } finally {
+    // Compute aspect ratio from the first media file asynchronously off the main thread
+    var mediaAspectRatio by remember(mediaFiles) { mutableStateOf(1f) }
+    LaunchedEffect(mediaFiles) {
+        withContext(Dispatchers.IO) {
+            val firstFile = mediaFiles.firstOrNull()
+            val ratio = if (firstFile != null) {
+                val ext = firstFile.extension.lowercase()
+                if (ext in listOf("mp4", "mov", "avi")) {
+                    val retriever = MediaMetadataRetriever()
                     try {
-                        retriever.release()
-                    } catch (_: Exception) {}
+                        retriever.setDataSource(firstFile.absolutePath)
+                        val width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toFloatOrNull() ?: 1f
+                        val height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toFloatOrNull() ?: 1f
+                        val rotation = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
+                        
+                        val actualWidth = if (rotation == 90 || rotation == 270) height else width
+                        val actualHeight = if (rotation == 90 || rotation == 270) width else height
+                        
+                        if (actualWidth > 0 && actualHeight > 0) {
+                            (actualWidth / actualHeight).coerceIn(0.5f, 2f)
+                        } else 9f / 16f
+                    } catch (_: Exception) {
+                        9f / 16f
+                    } finally {
+                        try {
+                            retriever.release()
+                        } catch (_: Exception) {}
+                    }
+                } else {
+                    try {
+                        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        BitmapFactory.decodeFile(firstFile.absolutePath, options)
+                        if (options.outWidth > 0 && options.outHeight > 0) {
+                            (options.outWidth.toFloat() / options.outHeight.toFloat()).coerceIn(0.5f, 2f)
+                        } else 1f
+                    } catch (_: Exception) { 1f }
                 }
             } else {
-                try {
-                    val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                    BitmapFactory.decodeFile(firstFile.absolutePath, options)
-                    if (options.outWidth > 0 && options.outHeight > 0) {
-                        (options.outWidth.toFloat() / options.outHeight.toFloat()).coerceIn(0.5f, 2f)
-                    } else 1f
-                } catch (_: Exception) { 1f }
+                1f
             }
-        } else {
-            1f
+            mediaAspectRatio = ratio
         }
     }
 
@@ -774,7 +781,7 @@ fun PostViewScreen(
 @Composable
 fun VideoPlayer(file: File, isCurrentPage: Boolean) {
     var isPlaying by remember { mutableStateOf(false) }
-    var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
+    val mediaPlayerRef = remember { mutableStateOf<MediaPlayer?>(null) }
     var isPrepared by remember { mutableStateOf(false) }
  
     // Synchronize playback state with the active page
@@ -782,41 +789,51 @@ fun VideoPlayer(file: File, isCurrentPage: Boolean) {
         isPlaying = isCurrentPage
     }
 
-    val videoAspectRatio = remember(file) {
-        val retriever = MediaMetadataRetriever()
-        try {
-            retriever.setDataSource(file.absolutePath)
-            val width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toFloatOrNull() ?: 16f
-            val height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toFloatOrNull() ?: 9f
-            val rotation = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
-            
-            val actualWidth = if (rotation == 90 || rotation == 270) height else width
-            val actualHeight = if (rotation == 90 || rotation == 270) width else height
-            
-            if (actualWidth > 0 && actualHeight > 0) {
-                actualWidth / actualHeight
-            } else 16f / 9f
-        } catch (_: Exception) {
-            16f / 9f
-        } finally {
-            try {
-                retriever.release()
-            } catch (_: Exception) {}
+    var videoAspectRatio by remember(file) { mutableStateOf(16f / 9f) }
+    LaunchedEffect(file) {
+        withContext(Dispatchers.IO) {
+            val retriever = MediaMetadataRetriever()
+            val ratio = try {
+                retriever.setDataSource(file.absolutePath)
+                val width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toFloatOrNull() ?: 16f
+                val height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toFloatOrNull() ?: 9f
+                val rotation = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
+                
+                val actualWidth = if (rotation == 90 || rotation == 270) height else width
+                val actualHeight = if (rotation == 90 || rotation == 270) width else height
+                
+                if (actualWidth > 0 && actualHeight > 0) {
+                    actualWidth / actualHeight
+                } else 16f / 9f
+            } catch (_: Exception) {
+                16f / 9f
+            } finally {
+                try {
+                    retriever.release()
+                } catch (_: Exception) {}
+            }
+            videoAspectRatio = ratio
+        }
+    }
+
+    // Helper to release player asynchronously to avoid main thread blocking
+    val releasePlayer = remember {
+        { player: MediaPlayer? ->
+            if (player != null) {
+                CoroutineScope(Dispatchers.IO).launch {
+                    try { player.stop() } catch (_: Exception) {}
+                    try { player.release() } catch (_: Exception) {}
+                }
+            }
         }
     }
 
     DisposableEffect(file) {
         onDispose {
-            mediaPlayer?.let {
-                try {
-                    it.stop()
-                    it.release()
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-            }
-            mediaPlayer = null
+            val player = mediaPlayerRef.value
+            mediaPlayerRef.value = null
             isPrepared = false
+            releasePlayer(player)
         }
     }
 
@@ -827,8 +844,12 @@ fun VideoPlayer(file: File, isCurrentPage: Boolean) {
                     surfaceTextureListener = object : TextureView.SurfaceTextureListener {
                         override fun onSurfaceTextureAvailable(surfaceTexture: SurfaceTexture, width: Int, height: Int) {
                             val surface = Surface(surfaceTexture)
+                            val oldPlayer = mediaPlayerRef.value
+                            mediaPlayerRef.value = null
+                            isPrepared = false
+                            releasePlayer(oldPlayer)
+
                             try {
-                                mediaPlayer?.release()
                                 val mp = MediaPlayer().apply {
                                     setDataSource(ctx, Uri.fromFile(file))
                                     setSurface(surface)
@@ -843,7 +864,7 @@ fun VideoPlayer(file: File, isCurrentPage: Boolean) {
                                     }
                                     prepareAsync()
                                 }
-                                mediaPlayer = mp
+                                mediaPlayerRef.value = mp
                             } catch (e: Exception) {
                                 e.printStackTrace()
                             }
@@ -852,16 +873,10 @@ fun VideoPlayer(file: File, isCurrentPage: Boolean) {
                         override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {}
 
                         override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
-                            mediaPlayer?.let {
-                                try {
-                                    it.stop()
-                                    it.release()
-                                } catch (e: Exception) {
-                                    e.printStackTrace()
-                                }
-                            }
-                            mediaPlayer = null
+                            val player = mediaPlayerRef.value
+                            mediaPlayerRef.value = null
                             isPrepared = false
+                            releasePlayer(player)
                             return true
                         }
 
@@ -870,7 +885,7 @@ fun VideoPlayer(file: File, isCurrentPage: Boolean) {
                 }
             },
             update = { view ->
-                mediaPlayer?.let { mp ->
+                mediaPlayerRef.value?.let { mp ->
                     try {
                         if (isPrepared) {
                             if (isPlaying) {

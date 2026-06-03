@@ -121,7 +121,7 @@ class DownloadService : Service() {
                 val caption = it.getStringExtra(EXTRA_CAPTION)
 
                 val isBatch = postId != null && totalImages > 1
-                val notificationId = if (isBatch) postId!!.hashCode() else 4242
+                val notificationId = if (isBatch) postId!!.hashCode() else (postId?.hashCode() ?: fileNames.firstOrNull()?.hashCode() ?: 4242)
 
                 val displayUsername = username ?: "unknown"
                 val startMsg = if (isBatch) {
@@ -217,7 +217,7 @@ class DownloadService : Service() {
 
                 if (url != null && filePath != null && fileName != null) {
                     val isBatch = postId != null && totalImages > 1
-                    val notificationId = if (isBatch) postId.hashCode() else 4242
+                    val notificationId = if (isBatch) postId.hashCode() else (postId?.hashCode() ?: fileName.hashCode())
 
                     val displayUsername = username ?: "unknown"
                     val startMsg = if (isBatch) {
@@ -440,12 +440,12 @@ class DownloadService : Service() {
                 )
 
                 if (finished >= totalImages) {
-                    notificationManager.cancelDownloadNotification(postId.hashCode())
                     val successes = progress.second.get()
                     val title = "Download Completed"
                     val msg = "Saved $successes/$totalImages files from @$displayUsername"
                     
                     notificationManager.showDownloadCompleted(
+                        notificationId = postId.hashCode(),
                         title = title,
                         message = msg
                     )
@@ -479,10 +479,11 @@ class DownloadService : Service() {
                 }
             }
         } else {
-            notificationManager.cancelDownloadNotification(notificationId)
+            val isVideo = filePath.endsWith(".mp4", ignoreCase = true) || filePath.endsWith(".mov", ignoreCase = true) || filePath.endsWith(".avi", ignoreCase = true)
+            val mediaTypeWord = if (isVideo) "reel" else "post"
             val title = "Download Completed"
-            val msg = "Saved $fileName from @$displayUsername"
-            notificationManager.showDownloadCompleted(fileName, 1)
+            val msg = "Saved $mediaTypeWord from @$displayUsername"
+            notificationManager.showDownloadCompleted(notificationId = notificationId, fileName = fileName, totalFiles = 1)
 
             serviceScope.launch {
                 try {
@@ -528,13 +529,13 @@ class DownloadService : Service() {
                 )
 
                 if (finished >= totalImages) {
-                    notificationManager.cancelDownloadNotification(postId.hashCode())
                     val successes = progress.second.get()
                     if (successes > 0) {
                         val title = "Download Completed with errors"
                         val msg = "Saved $successes/$totalImages files from @$displayUsername"
                         
                         notificationManager.showDownloadCompleted(
+                            notificationId = postId.hashCode(),
                             title = title,
                             message = msg
                         )
@@ -555,7 +556,11 @@ class DownloadService : Service() {
                         val title = "Download Failed"
                         val msg = "Could not download files from @$displayUsername"
                         
-                        notificationManager.showDownloadError("Batch Download Failed", msg)
+                        notificationManager.showDownloadError(
+                            notificationId = postId.hashCode(),
+                            fileName = "Batch Download Failed",
+                            error = msg
+                        )
 
                         serviceScope.launch {
                             try {
@@ -578,11 +583,14 @@ class DownloadService : Service() {
                 }
             }
         } else {
-            notificationManager.cancelDownloadNotification(notificationId)
             val title = "Download Failed"
             val msg = "Error downloading $fileName: $errorMessage"
             
-            notificationManager.showDownloadError(fileName, errorMessage)
+            notificationManager.showDownloadError(
+                notificationId = notificationId,
+                fileName = fileName,
+                error = errorMessage
+            )
 
             serviceScope.launch {
                 try {
@@ -686,43 +694,14 @@ class DownloadService : Service() {
     private fun updateProgressInDb(postId: String?, username: String?, progressText: String) {
         if (postId == null) return
         serviceScope.launch {
-            try {
-                val db = com.devson.vedinsta.database.AppDatabase.getDatabase(applicationContext)
-                val dao = db.notificationDao()
-                val existing = dao.getNotificationByPostIdAndType(postId, com.devson.vedinsta.database.NotificationType.DOWNLOAD_PROGRESS)
-                val title = if (username != null) "Downloading from @$username" else "Downloading Media"
-                val message = progressText
-                
-                if (existing != null) {
-                    dao.updateNotification(existing.copy(
-                        message = message,
-                        timestamp = System.currentTimeMillis()
-                    ))
-                } else {
-                    dao.insertNotification(com.devson.vedinsta.database.NotificationEntity(
-                        title = title,
-                        message = message,
-                        type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_PROGRESS,
-                        postId = postId,
-                        timestamp = System.currentTimeMillis()
-                    ))
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error updating progress in DB", e)
-            }
+            notificationManager.updateProgressInDb(postId, username, progressText)
         }
     }
 
     private fun removeProgressFromDb(postId: String?) {
         if (postId == null) return
         serviceScope.launch {
-            try {
-                val db = com.devson.vedinsta.database.AppDatabase.getDatabase(applicationContext)
-                val dao = db.notificationDao()
-                dao.deleteNotificationByPostIdAndType(postId, com.devson.vedinsta.database.NotificationType.DOWNLOAD_PROGRESS)
-            } catch (e: Exception) {
-                Log.e(TAG, "Error removing progress from DB", e)
-            }
+            notificationManager.removeProgressFromDb(postId)
         }
     }
 

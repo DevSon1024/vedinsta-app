@@ -54,15 +54,15 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
         const val UNIQUE_DOWNLOAD_WORK_NAME = "vedInstaDownloadWork" // Can be used for specific single tasks if needed
 
         fun clearAppCache(context: Context) {
-            val downloadCacheDir = File(context.cacheDir, "download_cache")
-            if (downloadCacheDir.exists()) {
-                CoroutineScope(Dispatchers.IO).launch {
-                    try {
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val downloadCacheDir = File(context.cacheDir, "download_cache")
+                    if (downloadCacheDir.exists()) {
                         deleteRecursive(downloadCacheDir, excludeSelf = false)
                         Log.d(TAG, "Download cache directory cleared successfully.")
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Failed to clear download cache", e)
                     }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to clear download cache", e)
                 }
             }
         }
@@ -600,7 +600,7 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
             if (workInfo == null) {
                 Log.w(TAG, "Observer for $workId received null WorkInfo. Cleaning up.")
                 cleanupObserver(workId, workInfoLiveData)
-                handleSingleFailure(context, "Unknown File (null WorkInfo)", tag) // Treat as failure
+                handleSingleFailure(context, "Unknown File (null WorkInfo)", tag, workId.hashCode() + 1000) // Treat as failure
                 return@Observer
             }
 
@@ -617,9 +617,12 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
                 ?: workInfo.tags.firstOrNull() ?: "image" // Fallback
 
             val notificationManager = VedInstaNotificationManager.getInstance(context)
+            val cachedMetadata = getCachedMetadata(tag)
+            val displayUsername = cachedMetadata.first ?: "unknown"
+            val targetNotificationId = workId.hashCode() + 1000
+
             when (workInfo.state) {
                 WorkInfo.State.SUCCEEDED -> {
-                    notificationManager.cancelDownloadNotification(workId.hashCode() + 1000)
                     if (filePath != null) {
                         Log.i(TAG, "Observer: Work $workId ($fileName) SUCCEEDED. Path: $filePath")
                         // TODO: Implement SAF move here if required
@@ -627,22 +630,24 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
                         // val targetSafUri = workInfo.inputData.getString("target_saf_uri")
                         // if (requiresMove && targetSafUri != null) { moveFileToSaf(context, filePath, targetSafUri) } else { /* proceed */ }
 
-                        handleSingleCompletion(context, tag, postUrl, filePath, mediaType)
+                        handleSingleCompletion(context, tag, postUrl, filePath, mediaType, targetNotificationId)
                     } else {
                         Log.e(TAG, "Observer: Work $workId ($fileName) SUCCEEDED but outputData missing KEY_FILE_PATH!")
-                        handleSingleFailure(context, fileName, tag) // Treat as failure if path is missing
+                        handleSingleFailure(context, fileName, tag, targetNotificationId) // Treat as failure if path is missing
                     }
                     cleanupObserver(workId, workInfoLiveData) // Clean up after terminal state
                 }
                 WorkInfo.State.FAILED, WorkInfo.State.CANCELLED -> {
                     Log.w(TAG, "Observer: Work $workId ($fileName) ${workInfo.state}.")
-                    notificationManager.cancelDownloadNotification(workId.hashCode() + 1000)
-                    handleSingleFailure(context, fileName, tag)
+                    handleSingleFailure(context, fileName, tag, targetNotificationId)
                     cleanupObserver(workId, workInfoLiveData) // Clean up after terminal state
                 }
                 WorkInfo.State.RUNNING -> {
-                    // Progress is primarily handled by the worker's foreground notification
-                    // Log.d(TAG, "Observer: Work $workId ($fileName) RUNNING.")
+                    val progressVal = workInfo.progress.getInt("Progress", -1)
+                    val progressText = if (progressVal >= 0) "$progressVal%" else "Downloading..."
+                    applicationScope.launch(Dispatchers.IO) {
+                        notificationManager.updateProgressInDb(postId = tag, username = displayUsername, progressText = progressText)
+                    }
                 }
                 WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED -> {
                     Log.d(TAG, "Observer: Work $workId ($fileName) ${workInfo.state}.")
@@ -781,13 +786,17 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
                         scanFiles(context, completedFilePaths) // Scan files after saving
                         // Clear temporary cache
                         clearAppCache(context)
+                        notificationManager.removeProgressFromDb(groupTag)
 
                         try {
                             notificationManager.addCustomNotification(
                                 title = "Download Completed",
                                 message = "Saved ${completedFilePaths.size}/$expectedCount files from @$finalUsername",
                                 type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_COMPLETED,
-                                priority = com.devson.vedinsta.database.NotificationPriority.NORMAL
+                                priority = com.devson.vedinsta.database.NotificationPriority.NORMAL,
+                                postId = groupTag,
+                                postUrl = postUrl,
+                                thumbnailPath = completedFilePaths.firstOrNull() ?: ""
                             )
                         } catch (e: Exception) {
                             Log.e(TAG, "Failed to insert batch success notification to DB", e)
@@ -797,8 +806,8 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
                         withContext(Dispatchers.Main) {
                             val message = "Downloaded ${completedFilePaths.size}/$expectedCount files for $finalUsername."
                             Toast.makeText(context, message, Toast.LENGTH_LONG).show()
-                            notificationManager.cancelDownloadNotification(groupTag.hashCode())
                             notificationManager.showDownloadCompleted(
+                                notificationId = groupTag.hashCode(),
                                 title = "Download Completed",
                                 message = "Saved ${completedFilePaths.size}/$expectedCount files from @$finalUsername"
                             )
@@ -807,20 +816,26 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
                 } else {
                     Log.w(TAG, "All work finished for tag '$groupTag', but no files succeeded.")
                     applicationScope.launch(Dispatchers.IO) {
+                        notificationManager.removeProgressFromDb(groupTag)
                         try {
                             notificationManager.addCustomNotification(
                                 title = "Download Failed",
                                 message = "Could not download files from @$finalUsername",
                                 type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_FAILED,
-                                priority = com.devson.vedinsta.database.NotificationPriority.HIGH
+                                priority = com.devson.vedinsta.database.NotificationPriority.HIGH,
+                                postId = groupTag,
+                                postUrl = postUrl
                             )
                         } catch (e: Exception) {
                             Log.e(TAG, "Failed to insert batch failure notification to DB", e)
                         }
                         withContext(Dispatchers.Main) {
                             Toast.makeText(context, "Download failed for post $finalUsername.", Toast.LENGTH_LONG).show()
-                            notificationManager.cancelDownloadNotification(groupTag.hashCode())
-                            notificationManager.showDownloadError("Post $finalUsername", "All downloads failed")
+                            notificationManager.showDownloadError(
+                                notificationId = groupTag.hashCode(),
+                                fileName = "Post $finalUsername",
+                                error = "All downloads failed"
+                            )
                         }
                     }
                 }
@@ -828,6 +843,9 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
                 Log.d(TAG, "Tag '$groupTag': Waiting for ${expectedCount - finishedCount} more job(s) to finish.")
                 val cachedMetadata = getCachedMetadata(groupTag)
                 val displayUsername = cachedMetadata.first ?: "unknown"
+                applicationScope.launch(Dispatchers.IO) {
+                    notificationManager.updateProgressInDb(postId = groupTag, username = displayUsername, progressText = "$finishedCount/$expectedCount")
+                }
                 notificationManager.showBatchDownloadProgress(
                     notificationId = groupTag.hashCode(),
                     current = finishedCount,
@@ -853,7 +871,8 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
         tag: String, // postId or generated key
         postUrl: String,
         filePath: String,
-        mediaType: String
+        mediaType: String,
+        notificationId: Int
     ) {
         val (cachedUsername, cachedCaption) = getCachedMetadata(tag)
         removeCachedMetadata(tag) // Clean cache after processing
@@ -874,15 +893,21 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
             scanFiles(context, listOf(filePath))
             // Clear temporary cache
             clearAppCache(context)
+            val notificationManager = VedInstaNotificationManager.getInstance(context)
+            notificationManager.removeProgressFromDb(tag)
 
             val fileName = File(filePath).name
-            val notificationManager = VedInstaNotificationManager.getInstance(context)
+            val isVideo = filePath.endsWith(".mp4", ignoreCase = true) || filePath.endsWith(".mov", ignoreCase = true) || filePath.endsWith(".avi", ignoreCase = true)
+            val mediaTypeWord = if (isVideo) "reel" else "post"
             try {
                 notificationManager.addCustomNotification(
                     title = "Download Completed",
-                    message = "Saved $fileName from @$finalUsername",
+                    message = "Saved $mediaTypeWord from @$finalUsername",
                     type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_COMPLETED,
-                    priority = com.devson.vedinsta.database.NotificationPriority.NORMAL
+                    priority = com.devson.vedinsta.database.NotificationPriority.NORMAL,
+                    postId = tag,
+                    postUrl = postUrl,
+                    thumbnailPath = filePath
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to insert single success notification to DB", e)
@@ -891,31 +916,33 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
             // Show completion feedback on Main thread
             withContext(Dispatchers.Main) {
                 Toast.makeText(context, "Download complete: $fileName", Toast.LENGTH_SHORT).show()
-                notificationManager.showDownloadCompleted(finalUsername, 1)
+                notificationManager.showDownloadCompleted(notificationId = notificationId, fileName = finalUsername, totalFiles = 1)
             }
         }
     }
 
     // Handle failure for single file downloads (called by ID observer)
-    private fun handleSingleFailure(context: Context, fileName: String, tag: String) {
+    private fun handleSingleFailure(context: Context, fileName: String, tag: String, notificationId: Int) {
         val (cachedUsername, _) = getCachedMetadata(tag)
         removeCachedMetadata(tag) // Clean cache on failure
         val finalUsername = cachedUsername ?: "unknown"
         applicationScope.launch(Dispatchers.IO) {
             val notificationManager = VedInstaNotificationManager.getInstance(context)
+            notificationManager.removeProgressFromDb(tag)
             try {
                 notificationManager.addCustomNotification(
                     title = "Download Failed",
                     message = "Error downloading $fileName from @$finalUsername",
                     type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_FAILED,
-                    priority = com.devson.vedinsta.database.NotificationPriority.HIGH
+                    priority = com.devson.vedinsta.database.NotificationPriority.HIGH,
+                    postId = tag
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to insert single failure notification to DB", e)
             }
             withContext(Dispatchers.Main) {
                 Toast.makeText(context, "Download failed: $fileName", Toast.LENGTH_SHORT).show()
-                notificationManager.showDownloadError(fileName, "Download failed or cancelled")
+                notificationManager.showDownloadError(notificationId = notificationId, fileName = fileName, error = "Download failed or cancelled")
             }
         }
     }

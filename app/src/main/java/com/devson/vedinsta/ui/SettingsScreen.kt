@@ -47,10 +47,15 @@ fun SettingsScreen(
     val coroutineScope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
 
-    var imagePath by remember { mutableStateOf(settingsViewModel.getImagePathLabel()) }
-    var videoPath by remember { mutableStateOf(settingsViewModel.getVideoPathLabel()) }
+    var imagePath by remember { mutableStateOf("Loading...") }
+    var videoPath by remember { mutableStateOf("Loading...") }
     var linkActionLabel by remember { mutableStateOf(settingsViewModel.getDefaultActionLabel()) }
     var showLinkActionDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        imagePath = settingsViewModel.getImagePathLabel()
+        videoPath = settingsViewModel.getVideoPathLabel()
+    }
 
     // Folder Pickers
 
@@ -62,7 +67,9 @@ fun SettingsScreen(
             result.data?.data?.also { uri ->
                 takePersistablePermissions(context, uri)
                 settingsViewModel.imageDirectoryUri = uri.toString()
-                imagePath = settingsViewModel.getImagePathLabel()
+                coroutineScope.launch {
+                    imagePath = settingsViewModel.getImagePathLabel()
+                }
                 Toast.makeText(context, "Image location set", Toast.LENGTH_SHORT).show()
             }
         }
@@ -75,7 +82,9 @@ fun SettingsScreen(
             result.data?.data?.also { uri ->
                 takePersistablePermissions(context, uri)
                 settingsViewModel.videoDirectoryUri = uri.toString()
-                videoPath = settingsViewModel.getVideoPathLabel()
+                coroutineScope.launch {
+                    videoPath = settingsViewModel.getVideoPathLabel()
+                }
                 Toast.makeText(context, "Video location set", Toast.LENGTH_SHORT).show()
             }
         }

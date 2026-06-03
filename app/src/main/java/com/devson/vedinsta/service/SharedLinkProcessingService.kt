@@ -102,6 +102,7 @@ class SharedLinkProcessingService : Service() {
                         caption
                     )
 
+                    /*
                     try {
                         notificationManager.addCustomNotification(
                             title = "Shared Link Auto-Download",
@@ -112,7 +113,10 @@ class SharedLinkProcessingService : Service() {
                     } catch (ex: Exception) {
                         Log.e(TAG, "Error adding start notification to DB", ex)
                     }
+                    */
                 } else if (mediaCount > 1) {
+                    // Removed/Commented out to prevent cluttering the NotificationScreen
+                    /*
                     try {
                         notificationManager.addCustomNotification(
                             title = "Shared Link Processed",
@@ -123,6 +127,7 @@ class SharedLinkProcessingService : Service() {
                     } catch (ex: Exception) {
                         Log.e(TAG, "Error adding process notification to DB", ex)
                     }
+                    */
 
                     // MULTIPLE CONTENT: Check Settings
                     when (settingsViewModel.defaultLinkAction) {
@@ -208,6 +213,8 @@ class SharedLinkProcessingService : Service() {
                     caption
                 )
 
+                // Removed/Commented out to prevent cluttering the NotificationScreen
+                /*
                 try {
                     notificationManager.addCustomNotification(
                         title = "Shared Link Batch Download",
@@ -218,6 +225,7 @@ class SharedLinkProcessingService : Service() {
                 } catch (ex: Exception) {
                     Log.e(TAG, "Error adding batch start notification to DB", ex)
                 }
+                */
 
             } catch (e: Exception) {
                 Log.e(TAG, "Error in download all", e)
