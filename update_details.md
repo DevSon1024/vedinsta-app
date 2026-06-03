@@ -674,3 +674,14 @@
   4. Verified the project compiles successfully using `.\gradlew compileDebugKotlin`.
 
 ---
+
+- **Type of Details:** Performance Improvement & Refactor
+- **Description:**
+  1. Isolated the Room database notification list and unread count observations from the root level of `MainAppScreen.kt`.
+  2. Extracted the top app bar notification icon with the unread count badge into a standalone `@Composable fun NotificationBadgeIcon` component, restricting recomposition scopes to the badge itself when downloads finish in the background.
+  3. Relocated `allNotifications` state observation locally into the `Screen.Notifications` block inside `AnimatedContent` on `MainAppScreen.kt`.
+  4. Resolved WorkManager LiveData memory leak risks in `VedInstaApplication.kt` by completely removing `LiveData.observeForever` and the helper observer maps `tagObservers` / `idObservers`.
+  5. Refactored `observeWorkProgressById` and `observeWorkProgressByTag` in `VedInstaApplication.kt` to use WorkManager's `Flow` APIs (`getWorkInfoByIdFlow` and `getWorkInfosByTagFlow`) with active collection on the application coroutine scope.
+  6. Verified the project compiles successfully using `.\gradlew compileDebugKotlin` and `.\gradlew assembleDebug` with zero errors.
+
+---

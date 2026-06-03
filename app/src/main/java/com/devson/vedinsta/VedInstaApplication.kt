@@ -580,10 +580,9 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
 
     // --- Observation Logic ---
     private val observedWorkIds = ConcurrentHashMap.newKeySet<UUID>() // Tracks IDs actively being observed
+    private val observedTags = ConcurrentHashMap.newKeySet<String>() // Tracks tags actively being observed
     // Use ConcurrentHashMap for groupCompletedFiles for better thread safety if accessed from multiple observers concurrently
     private val groupCompletedFiles = ConcurrentHashMap<String, CopyOnWriteArrayList<String>>() // Stores successful file paths per group tag
-    private val tagObservers = ConcurrentHashMap<String, Observer<List<WorkInfo>>>() // Maps tag -> observer instance
-    private val idObservers = ConcurrentHashMap<UUID, Observer<WorkInfo>>() // Maps workId -> observer instance
 
     private fun observeWorkProgressById(
         context: Context,
@@ -596,77 +595,65 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
             Log.d(TAG, "Already observing Work ID: $workId (Tag: $tag)")
             return
         }
-        Log.i(TAG, "Starting observer for single Work ID: $workId (Tag: $tag)")
+        Log.i(TAG, "Starting Flow collection for single Work ID: $workId (Tag: $tag)")
 
         val workManager = WorkManager.getInstance(context)
-        val workInfoLiveData = workManager.getWorkInfoByIdLiveData(workId)
 
-        // Create the observer instance
-        val observer = Observer<WorkInfo> { workInfo ->
-            if (workInfo == null) {
-                Log.w(TAG, "Observer for $workId received null WorkInfo. Cleaning up.")
-                cleanupObserver(workId, workInfoLiveData)
-                handleSingleFailure(context, "Unknown File (null WorkInfo)", tag, workId.hashCode() + 1000) // Treat as failure
-                return@Observer
-            }
+        applicationScope.launch {
+            workManager.getWorkInfoByIdFlow(workId).collect { workInfo ->
+                if (workInfo == null) {
+                    Log.w(TAG, "Flow for $workId received null WorkInfo. Cleaning up.")
+                    observedWorkIds.remove(workId)
+                    handleSingleFailure(context, "Unknown File (null WorkInfo)", tag, workId.hashCode() + 1000) // Treat as failure
+                    throw kotlinx.coroutines.CancellationException("Work Finished")
+                }
 
-            // Get file path from OUTPUT data only on SUCCEEDED state
-            val filePath = if (workInfo.state == WorkInfo.State.SUCCEEDED) {
-                workInfo.outputData.getString(EnhancedDownloadManager.KEY_FILE_PATH)
-            } else {
-                null // Path is only guaranteed in output data on success
-            }
-            // **FIX**: Get filename/type from workInfo.progress or workInfo.inputData
-            val fileName = workInfo.progress.getString(EnhancedDownloadManager.KEY_FILE_NAME)
-                ?: workInfo.tags.firstOrNull() ?: "file" // Fallback
-            val mediaType = workInfo.progress.getString(EnhancedDownloadManager.KEY_MEDIA_TYPE)
-                ?: workInfo.tags.firstOrNull() ?: "image" // Fallback
+                // Get file path from OUTPUT data only on SUCCEEDED state
+                val filePath = if (workInfo.state == WorkInfo.State.SUCCEEDED) {
+                    workInfo.outputData.getString(EnhancedDownloadManager.KEY_FILE_PATH)
+                } else {
+                    null // Path is only guaranteed in output data on success
+                }
+                val fileName = workInfo.progress.getString(EnhancedDownloadManager.KEY_FILE_NAME)
+                    ?: workInfo.tags.firstOrNull() ?: "file" // Fallback
+                val mediaType = workInfo.progress.getString(EnhancedDownloadManager.KEY_MEDIA_TYPE)
+                    ?: workInfo.tags.firstOrNull() ?: "image" // Fallback
 
-            val notificationManager = VedInstaNotificationManager.getInstance(context)
-            val cachedMetadata = getCachedMetadata(tag)
-            val displayUsername = cachedMetadata.first ?: "unknown"
-            val targetNotificationId = workId.hashCode() + 1000
+                val notificationManager = VedInstaNotificationManager.getInstance(context)
+                val cachedMetadata = getCachedMetadata(tag)
+                val displayUsername = cachedMetadata.first ?: "unknown"
+                val targetNotificationId = workId.hashCode() + 1000
 
-            when (workInfo.state) {
-                WorkInfo.State.SUCCEEDED -> {
-                    if (filePath != null) {
-                        Log.i(TAG, "Observer: Work $workId ($fileName) SUCCEEDED. Path: $filePath")
-                        // TODO: Implement SAF move here if required
-                        // val requiresMove = workInfo.inputData.getBoolean("requires_manual_move", false)
-                        // val targetSafUri = workInfo.inputData.getString("target_saf_uri")
-                        // if (requiresMove && targetSafUri != null) { moveFileToSaf(context, filePath, targetSafUri) } else { /* proceed */ }
-
-                        handleSingleCompletion(context, tag, postUrl, filePath, mediaType, targetNotificationId)
-                    } else {
-                        Log.e(TAG, "Observer: Work $workId ($fileName) SUCCEEDED but outputData missing KEY_FILE_PATH!")
-                        handleSingleFailure(context, fileName, tag, targetNotificationId) // Treat as failure if path is missing
+                when (workInfo.state) {
+                    WorkInfo.State.SUCCEEDED -> {
+                        if (filePath != null) {
+                            Log.i(TAG, "Observer: Work $workId ($fileName) SUCCEEDED. Path: $filePath")
+                            handleSingleCompletion(context, tag, postUrl, filePath, mediaType, targetNotificationId)
+                        } else {
+                            Log.e(TAG, "Observer: Work $workId ($fileName) SUCCEEDED but outputData missing KEY_FILE_PATH!")
+                            handleSingleFailure(context, fileName, tag, targetNotificationId) // Treat as failure if path is missing
+                        }
+                        observedWorkIds.remove(workId)
+                        throw kotlinx.coroutines.CancellationException("Work Finished")
                     }
-                    cleanupObserver(workId, workInfoLiveData) // Clean up after terminal state
-                }
-                WorkInfo.State.FAILED, WorkInfo.State.CANCELLED -> {
-                    Log.w(TAG, "Observer: Work $workId ($fileName) ${workInfo.state}.")
-                    handleSingleFailure(context, fileName, tag, targetNotificationId)
-                    cleanupObserver(workId, workInfoLiveData) // Clean up after terminal state
-                }
-                WorkInfo.State.RUNNING -> {
-                    val progressVal = workInfo.progress.getInt("Progress", -1)
-                    val progressText = if (progressVal >= 0) "$progressVal%" else "Downloading..."
-                    applicationScope.launch(Dispatchers.IO) {
-                        notificationManager.updateProgressInDb(postId = tag, username = displayUsername, progressText = progressText)
+                    WorkInfo.State.FAILED, WorkInfo.State.CANCELLED -> {
+                        Log.w(TAG, "Observer: Work $workId ($fileName) ${workInfo.state}.")
+                        handleSingleFailure(context, fileName, tag, targetNotificationId)
+                        observedWorkIds.remove(workId)
+                        throw kotlinx.coroutines.CancellationException("Work Finished")
+                    }
+                    WorkInfo.State.RUNNING -> {
+                        val progressVal = workInfo.progress.getInt("Progress", -1)
+                        val progressText = if (progressVal >= 0) "$progressVal%" else "Downloading..."
+                        withContext(Dispatchers.IO) {
+                            notificationManager.updateProgressInDb(postId = tag, username = displayUsername, progressText = progressText)
+                        }
+                    }
+                    WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED -> {
+                        Log.d(TAG, "Observer: Work $workId ($fileName) ${workInfo.state}.")
                     }
                 }
-                WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED -> {
-                    Log.d(TAG, "Observer: Work $workId ($fileName) ${workInfo.state}.")
-                }
             }
-        } // End of observer lambda
-
-        // Store the observer instance before starting observation
-        idObservers[workId] = observer
-
-        // Observe forever using the applicationScope.
-        applicationScope.launch { // Launch on the main thread for LiveData observation
-            workInfoLiveData.observeForever(observer)
         }
     }
 
@@ -706,173 +693,154 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
         postUrl: String // Original URL for DB entry
     ) {
         // Prevent adding multiple observers for the same tag
-        if (tagObservers.containsKey(groupTag)) {
+        if (!observedTags.add(groupTag)) {
             Log.d(TAG, "Already observing group tag: $groupTag")
             return
         }
-        Log.i(TAG, "Starting observer for group tag: $groupTag (expecting $expectedCount files)")
+        Log.i(TAG, "Starting Flow collection for group tag: $groupTag (expecting $expectedCount files)")
 
         val workManager = WorkManager.getInstance(context)
-        val workInfosLiveData = workManager.getWorkInfosByTagLiveData(groupTag)
 
         // Initialize completed files list for this tag if absent
         groupCompletedFiles.putIfAbsent(groupTag, CopyOnWriteArrayList()) // Use thread-safe list
 
-        // Create the observer instance
-        val observer = Observer<List<WorkInfo>> { workInfos ->
-            if (workInfos.isNullOrEmpty()) {
-                Log.d(TAG, "Observer for tag '$groupTag' received null or empty list.")
-                return@Observer
-            }
-
-            // Check if observation should continue
-            if (!tagObservers.containsKey(groupTag)) {
-                Log.d(TAG, "Observer for tag '$groupTag' triggered after cleanup. Ignoring.")
-                return@Observer
-            }
-
-            val finishedCount = workInfos.count { it.state.isFinished }
-            val succeededCount = workInfos.count { it.state == WorkInfo.State.SUCCEEDED }
-            val failedCount = workInfos.count { it.state == WorkInfo.State.FAILED }
-            val cancelledCount = workInfos.count { it.state == WorkInfo.State.CANCELLED }
-            val runningCount = workInfos.count { it.state == WorkInfo.State.RUNNING }
-
-            Log.d(TAG, "Tag '$groupTag' update: Total=${workInfos.size}, Expected=$expectedCount, Finished=$finishedCount (S:$succeededCount F:$failedCount C:$cancelledCount), Running=$runningCount")
-
-            // Collect successful file paths ONCE per work ID when it SUCCEEDS
-            val currentCompletedFiles = groupCompletedFiles[groupTag]
-            if (currentCompletedFiles != null) {
-                workInfos.forEach { workInfo ->
-                    if (workInfo.state == WorkInfo.State.SUCCEEDED) {
-                        val filePath = workInfo.outputData.getString(EnhancedDownloadManager.KEY_FILE_PATH)
-                        if (filePath != null) {
-                            // **FIX**: Use standard contains check + add for thread safety with CopyOnWriteArrayList
-                            if (!currentCompletedFiles.contains(filePath)) {
-                                currentCompletedFiles.add(filePath)
-                                Log.d(TAG, "Observer: Recorded success for ${workInfo.id} (Tag: $groupTag), Path: $filePath")
-                                // TODO: Implement SAF move here if needed for group downloads
-                            }
-                        } else {
-                            Log.e(TAG, "Observer: Work ${workInfo.id} (Tag: $groupTag) SUCCEEDED but outputData missing KEY_FILE_PATH!")
-                        }
-                    }
-                }
-            }
-
-
-            val notificationManager = VedInstaNotificationManager.getInstance(context)
-
-            // Check if ALL expected jobs are finished
-            if (finishedCount >= expectedCount) {
-                Log.i(TAG, "All $expectedCount works for tag '$groupTag' have finished.")
-
-                // 1. Cleanup the observer FIRST
-                val observerToRemove = tagObservers[groupTag]
-                if (observerToRemove != null) {
-                    cleanupTagObserver(groupTag, workInfosLiveData, observerToRemove)
-                }
-
-                // 2. Process the results
-                val completedFilePaths = groupCompletedFiles.remove(groupTag)?.toList() ?: emptyList()
-                val (cachedUsername, cachedCaption) = getCachedMetadata(groupTag)
-                removeCachedMetadata(groupTag) // Clean cache AFTER processing
-
-                val finalUsername = cachedUsername ?: "unknown"
-
-                if (completedFilePaths.isNotEmpty()) {
-                    Log.i(TAG, "Tag '$groupTag': Processing ${completedFilePaths.size} successfully downloaded files.")
-                    val hasVideo = completedFilePaths.any { path ->
-                        val extension = File(path).extension.lowercase()
-                        extension == "mp4" || extension == "mov" || extension == "avi" || extension == "mkv" || extension == "webm"
-                    }
-
-                    // Save to DB on IO thread
-                    applicationScope.launch(Dispatchers.IO) {
-                        saveDownloadedPostToDb(context, groupTag, postUrl, completedFilePaths, hasVideo, finalUsername, cachedCaption)
-                        scanFiles(context, completedFilePaths) // Scan files after saving
-                        // Clear temporary cache
-                        clearAppCache(context)
-                        notificationManager.removeProgressFromDb(groupTag)
-
-                        try {
-                            val rawThumb = completedFilePaths.firstOrNull() ?: ""
-                            val safeThumb = if (rawThumb.isNotEmpty()) {
-                                com.devson.vedinsta.ui.ThumbnailHelper.getSafeThumbnailPath(context, rawThumb)
-                            } else {
-                                ""
-                            }
-                            notificationManager.addCustomNotification(
-                                title = "Download Completed",
-                                message = "Saved ${completedFilePaths.size}/$expectedCount files from @$finalUsername",
-                                type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_COMPLETED,
-                                priority = com.devson.vedinsta.database.NotificationPriority.NORMAL,
-                                postId = groupTag,
-                                postUrl = postUrl,
-                                thumbnailPath = safeThumb
-                            )
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Failed to insert batch success notification to DB", e)
-                        }
-
-                        // Show summary notification/toast on Main thread
-                        withContext(Dispatchers.Main) {
-                            val message = "Downloaded ${completedFilePaths.size}/$expectedCount files for $finalUsername."
-                            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
-                            notificationManager.showDownloadCompleted(
-                                notificationId = groupTag.hashCode(),
-                                title = "Download Completed",
-                                message = "Saved ${completedFilePaths.size}/$expectedCount files from @$finalUsername"
-                            )
-                        }
-                    }
-                } else {
-                    Log.w(TAG, "All work finished for tag '$groupTag', but no files succeeded.")
-                    applicationScope.launch(Dispatchers.IO) {
-                        notificationManager.removeProgressFromDb(groupTag)
-                        try {
-                            notificationManager.addCustomNotification(
-                                title = "Download Failed",
-                                message = "Could not download files from @$finalUsername",
-                                type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_FAILED,
-                                priority = com.devson.vedinsta.database.NotificationPriority.HIGH,
-                                postId = groupTag,
-                                postUrl = postUrl
-                            )
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Failed to insert batch failure notification to DB", e)
-                        }
-                        withContext(Dispatchers.Main) {
-                            Toast.makeText(context, "Download failed for post $finalUsername.", Toast.LENGTH_LONG).show()
-                            notificationManager.showDownloadError(
-                                notificationId = groupTag.hashCode(),
-                                fileName = "Post $finalUsername",
-                                error = "All downloads failed"
-                            )
-                        }
-                    }
-                }
-            } else {
-                Log.d(TAG, "Tag '$groupTag': Waiting for ${expectedCount - finishedCount} more job(s) to finish.")
-                val cachedMetadata = getCachedMetadata(groupTag)
-                val displayUsername = cachedMetadata.first ?: "unknown"
-                applicationScope.launch(Dispatchers.IO) {
-                    notificationManager.updateProgressInDb(postId = groupTag, username = displayUsername, progressText = "$finishedCount/$expectedCount")
-                }
-                notificationManager.showBatchDownloadProgress(
-                    notificationId = groupTag.hashCode(),
-                    current = finishedCount,
-                    total = expectedCount,
-                    title = "Downloading from @$displayUsername"
-                )
-            }
-        } // End of observer lambda
-
-        // Store the observer instance before starting observation
-        tagObservers[groupTag] = observer
-
-        // Observe forever using the applicationScope.
         applicationScope.launch {
-            workInfosLiveData.observeForever(observer)
+            workManager.getWorkInfosByTagFlow(groupTag).collect { workInfos ->
+                if (workInfos.isNullOrEmpty()) {
+                    Log.d(TAG, "Observer for tag '$groupTag' received null or empty list.")
+                    return@collect
+                }
+
+                val finishedCount = workInfos.count { it.state.isFinished }
+                val succeededCount = workInfos.count { it.state == WorkInfo.State.SUCCEEDED }
+                val failedCount = workInfos.count { it.state == WorkInfo.State.FAILED }
+                val cancelledCount = workInfos.count { it.state == WorkInfo.State.CANCELLED }
+                val runningCount = workInfos.count { it.state == WorkInfo.State.RUNNING }
+
+                Log.d(TAG, "Tag '$groupTag' update: Total=${workInfos.size}, Expected=$expectedCount, Finished=$finishedCount (S:$succeededCount F:$failedCount C:$cancelledCount), Running=$runningCount")
+
+                // Collect successful file paths ONCE per work ID when it SUCCEEDS
+                val currentCompletedFiles = groupCompletedFiles[groupTag]
+                if (currentCompletedFiles != null) {
+                    workInfos.forEach { workInfo ->
+                        if (workInfo.state == WorkInfo.State.SUCCEEDED) {
+                            val filePath = workInfo.outputData.getString(EnhancedDownloadManager.KEY_FILE_PATH)
+                            if (filePath != null) {
+                                if (!currentCompletedFiles.contains(filePath)) {
+                                    currentCompletedFiles.add(filePath)
+                                    Log.d(TAG, "Observer: Recorded success for ${workInfo.id} (Tag: $groupTag), Path: $filePath")
+                                }
+                            } else {
+                                Log.e(TAG, "Observer: Work ${workInfo.id} (Tag: $groupTag) SUCCEEDED but outputData missing KEY_FILE_PATH!")
+                            }
+                        }
+                    }
+                }
+
+                val notificationManager = VedInstaNotificationManager.getInstance(context)
+
+                // Check if ALL expected jobs are finished
+                if (finishedCount >= expectedCount) {
+                    Log.i(TAG, "All $expectedCount works for tag '$groupTag' have finished.")
+
+                    // Process the results
+                    val completedFilePaths = groupCompletedFiles.remove(groupTag)?.toList() ?: emptyList()
+                    val (cachedUsername, cachedCaption) = getCachedMetadata(groupTag)
+                    removeCachedMetadata(groupTag) // Clean cache AFTER processing
+
+                    val finalUsername = cachedUsername ?: "unknown"
+
+                    if (completedFilePaths.isNotEmpty()) {
+                        Log.i(TAG, "Tag '$groupTag': Processing ${completedFilePaths.size} successfully downloaded files.")
+                        val hasVideo = completedFilePaths.any { path ->
+                            val extension = File(path).extension.lowercase()
+                            extension in listOf("mp4", "mov", "avi", "mkv", "webm", "3gp")
+                        }
+
+                        // Save to DB on IO thread
+                        withContext(Dispatchers.IO) {
+                            saveDownloadedPostToDb(context, groupTag, postUrl, completedFilePaths, hasVideo, finalUsername, cachedCaption)
+                            scanFiles(context, completedFilePaths) // Scan files after saving
+                            // Clear temporary cache
+                            clearAppCache(context)
+                            notificationManager.removeProgressFromDb(groupTag)
+
+                            try {
+                                val rawThumb = completedFilePaths.firstOrNull() ?: ""
+                                val safeThumb = if (rawThumb.isNotEmpty()) {
+                                    com.devson.vedinsta.ui.ThumbnailHelper.getSafeThumbnailPath(context, rawThumb)
+                                } else {
+                                    ""
+                                }
+                                notificationManager.addCustomNotification(
+                                    title = "Download Completed",
+                                    message = "Saved ${completedFilePaths.size}/$expectedCount files from @$finalUsername",
+                                    type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_COMPLETED,
+                                    priority = com.devson.vedinsta.database.NotificationPriority.NORMAL,
+                                    postId = groupTag,
+                                    postUrl = postUrl,
+                                    thumbnailPath = safeThumb
+                                )
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Failed to insert batch success notification to DB", e)
+                            }
+
+                            // Show summary notification/toast on Main thread
+                            withContext(Dispatchers.Main) {
+                                val message = "Downloaded ${completedFilePaths.size}/$expectedCount files for $finalUsername."
+                                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                                notificationManager.showDownloadCompleted(
+                                    notificationId = groupTag.hashCode(),
+                                    title = "Download Completed",
+                                    message = "Saved ${completedFilePaths.size}/$expectedCount files from @$finalUsername"
+                                )
+                            }
+                        }
+                    } else {
+                        Log.w(TAG, "All work finished for tag '$groupTag', but no files succeeded.")
+                        withContext(Dispatchers.IO) {
+                            notificationManager.removeProgressFromDb(groupTag)
+                            try {
+                                notificationManager.addCustomNotification(
+                                    title = "Download Failed",
+                                    message = "Could not download files from @$finalUsername",
+                                    type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_FAILED,
+                                    priority = com.devson.vedinsta.database.NotificationPriority.HIGH,
+                                    postId = groupTag,
+                                    postUrl = postUrl
+                                )
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Failed to insert batch failure notification to DB", e)
+                            }
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(context, "Download failed for post $finalUsername.", Toast.LENGTH_LONG).show()
+                                notificationManager.showDownloadError(
+                                    notificationId = groupTag.hashCode(),
+                                    fileName = "Post $finalUsername",
+                                    error = "All downloads failed"
+                                )
+                            }
+                        }
+                    }
+
+                    observedTags.remove(groupTag)
+                    // Break the flow collection
+                    throw kotlinx.coroutines.CancellationException("Work Finished")
+                } else {
+                    Log.d(TAG, "Tag '$groupTag': Waiting for ${expectedCount - finishedCount} more job(s) to finish.")
+                    val cachedMetadata = getCachedMetadata(groupTag)
+                    val displayUsername = cachedMetadata.first ?: "unknown"
+                    withContext(Dispatchers.IO) {
+                        notificationManager.updateProgressInDb(postId = groupTag, username = displayUsername, progressText = "$finishedCount/$expectedCount")
+                    }
+                    notificationManager.showBatchDownloadProgress(
+                        notificationId = groupTag.hashCode(),
+                        current = finishedCount,
+                        total = expectedCount,
+                        title = "Downloading from @$displayUsername"
+                    )
+                }
+            }
         }
     }
 
@@ -1093,27 +1061,4 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
         }
     }
 
-    // Cleanup for ID observers (must be called from Main thread or use post)
-    private fun cleanupObserver(workId: UUID, liveData: LiveData<WorkInfo>) {
-        applicationScope.launch { // Ensure running on the main thread
-            idObservers.remove(workId)?.let { observer ->
-                liveData.removeObserver(observer) // Remove the specific observer instance
-                observedWorkIds.remove(workId) // Remove from tracking set
-                Log.i(TAG, "Removed observer for Work ID: $workId")
-            } ?: Log.w(TAG, "Attempted to cleanup observer for $workId, but it was already removed.")
-        }
-    }
-
-    // Cleanup for Tag observers (must be called from Main thread or use post)
-    private fun cleanupTagObserver(tag: String, liveData: LiveData<List<WorkInfo>>, observerToRemove: Observer<List<WorkInfo>>) {
-        applicationScope.launch { // Ensure running on the main thread
-            // Remove the observer ONLY if it's the correct instance we stored
-            if (tagObservers.remove(tag, observerToRemove)) {
-                liveData.removeObserver(observerToRemove)
-                Log.i(TAG, "Removed observer for tag: $tag")
-            } else {
-                Log.w(TAG, "Attempted to cleanup observer for tag $tag, but it was already removed or mismatched.")
-            }
-        }
-    }
 }

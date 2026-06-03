@@ -65,9 +65,6 @@ fun MainAppScreen(
     val currentScreen = screenStack.last()
     val scope = rememberCoroutineScope()
 
-    val notifications by notificationViewModel.allNotifications.observeAsState(emptyList())
-    val unreadCount by notificationViewModel.unreadCount.observeAsState(0)
-
     var gridColumnCount by remember { mutableStateOf(settingsViewModel.gridColumnCount) }
     var isListView by remember { mutableStateOf(settingsViewModel.isListView) }
     var showViewSettingsSheet by remember { mutableStateOf(false) }
@@ -181,41 +178,13 @@ fun MainAppScreen(
                     actions = {
                         if (currentScreen == Screen.Home) {
                             // Notification badge icon
-                            IconButton(onClick = {
-                                notificationViewModel.markAllAsRead()
-                                navigateTo(Screen.Notifications)
-                            }) {
-                                Box(modifier = Modifier.wrapContentSize()) {
-                                    Icon(
-                                        imageVector = Icons.Default.Notifications,
-                                        contentDescription = "Notifications",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    if (unreadCount > 0) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(16.dp)
-                                                .align(Alignment.TopEnd)
-                                                .offset(x = 4.dp, y = (-4).dp)
-                                                .background(MaterialTheme.colorScheme.error, androidx.compose.foundation.shape.CircleShape),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = if (unreadCount > 9) "9+" else unreadCount.toString(),
-                                                color = MaterialTheme.colorScheme.onError,
-                                                fontSize = 9.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                                style = androidx.compose.ui.text.TextStyle(
-                                                    platformStyle = androidx.compose.ui.text.PlatformTextStyle(
-                                                        includeFontPadding = false
-                                                    )
-                                                )
-                                            )
-                                        }
-                                    }
+                            NotificationBadgeIcon(
+                                notificationViewModel = notificationViewModel,
+                                onClick = {
+                                    notificationViewModel.markAllAsRead()
+                                    navigateTo(Screen.Notifications)
                                 }
-                            }
+                            )
 
                             // Settings Button in TopAppBar
                             IconButton(
@@ -458,6 +427,7 @@ fun MainAppScreen(
                         PrivacyPolicyScreen()
                     }
                     is Screen.Notifications -> {
+                        val notifications by notificationViewModel.allNotifications.observeAsState(emptyList())
                         NotificationsScreen(
                             notifications = notifications,
                             onNotificationClick = { notification ->
@@ -532,5 +502,45 @@ private fun getScreenOrderValue(screen: Screen): Int {
         is Screen.Login -> 9
         is Screen.PostView -> 10
         is Screen.PrivacyPolicy -> 11
+    }
+}
+
+@Composable
+fun NotificationBadgeIcon(
+    notificationViewModel: NotificationViewModel,
+    onClick: () -> Unit
+) {
+    val unreadCount by notificationViewModel.unreadCount.observeAsState(0)
+    IconButton(onClick = onClick) {
+        Box(modifier = Modifier.wrapContentSize()) {
+            Icon(
+                imageVector = Icons.Default.Notifications,
+                contentDescription = "Notifications",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (unreadCount > 0) {
+                Box(
+                    modifier = Modifier
+                        .size(16.dp)
+                        .align(Alignment.TopEnd)
+                        .offset(x = 4.dp, y = (-4).dp)
+                        .background(MaterialTheme.colorScheme.error, androidx.compose.foundation.shape.CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = if (unreadCount > 9) "9+" else unreadCount.toString(),
+                        color = MaterialTheme.colorScheme.onError,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        style = androidx.compose.ui.text.TextStyle(
+                            platformStyle = androidx.compose.ui.text.PlatformTextStyle(
+                                includeFontPadding = false
+                            )
+                        )
+                    )
+                }
+            }
+        }
     }
 }
