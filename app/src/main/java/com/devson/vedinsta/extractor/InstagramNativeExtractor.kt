@@ -13,7 +13,13 @@ object InstagramNativeExtractor {
 
     private const val TAG = "InstagramNativeExtr"
 
-    fun getMediaUrls(url: String, cookieFilePath: String): String {
+    fun getMediaUrls(
+        url: String, 
+        cookieFilePath: String,
+        userAgent: String? = null,
+        appId: String? = null,
+        timeoutSeconds: Int = 15
+    ): String {
         val sc = extractShortcode(url)
         val cookieFile = File(cookieFilePath)
         if (!cookieFile.exists()) {
@@ -34,7 +40,7 @@ object InstagramNativeExtractor {
 
             val mediaId = shortcodeToId(sc)
             val apiUrl = "https://i.instagram.com/api/v1/media/$mediaId/info/"
-            val jsonResponseStr = performGetRequest(apiUrl, cookies)
+            val jsonResponseStr = performGetRequest(apiUrl, cookies, userAgent, appId, timeoutSeconds)
             val data = JSONObject(jsonResponseStr)
 
             val items = data.optJSONArray("items")
@@ -148,16 +154,25 @@ object InstagramNativeExtractor {
         return cookies
     }
 
-    private fun performGetRequest(urlStr: String, cookies: Map<String, String>): String {
+    private fun performGetRequest(
+        urlStr: String, 
+        cookies: Map<String, String>,
+        userAgent: String? = null,
+        appId: String? = null,
+        timeoutSeconds: Int = 15
+    ): String {
         val url = URL(urlStr)
         val conn = url.openConnection() as HttpURLConnection
         conn.requestMethod = "GET"
-        conn.connectTimeout = 20000
-        conn.readTimeout = 20000
+        conn.connectTimeout = timeoutSeconds * 1000
+        conn.readTimeout = timeoutSeconds * 1000
         conn.instanceFollowRedirects = true
 
-        conn.setRequestProperty("User-Agent", "Instagram 319.0.0.28.119 Android")
-        conn.setRequestProperty("X-IG-App-ID", "567067343352427")
+        val finalUserAgent = if (!userAgent.isNullOrBlank()) userAgent else "Instagram 319.0.0.28.119 Android"
+        val finalAppId = if (!appId.isNullOrBlank()) appId else "567067343352427"
+
+        conn.setRequestProperty("User-Agent", finalUserAgent)
+        conn.setRequestProperty("X-IG-App-ID", finalAppId)
         conn.setRequestProperty("X-CSRFToken", cookies["csrftoken"] ?: "")
         conn.setRequestProperty("Referer", "https://www.instagram.com/")
         conn.setRequestProperty("Accept-Language", "en-US,en;q=0.9")

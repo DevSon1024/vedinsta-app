@@ -10,6 +10,7 @@ sealed class Screen {
     object Sessions : Screen()
     object Settings : Screen()
     object Appearance : Screen()
+    object AdvancedSettings : Screen()
     data class PostView(val post: DownloadedPost) : Screen()
     object About : Screen()
     object Notifications : Screen()
@@ -26,6 +27,7 @@ internal fun getScreenOrderValue(screen: Screen): Int {
         is Screen.Sessions -> 4
         is Screen.Settings -> 5
         is Screen.Appearance -> 6
+        is Screen.AdvancedSettings -> 12
         is Screen.Notifications -> 7
         is Screen.About -> 8
         is Screen.Login -> 9

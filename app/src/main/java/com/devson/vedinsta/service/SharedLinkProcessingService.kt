@@ -250,7 +250,13 @@ class SharedLinkProcessingService : Service() {
         return withContext(Dispatchers.IO) {
             try {
                 val cookieFile = File(filesDir, "instagram_cookies.txt").absolutePath
-                val resultString = InstagramNativeExtractor.getMediaUrls(url, cookieFile)
+                val resultString = InstagramNativeExtractor.getMediaUrls(
+                    url = url,
+                    cookieFilePath = cookieFile,
+                    userAgent = settingsViewModel.customUserAgent,
+                    appId = settingsViewModel.customIgAppId,
+                    timeoutSeconds = settingsViewModel.networkTimeoutSeconds
+                )
 
                 if (resultString.isNotEmpty()) {
                     val jsonResult = JSONObject(resultString)

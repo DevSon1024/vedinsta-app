@@ -1,3 +1,14 @@
+- **Type of Details:** New Update & Refactor
+- **Description:**
+  1. Implemented Advanced Network Customization to allow custom HTTP headers and connection tolerances to bypass Instagram API blocks.
+  2. Added preference properties `customUserAgent`, `customIgAppId`, `networkTimeoutSeconds`, and `maxRetries` in `SettingsViewModel.kt` backed by `SharedPreferences`.
+  3. Created `AdvancedSettingsScreen.kt` featuring outlined text fields for headers, sliders for timeouts/retries, and a step-by-step help modal explaining request header extraction via Chrome DevTools.
+  4. Extended native `InstagramNativeExtractor.getMediaUrls` and connection request structures to apply dynamic user-agents, app IDs, and timeout thresholds with default fallbacks.
+  5. Injected setting parameters into `getMediaUrls` call interfaces across the application in `VedInstaApplication.kt`, `SharedLinkProcessingService.kt`, and `MediaFetcherRepository.kt`.
+  6. Verified the project compiles successfully using `./gradlew compileDebugKotlin`.
+
+---
+
 - **Type of Details:** Performance Improvement & Refactor
 - **Description:**
   1. Implemented state preservation across custom navigation transitions in `NavGraph.kt` using `SaveableStateHolder.SaveableStateProvider`, resolving scroll-state amnesia.

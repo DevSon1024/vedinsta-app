@@ -146,7 +146,7 @@ fun MainAppScreen(
 
     Scaffold(
         topBar = {
-            if (currentScreen !is Screen.PostView && currentScreen !is Screen.Login && currentScreen !is Screen.Appearance && currentScreen !is Screen.DownloaderDetails) {
+            if (currentScreen !is Screen.PostView && currentScreen !is Screen.Login && currentScreen !is Screen.Appearance && currentScreen !is Screen.DownloaderDetails && currentScreen !is Screen.AdvancedSettings) {
                 VedInstaTopAppBar(
                     title = when(currentScreen) {
                         Screen.Home -> "Home"
@@ -398,7 +398,14 @@ fun MainAppScreen(
                                 onNavigateToAbout = { navigateTo(Screen.About) },
                                 onNavigateToAppearance = { navigateTo(Screen.Appearance) },
                                 onNavigateToPrivacyPolicy = { navigateTo(Screen.PrivacyPolicy) },
+                                onNavigateToAdvancedSettings = { navigateTo(Screen.AdvancedSettings) },
                                 onThemeChanged = onThemeChanged
+                            )
+                        }
+                        is Screen.AdvancedSettings -> {
+                            AdvancedSettingsScreen(
+                                onNavigateBack = { navigateBack() },
+                                settingsViewModel = settingsViewModel
                             )
                         }
                         is Screen.Appearance -> {

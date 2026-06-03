@@ -41,6 +41,7 @@ fun SettingsScreen(
     onNavigateToAbout: () -> Unit,
     onNavigateToAppearance: () -> Unit,
     onNavigateToPrivacyPolicy: () -> Unit,
+    onNavigateToAdvancedSettings: () -> Unit,
     onThemeChanged: (Int) -> Unit
 ) {
     val context = LocalContext.current
@@ -140,6 +141,16 @@ fun SettingsScreen(
             title = "When sharing a link:",
             subtitle = linkActionLabel,
             onClick = { showLinkActionDialog = true }
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Advanced Network settings
+        SettingsCategoryHeader("Network Settings")
+        SettingsClickableItem(
+            title = "Advanced Network Settings",
+            subtitle = "Custom user-agent, app ID, and connection timeouts",
+            onClick = onNavigateToAdvancedSettings
         )
 
         Spacer(modifier = Modifier.height(16.dp))

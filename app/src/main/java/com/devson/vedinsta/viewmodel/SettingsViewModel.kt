@@ -25,6 +25,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         const val KEY_DEFAULT_LINK_ACTION = "default_link_action"
         const val KEY_IS_LIST_VIEW = "is_list_view"
 
+        // Advanced Network Customization
+        const val KEY_CUSTOM_USER_AGENT = "custom_user_agent"
+        const val KEY_CUSTOM_IG_APP_ID = "custom_ig_app_id"
+        const val KEY_NETWORK_TIMEOUT_SECONDS = "network_timeout_seconds"
+        const val KEY_MAX_RETRIES = "max_retries"
+
         // Actions
         const val ACTION_ASK_EVERY_TIME = 0
         const val ACTION_DOWNLOAD_ALL = 1
@@ -58,6 +64,22 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     var maxNotificationsLimit: Int
         get() = prefs.getInt("max_notifications_limit", 0)
         set(value) = prefs.edit().putInt("max_notifications_limit", value).apply()
+
+    var customUserAgent: String
+        get() = prefs.getString(KEY_CUSTOM_USER_AGENT, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_CUSTOM_USER_AGENT, value).apply()
+
+    var customIgAppId: String
+        get() = prefs.getString(KEY_CUSTOM_IG_APP_ID, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_CUSTOM_IG_APP_ID, value).apply()
+
+    var networkTimeoutSeconds: Int
+        get() = prefs.getInt(KEY_NETWORK_TIMEOUT_SECONDS, 15)
+        set(value) = prefs.edit().putInt(KEY_NETWORK_TIMEOUT_SECONDS, value).apply()
+
+    var maxRetries: Int
+        get() = prefs.getInt(KEY_MAX_RETRIES, 3)
+        set(value) = prefs.edit().putInt(KEY_MAX_RETRIES, value).apply()
 
     suspend fun getImagePathLabel(): String = withContext(kotlinx.coroutines.Dispatchers.IO) {
         imageDirectoryUri?.let { uriString ->

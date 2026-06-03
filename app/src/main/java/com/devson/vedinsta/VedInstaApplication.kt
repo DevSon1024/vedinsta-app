@@ -147,7 +147,13 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
             }
 
             // Call the native extractor
-            val resultString = InstagramNativeExtractor.getMediaUrls(url, cookieFile.absolutePath)
+            val resultString = InstagramNativeExtractor.getMediaUrls(
+                url = url,
+                cookieFilePath = cookieFile.absolutePath,
+                userAgent = settingsViewModel.customUserAgent,
+                appId = settingsViewModel.customIgAppId,
+                timeoutSeconds = settingsViewModel.networkTimeoutSeconds
+            )
 
             Log.d("VedInstaApp", "Native result: $resultString")
 
@@ -253,7 +259,13 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
                 if (!cookieFile.exists()) {
                     throw Exception("Please log in to Instagram first")
                 }
-                val resultString = InstagramNativeExtractor.getMediaUrls(url, cookieFile.absolutePath)
+                val resultString = InstagramNativeExtractor.getMediaUrls(
+                    url = url,
+                    cookieFilePath = cookieFile.absolutePath,
+                    userAgent = settingsViewModel.customUserAgent,
+                    appId = settingsViewModel.customIgAppId,
+                    timeoutSeconds = settingsViewModel.networkTimeoutSeconds
+                )
 
                 val postData = JSONObject(resultString)
                 val status = postData.optString("status", "error")

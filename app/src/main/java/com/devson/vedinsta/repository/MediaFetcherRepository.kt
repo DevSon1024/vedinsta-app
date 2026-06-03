@@ -20,7 +20,18 @@ class MediaFetcherRepository(private val context: Context) {
     suspend fun fetchMedia(urlOrShortcode: String): com.devson.vedinsta.model.ExtractedPost = withContext(Dispatchers.IO) {
         try {
             val cookieFile = File(context.filesDir, "instagram_cookies.txt")
-            val resultJson = InstagramNativeExtractor.getMediaUrls(urlOrShortcode, cookieFile.absolutePath)
+            val prefs = context.getSharedPreferences("VedInstaPrefs", Context.MODE_PRIVATE)
+            val customUserAgent = prefs.getString("custom_user_agent", "") ?: ""
+            val customIgAppId = prefs.getString("custom_ig_app_id", "") ?: ""
+            val networkTimeoutSeconds = prefs.getInt("network_timeout_seconds", 15)
+
+            val resultJson = InstagramNativeExtractor.getMediaUrls(
+                url = urlOrShortcode,
+                cookieFilePath = cookieFile.absolutePath,
+                userAgent = customUserAgent,
+                appId = customIgAppId,
+                timeoutSeconds = networkTimeoutSeconds
+            )
             Log.d("MediaFetcherRepository", "getMediaUrls returned: $resultJson")
 
             val response = gson.fromJson(resultJson, InstagramResponse::class.java)
