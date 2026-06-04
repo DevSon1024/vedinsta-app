@@ -7,6 +7,9 @@ import androidx.room.TypeConverters
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 
+import androidx.compose.runtime.Immutable
+
+@Immutable
 @Entity(tableName = "downloaded_posts")
 @TypeConverters(Converters::class)
 data class DownloadedPost(

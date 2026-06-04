@@ -127,7 +127,11 @@ fun HistoryScreen(
                 ),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(paginatedPosts, key = { it.postId }) { post ->
+                items(
+                    items = paginatedPosts,
+                    key = { it.postId },
+                    contentType = { "HistoryListCard" }
+                ) { post ->
                     val fav = isFavorite(post.postId)
                     val context = androidx.compose.ui.platform.LocalContext.current
                     HistoryListCard(
@@ -218,7 +222,11 @@ fun HistoryScreen(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(paginatedPosts, key = { it.postId }) { post ->
+                items(
+                    items = paginatedPosts,
+                    key = { it.postId },
+                    contentType = { "HistoryGridCard" }
+                ) { post ->
                     val fav = isFavorite(post.postId)
                     val context = androidx.compose.ui.platform.LocalContext.current
                     HistoryGridCard(
@@ -402,9 +410,10 @@ fun HistoryListCard(
                 val context = androidx.compose.ui.platform.LocalContext.current
                 val imageRequest = remember(post.thumbnailPath) {
                     ImageRequest.Builder(context)
-                        .data(if (post.thumbnailPath.isNotEmpty()) File(post.thumbnailPath) else null)
-                        .size(300, 300)
-                        .crossfade(true)
+                        .data(if (post.thumbnailPath.isNotEmpty()) post.thumbnailPath else null)
+                        .size(250, 250)
+                        .crossfade(false)
+                        .allowHardware(true)
                         .diskCachePolicy(CachePolicy.ENABLED)
                         .memoryCachePolicy(CachePolicy.ENABLED)
                         .memoryCacheKey(post.thumbnailPath)
@@ -527,9 +536,10 @@ fun HistoryGridCard(
             val context = androidx.compose.ui.platform.LocalContext.current
             val imageRequest = remember(post.thumbnailPath) {
                 ImageRequest.Builder(context)
-                    .data(if (post.thumbnailPath.isNotEmpty()) File(post.thumbnailPath) else null)
-                    .size(300, 300)
-                    .crossfade(true)
+                    .data(if (post.thumbnailPath.isNotEmpty()) post.thumbnailPath else null)
+                    .size(250, 250)
+                    .crossfade(false)
+                    .allowHardware(true)
                     .diskCachePolicy(CachePolicy.ENABLED)
                     .memoryCachePolicy(CachePolicy.ENABLED)
                     .memoryCacheKey(post.thumbnailPath)

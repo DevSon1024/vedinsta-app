@@ -776,3 +776,15 @@
   5. **Verified:** .\gradlew compileDebugKotlin - BUILD SUCCESSFUL in 22s, zero errors.
 
 ---
+- **Type of Details:** Performance Improvement / Scroll Optimization
+- **Description:**
+  1. **[DownloadedPost.kt] Enforced Compose Stability:** Annotated DownloadedPost data class with @androidx.compose.runtime.Immutable to notify the Compose compiler that list model parameters are stable (despite containing List<String>), enabling cards to be skipped during scrolling recomposition.
+  2. **[HistoryScreen.kt] Optimized Lazy Layout Recycling:** Updated LazyColumn and LazyVerticalGrid items loops to explicitly define contentType (HistoryListCard / HistoryGridCard), reducing view instantiation overhead and letting Compose reuse views optimally.
+  3. **[HistoryScreen.kt] Tuned Coil Image Requests:** Updated HistoryListCard and HistoryGridCard thumbnail image loading:
+     - Passed thumbnailPath directly as a String (bypassing Coil's main-thread FileKeyer stat checks).
+     - Set .crossfade(false) to eliminate frame drops caused by alpha animations during fast-scrolling.
+     - Hardcoded thumbnail dimensions via .size(250, 250) to restrict bitmap memory overhead.
+     - Enabled .allowHardware(true) to utilize GPU hardware bitmap rendering.
+  4. **Verified:** .\gradlew compileDebugKotlin - BUILD SUCCESSFUL in 27s, zero errors.
+
+---
