@@ -116,6 +116,15 @@ class EnhancedDownloadManager(
             val success = downloadWithProgress(mediaUrl, filePath, fileName, finalNotificationId, isBatch)
             if (success) {
                 Log.d(TAG, "Download finished successfully: $filePath")
+                setProgress(workDataOf(PROGRESS to 100))
+                if (!isBatch) {
+                    val notification = createProgressNotification(fileName, 100)
+                    try {
+                        notificationManagerCompat.notify(finalNotificationId, notification)
+                    } catch (e: SecurityException) {
+                        Log.w(TAG, "Permission denied updating notification")
+                    }
+                }
                 val outputData = workDataOf(
                     PROGRESS to 100,
                     KEY_FILE_PATH to filePath
@@ -165,10 +174,6 @@ class EnhancedDownloadManager(
                         val buffer = ByteArray(64 * 1024)
                         var bytesRead: Int
                         currentTotalBytesRead = 0L
-                        var lastProgress = -1
-                        // PERF FIX: initialise to now so the first iteration cannot
-                        // fire instantly (avoids a spurious notification at byte 0).
-                        lastNotificationUpdateTime = System.currentTimeMillis()
 
                         while (inputStream.read(buffer).also { bytesRead = it } != -1) {
                             if (isStopped) {
@@ -178,27 +183,6 @@ class EnhancedDownloadManager(
                             }
                             outputStream.write(buffer, 0, bytesRead)
                             currentTotalBytesRead += bytesRead
-
-                            val now = System.currentTimeMillis()
-                            val progress = if (contentLength > 0) ((currentTotalBytesRead * 100) / contentLength).toInt() else -1
-
-                            // Only push progress to WorkManager & NotificationManager on a time gate
-                            // (500 ms) OR on the final 100% tick. Never on every buffer read.
-                            if ((progress > lastProgress && now - lastNotificationUpdateTime > NOTIFICATION_UPDATE_INTERVAL_MS) || progress == 100) {
-                                setProgress(workDataOf(PROGRESS to progress))
-                                lastProgress = progress
-
-                                if (!isBatch) {
-                                    val notification = createProgressNotification(fileName, progress)
-                                    try {
-                                        notificationManagerCompat.notify(notificationId, notification)
-                                        lastNotificationUpdateTime = now
-                                    } catch (e: SecurityException) {
-                                        Log.w(TAG, "Permission denied updating notification")
-                                        lastNotificationUpdateTime = Long.MAX_VALUE
-                                    }
-                                }
-                            }
                         }
                     }
                 }
@@ -227,8 +211,8 @@ class EnhancedDownloadManager(
 
     private fun createProgressNotification(fileName: String, progress: Int): Notification {
         val title = "Downloading Media"
-        val contentText = if (progress >= 0) "$fileName ($progress%)" else "$fileName (Downloading...)"
-        val indeterminate = progress < 0
+        val contentText = if (progress >= 100) "Downloading... (1/1 files)" else "Downloading... (0/1 files)"
+        val indeterminate = progress < 100
 
         val mainActivityIntent = Intent(applicationContext, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
@@ -253,7 +237,7 @@ class EnhancedDownloadManager(
             .setAutoCancel(false)
             .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_LOW) // Silent
-            .setProgress(100, if (indeterminate) 0 else progress, indeterminate)
+            .setProgress(0, 0, indeterminate)
             .setContentIntent(contentPendingIntent)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Cancel", cancelPendingIntent)
             .build()

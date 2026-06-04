@@ -842,11 +842,10 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
                     withContext(Dispatchers.IO) {
                         notificationManager.updateProgressInDb(postId = groupTag, username = displayUsername, progressText = "$finishedCount/$expectedCount")
                     }
-                    notificationManager.showBatchDownloadProgress(
+                    notificationManager.showDownloadProgress(
                         notificationId = groupTag.hashCode(),
-                        current = finishedCount,
-                        total = expectedCount,
-                        title = "Downloading from @$displayUsername"
+                        completedFiles = finishedCount,
+                        totalFiles = expectedCount
                     )
                 }
             }

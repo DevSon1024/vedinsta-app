@@ -153,12 +153,17 @@ class DownloadService : Service() {
                     val notification = if (isBatch) {
                         val progress = batchProgressMap[postId]
                         val finished = progress?.first?.get() ?: 0
-                        val percent = if (totalImages > 0) ((finished * 100) / totalImages) else 0
+                        val remaining = totalImages - finished
+                        val subText = when {
+                            remaining <= 0 -> "All files downloaded"
+                            remaining == 1 -> "$remaining file remaining"
+                            else -> "$remaining files remaining"
+                        }
                         NotificationCompat.Builder(this, VedInstaNotificationManager.CHANNEL_ID_SILENT)
                             .setSmallIcon(android.R.drawable.stat_sys_download)
                             .setContentTitle("VedInsta · Downloading")
-                            .setContentText("$finished of $totalImages files ($percent%)")
-                            .setSubText("${totalImages - finished} remaining")
+                            .setContentText("Downloading... ($finished/$totalImages files)")
+                            .setSubText(subText)
                             .setProgress(totalImages, finished, false)
                             .setPriority(NotificationCompat.PRIORITY_LOW)
                             .setOngoing(true)
@@ -253,12 +258,17 @@ class DownloadService : Service() {
                         val notification = if (isBatch) {
                             val progress = batchProgressMap[postId]
                             val finished = progress?.first?.get() ?: 0
-                            val percent = if (totalImages > 0) ((finished * 100) / totalImages) else 0
+                            val remaining = totalImages - finished
+                            val subText = when {
+                                remaining <= 0 -> "All files downloaded"
+                                remaining == 1 -> "$remaining file remaining"
+                                else -> "$remaining files remaining"
+                            }
                             NotificationCompat.Builder(this, VedInstaNotificationManager.CHANNEL_ID_SILENT)
                                 .setSmallIcon(android.R.drawable.stat_sys_download)
                                 .setContentTitle("VedInsta · Downloading")
-                                .setContentText("$finished of $totalImages files ($percent%)")
-                                .setSubText("${totalImages - finished} remaining")
+                                .setContentText("Downloading... ($finished/$totalImages files)")
+                                .setSubText(subText)
                                 .setProgress(totalImages, finished, false)
                                 .setPriority(NotificationCompat.PRIORITY_LOW)
                                 .setOngoing(true)
@@ -317,12 +327,11 @@ class DownloadService : Service() {
     }
 
     private fun createForegroundNotification(fileName: String): android.app.Notification {
-        val ext = fileName.substringAfterLast('.', "").uppercase()
-        val displayName = if (ext.isNotBlank()) "$ext file" else "Media file"
         return NotificationCompat.Builder(this, VedInstaNotificationManager.CHANNEL_ID_SILENT)
             .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle("VedInsta · Downloading $displayName")
-            .setContentText("Starting download...")
+            .setContentTitle("VedInsta · Downloading")
+            .setContentText("Downloading... (0/1 files)")
+            .setProgress(0, 0, true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
             .build()
@@ -362,11 +371,6 @@ class DownloadService : Service() {
 
                 val contentLength = body.contentLength()
                 var currentTotalBytesRead = 0L
-                var lastProgress = -1
-                // PERF FIX: Time-based throttle – cap UI/DB updates at max 2/sec (500 ms).
-                // Prevents SystemUI frame drops and Head-Up notification getting stuck on
-                // fast connections where the read loop can fire hundreds of times per second.
-                var lastUpdateMs = System.currentTimeMillis()
 
                 body.byteStream().use { inputStream ->
                     FileOutputStream(file).use { outputStream ->
@@ -379,19 +383,6 @@ class DownloadService : Service() {
                             }
                             outputStream.write(buffer, 0, bytesRead)
                             currentTotalBytesRead += bytesRead
-
-                            if (contentLength > 0 && (postId == null || totalImages <= 1)) {
-                                val currentProgress = ((currentTotalBytesRead * 100) / contentLength).toInt()
-                                val now = System.currentTimeMillis()
-
-                                // Only update UI/DB every 500 ms OR on the absolute final 100% update.
-                                if ((currentProgress > lastProgress && now - lastUpdateMs > 500L) || currentProgress == 100) {
-                                    lastProgress = currentProgress
-                                    lastUpdateMs = now
-                                    notificationManager.showSingleDownloadProgress(notificationId, fileName, currentProgress)
-                                    updateProgressInDb(postId ?: fileName, username, "$currentProgress%")
-                                }
-                            }
                         }
                     }
                 }
@@ -469,11 +460,10 @@ class DownloadService : Service() {
                 val finished = progress.first.incrementAndGet() // increment finished count
                 batchCompletedFilesMap[postId]?.add(filePath)
 
-                notificationManager.showBatchDownloadProgress(
+                notificationManager.showDownloadProgress(
                     notificationId = postId.hashCode(),
-                    current = finished,
-                    total = totalImages,
-                    title = "Downloading from @$displayUsername"
+                    completedFiles = finished,
+                    totalFiles = totalImages
                 )
 
                 if (finished >= totalImages) {
@@ -530,6 +520,8 @@ class DownloadService : Service() {
             val mediaTypeWord = if (isVideo) "reel" else "post"
             val title = "Download Completed"
             val msg = "Saved $mediaTypeWord from @$displayUsername"
+            notificationManager.showDownloadProgress(notificationId = notificationId, completedFiles = 1, totalFiles = 1)
+            updateProgressInDb(postId ?: fileName, username, "1/1")
             notificationManager.showDownloadCompleted(notificationId = notificationId, title = title, message = msg)
 
             serviceScope.launch {
@@ -573,11 +565,10 @@ class DownloadService : Service() {
             if (progress != null) {
                 val finished = progress.first.incrementAndGet() // increment finished count
 
-                notificationManager.showBatchDownloadProgress(
+                notificationManager.showDownloadProgress(
                     notificationId = postId.hashCode(),
-                    current = finished,
-                    total = totalImages,
-                    title = "Downloading from @$displayUsername"
+                    completedFiles = finished,
+                    totalFiles = totalImages
                 )
 
                 if (finished >= totalImages) {

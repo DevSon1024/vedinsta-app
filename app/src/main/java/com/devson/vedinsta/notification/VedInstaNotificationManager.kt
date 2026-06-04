@@ -108,54 +108,47 @@ class VedInstaNotificationManager private constructor(private val context: Conte
         notify(NOTIFICATION_ID_LINK_PROCESSING, notification)
     }
 
-    fun showBatchDownloadProgress(current: Int, total: Int) {
-        showBatchDownloadProgress(NOTIFICATION_ID_BATCH_DOWNLOAD, current, total, "Downloading")
-    }
-
-    fun showBatchDownloadProgress(notificationId: Int, current: Int, total: Int, title: String) {
-        val percent = if (total > 0) ((current * 100) / total) else 0
-        val remaining = total - current
+    fun showDownloadProgress(notificationId: Int, completedFiles: Int, totalFiles: Int) {
+        val remaining = totalFiles - completedFiles
+        val contentText = "Downloading... ($completedFiles/$totalFiles files)"
         val subText = when {
             remaining <= 0 -> "All files downloaded"
             remaining == 1 -> "$remaining file remaining"
             else -> "$remaining files remaining"
         }
-        // SILENT CHANNEL
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID_SILENT)
+
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID_SILENT)
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setContentTitle("VedInsta · Downloading")
-            .setContentText("$current of $total files ($percent%)")
-            .setSubText(subText)
-            .setProgress(total, current, false)
+            .setContentText(contentText)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
-            .setAutoCancel(false)
             .setOnlyAlertOnce(true)
-            .build()
 
-        notify(notificationId, notification)
+        if (totalFiles > 1) {
+            builder.setSubText(subText)
+            builder.setProgress(totalFiles, completedFiles, false)
+        } else {
+            builder.setProgress(0, 0, true)
+        }
+
+        notify(notificationId, builder.build())
+    }
+
+    fun showBatchDownloadProgress(current: Int, total: Int) {
+        showDownloadProgress(NOTIFICATION_ID_BATCH_DOWNLOAD, current, total)
+    }
+
+    fun showBatchDownloadProgress(notificationId: Int, current: Int, total: Int, title: String) {
+        showDownloadProgress(notificationId, current, total)
     }
 
     fun showSingleDownloadProgress(notificationId: Int, fileName: String, progress: Int) {
-        val ext = fileName.substringAfterLast('.', "").uppercase()
-        val displayName = if (ext.isNotBlank()) "$ext file" else "Media file"
-        val contentText = when {
-            progress >= 100 -> "Download complete"
-            progress >= 0 -> "$progress% downloaded"
-            else -> "Starting download..."
+        if (progress >= 100) {
+            showDownloadProgress(notificationId, 1, 1)
+        } else {
+            showDownloadProgress(notificationId, 0, 1)
         }
-        // SILENT CHANNEL
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID_SILENT)
-            .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle("VedInsta · Downloading $displayName")
-            .setContentText(contentText)
-            .setProgress(100, if (progress >= 0) progress else 0, progress < 0)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .build()
-
-        notify(notificationId, notification)
     }
 
     fun showBatchDownloadComplete(totalFiles: Int) {

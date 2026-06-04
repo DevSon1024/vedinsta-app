@@ -25,6 +25,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Vedinsta"
         android:requestLegacyExternalStorage="true"
+        android:enableOnBackInvokedCallback="true"
         tools:targetApi="36">
 
         <activity
