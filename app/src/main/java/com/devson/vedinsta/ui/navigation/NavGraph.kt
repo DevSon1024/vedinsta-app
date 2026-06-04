@@ -89,7 +89,7 @@ fun MainAppScreen(
         }
     }
 
-    // Clipboard extraction action — invoked from FAB and HomeScreen
+    // Clipboard extraction action - invoked from FAB and HomeScreen
     val onFabAction: () -> Unit = {
         if (extractionState !is ExtractionState.Loading) {
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -140,7 +140,7 @@ fun MainAppScreen(
                 Toast.makeText(context, state.message, Toast.LENGTH_LONG).show()
                 extractionViewModel.reset()
             }
-            else -> { /* Idle / Loading — no routing action needed */ }
+            else -> { /* Idle / Loading - no routing action needed */ }
         }
     }
 
@@ -212,7 +212,7 @@ fun MainAppScreen(
             if (currentScreen is Screen.Home) {
                 val isLoading = extractionState is ExtractionState.Loading
 
-                // Pre-compute the morphing polygon list once — avoids per-frame allocations
+                // Pre-compute the morphing polygon list once - avoids per-frame allocations
                 // and keeps the GPU-driven animation fully smooth at 60/120fps.
                 val loadingPolygons = remember {
                     listOf(

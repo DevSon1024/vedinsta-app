@@ -25,7 +25,6 @@ import coil.request.ImageRequest
 import com.devson.vedinsta.database.NotificationEntity
 import com.devson.vedinsta.viewmodel.NotificationViewModel
 import com.devson.vedinsta.viewmodel.SettingsViewModel
-import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -116,28 +115,33 @@ fun NotificationsScreen(
                             modifier = Modifier.padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Thumbnail Preview
+                            // ANR FIX: Pass the path as a String - NOT a File - so Coil skips
+                            // the FileKeyer disk-stat call that happens on the main thread with File objects.
+                            // The entire ImageRequest is hoisted into remember() to prevent
+                            // re-allocation on every recomposition.
                             if (!item.thumbnailPath.isNullOrBlank()) {
-                                val f = File(item.thumbnailPath)
-                                if (f.exists() && f.canRead()) {
-                                    val context = LocalContext.current
-                                    val imageRequest = remember(item.thumbnailPath) {
-                                        ImageRequest.Builder(context)
-                                            .data(f)
-                                            .crossfade(true)
-                                            .build()
-                                    }
-                                    AsyncImage(
-                                        model = imageRequest,
-                                        contentDescription = "Preview",
-                                        modifier = Modifier
-                                            .size(48.dp)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(MaterialTheme.colorScheme.surface),
-                                        contentScale = ContentScale.Crop
-                                    )
-                                    Spacer(modifier = Modifier.width(12.dp))
+                                val context = LocalContext.current
+                                val imageRequest = remember(item.thumbnailPath) {
+                                    ImageRequest.Builder(context)
+                                        .data(item.thumbnailPath)
+                                        .size(100, 100)
+                                        .crossfade(true)
+                                        .memoryCacheKey(item.thumbnailPath)
+                                        .diskCacheKey(item.thumbnailPath)
+                                        .error(com.devson.vedinsta.R.drawable.ic_error)
+                                        .fallback(com.devson.vedinsta.R.drawable.ic_error)
+                                        .build()
                                 }
+                                AsyncImage(
+                                    model = imageRequest,
+                                    contentDescription = "Preview",
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(MaterialTheme.colorScheme.surface),
+                                    contentScale = ContentScale.Crop
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
                             }
 
                             Column(modifier = Modifier.weight(1f)) {

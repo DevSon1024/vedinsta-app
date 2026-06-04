@@ -36,7 +36,9 @@ class EnhancedDownloadManager(
         const val KEY_MEDIA_TYPE = "media_type"
         const val PROGRESS = "Progress"
         private const val NOTIFICATION_ID_OFFSET = 1000
-        private const val NOTIFICATION_UPDATE_INTERVAL_MS = 1500L
+        // PERF FIX: 500 ms cap matches DownloadService – ensures max 2 UI updates/sec
+        // regardless of connection speed, protecting system_server from frame drops.
+        private const val NOTIFICATION_UPDATE_INTERVAL_MS = 500L
 
         private val sharedHttpClient by lazy { createEnhancedOkHttpClient() }
 
@@ -164,6 +166,9 @@ class EnhancedDownloadManager(
                         var bytesRead: Int
                         currentTotalBytesRead = 0L
                         var lastProgress = -1
+                        // PERF FIX: initialise to now so the first iteration cannot
+                        // fire instantly (avoids a spurious notification at byte 0).
+                        lastNotificationUpdateTime = System.currentTimeMillis()
 
                         while (inputStream.read(buffer).also { bytesRead = it } != -1) {
                             if (isStopped) {
@@ -177,20 +182,20 @@ class EnhancedDownloadManager(
                             val now = System.currentTimeMillis()
                             val progress = if (contentLength > 0) ((currentTotalBytesRead * 100) / contentLength).toInt() else -1
 
-                            if (progress != lastProgress && progress >= -1) {
+                            // Only push progress to WorkManager & NotificationManager on a time gate
+                            // (500 ms) OR on the final 100% tick. Never on every buffer read.
+                            if ((progress > lastProgress && now - lastNotificationUpdateTime > NOTIFICATION_UPDATE_INTERVAL_MS) || progress == 100) {
                                 setProgress(workDataOf(PROGRESS to progress))
                                 lastProgress = progress
 
                                 if (!isBatch) {
-                                    if (now - lastNotificationUpdateTime >= NOTIFICATION_UPDATE_INTERVAL_MS || progress == 100 || progress == -1 && lastNotificationUpdateTime == 0L) {
-                                        val notification = createProgressNotification(fileName, progress)
-                                        try {
-                                            notificationManagerCompat.notify(notificationId, notification)
-                                            lastNotificationUpdateTime = now
-                                        } catch (e: SecurityException) {
-                                            Log.w(TAG, "Permission denied updating notification")
-                                            lastNotificationUpdateTime = Long.MAX_VALUE
-                                        }
+                                    val notification = createProgressNotification(fileName, progress)
+                                    try {
+                                        notificationManagerCompat.notify(notificationId, notification)
+                                        lastNotificationUpdateTime = now
+                                    } catch (e: SecurityException) {
+                                        Log.w(TAG, "Permission denied updating notification")
+                                        lastNotificationUpdateTime = Long.MAX_VALUE
                                     }
                                 }
                             }

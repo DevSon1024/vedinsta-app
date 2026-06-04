@@ -299,13 +299,20 @@ fun PostViewScreen(
                                     isCurrentPage = pagerState.currentPage == page
                                 )
                             } else {
+                                val mediaPath = file.absolutePath
                                 val context = LocalContext.current
-                                val imageRequest = remember(file) {
+                                // ANR FIX: Use String path - NOT File - to bypass Coil's FileKeyer
+                                // which runs a stat() syscall on the main thread and crashes libjpeg
+                                // when the download service is concurrently writing the same file.
+                                val imageRequest = remember(mediaPath) {
                                     ImageRequest.Builder(context)
-                                        .data(file)
+                                        .data(mediaPath)
                                         .diskCachePolicy(CachePolicy.DISABLED)
                                         .memoryCachePolicy(CachePolicy.ENABLED)
+                                        .memoryCacheKey(mediaPath)
+                                        .diskCacheKey(mediaPath)
                                         .crossfade(true)
+                                        .error(com.devson.vedinsta.R.drawable.ic_error)
                                         .build()
                                 }
                                 AsyncImage(

@@ -77,9 +77,11 @@ class DownloadService : Service() {
         super.onCreate()
         notificationManager = VedInstaNotificationManager.getInstance(this)
 
-        // PERF FIX: Start bounded concurrent processors using Semaphore(3) to read from downloadChannel.
-        // This allows up to 3 concurrent downloads in parallel, while keeping it from overloading the network/CPU.
-        val semaphore = Semaphore(3)
+        // ANR FIX: Semaphore(1) enforces strictly sequential downloads.
+        // With Semaphore(3), three coroutines hammered the SAME notification ID concurrently,
+        // causing system_server IPC deadlocks and glitched/stuck progress bars.
+        // Sequential execution guarantees the progress bar moves smoothly 0→100% without races.
+        val semaphore = Semaphore(1)
         serviceScope.launch {
             for (request in downloadChannel) {
                 launch {
@@ -361,7 +363,10 @@ class DownloadService : Service() {
                 val contentLength = body.contentLength()
                 var currentTotalBytesRead = 0L
                 var lastProgress = -1
-                var lastNotificationUpdateTime = 0L
+                // PERF FIX: Time-based throttle – cap UI/DB updates at max 2/sec (500 ms).
+                // Prevents SystemUI frame drops and Head-Up notification getting stuck on
+                // fast connections where the read loop can fire hundreds of times per second.
+                var lastUpdateMs = System.currentTimeMillis()
 
                 body.byteStream().use { inputStream ->
                     FileOutputStream(file).use { outputStream ->
@@ -376,15 +381,15 @@ class DownloadService : Service() {
                             currentTotalBytesRead += bytesRead
 
                             if (contentLength > 0 && (postId == null || totalImages <= 1)) {
-                                val progress = ((currentTotalBytesRead * 100) / contentLength).toInt()
-                                if (progress != lastProgress) {
-                                    lastProgress = progress
-                                    val now = System.currentTimeMillis()
-                                    if (now - lastNotificationUpdateTime >= 1000L || progress == 100) {
-                                        lastNotificationUpdateTime = now
-                                        notificationManager.showSingleDownloadProgress(notificationId, fileName, progress)
-                                        updateProgressInDb(postId ?: fileName, username, "$progress%")
-                                    }
+                                val currentProgress = ((currentTotalBytesRead * 100) / contentLength).toInt()
+                                val now = System.currentTimeMillis()
+
+                                // Only update UI/DB every 500 ms OR on the absolute final 100% update.
+                                if ((currentProgress > lastProgress && now - lastUpdateMs > 500L) || currentProgress == 100) {
+                                    lastProgress = currentProgress
+                                    lastUpdateMs = now
+                                    notificationManager.showSingleDownloadProgress(notificationId, fileName, currentProgress)
+                                    updateProgressInDb(postId ?: fileName, username, "$currentProgress%")
                                 }
                             }
                         }
@@ -483,28 +488,33 @@ class DownloadService : Service() {
                     )
 
                     serviceScope.launch {
-                        try {
-                            val completedPaths = batchCompletedFilesMap[postId]
-                            val thumb = completedPaths?.firstOrNull() ?: filePath
-                            val safeThumb = if (thumb.isNotEmpty()) {
-                                com.devson.vedinsta.ui.ThumbnailHelper.getSafeThumbnailPath(applicationContext, thumb)
-                            } else {
-                                ""
-                            }
-                            val db = com.devson.vedinsta.database.AppDatabase.getDatabase(applicationContext)
-                            val pUrl = db.downloadedPostDao().getPostById(postId)?.postUrl
+                        // BUG FIX: NonCancellable prevents JobCancellationException when
+                        // stopSelf() fires (cancelling serviceScope) before this DB insert
+                        // completes. Terminal writes MUST survive service shutdown.
+                        withContext(NonCancellable) {
+                            try {
+                                val completedPaths = batchCompletedFilesMap[postId]
+                                val thumb = completedPaths?.firstOrNull() ?: filePath
+                                val safeThumb = if (thumb.isNotEmpty()) {
+                                    com.devson.vedinsta.ui.ThumbnailHelper.getSafeThumbnailPath(applicationContext, thumb)
+                                } else {
+                                    ""
+                                }
+                                val db = com.devson.vedinsta.database.AppDatabase.getDatabase(applicationContext)
+                                val pUrl = db.downloadedPostDao().getPostById(postId)?.postUrl
 
-                            notificationManager.addCustomNotification(
-                                title = title,
-                                message = msg,
-                                type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_COMPLETED,
-                                priority = com.devson.vedinsta.database.NotificationPriority.NORMAL,
-                                postId = postId,
-                                postUrl = pUrl,
-                                thumbnailPath = thumb
-                            )
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Failed to insert success batch notification in DB", e)
+                                notificationManager.addCustomNotification(
+                                    title = title,
+                                    message = msg,
+                                    type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_COMPLETED,
+                                    priority = com.devson.vedinsta.database.NotificationPriority.NORMAL,
+                                    postId = postId,
+                                    postUrl = pUrl,
+                                    thumbnailPath = thumb
+                                )
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Failed to insert success batch notification in DB", e)
+                            }
                         }
                     }
 
@@ -523,21 +533,26 @@ class DownloadService : Service() {
             notificationManager.showDownloadCompleted(notificationId = notificationId, title = title, message = msg)
 
             serviceScope.launch {
-                try {
-                    val db = com.devson.vedinsta.database.AppDatabase.getDatabase(applicationContext)
-                    val pUrl = db.downloadedPostDao().getPostById(postId ?: fileName)?.postUrl
+                // BUG FIX: NonCancellable prevents JobCancellationException when
+                // stopSelf() fires (cancelling serviceScope) before this DB insert
+                // completes. Terminal writes MUST survive service shutdown.
+                withContext(NonCancellable) {
+                    try {
+                        val db = com.devson.vedinsta.database.AppDatabase.getDatabase(applicationContext)
+                        val pUrl = db.downloadedPostDao().getPostById(postId ?: fileName)?.postUrl
 
-                    notificationManager.addCustomNotification(
-                        title = title,
-                        message = msg,
-                        type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_COMPLETED,
-                        priority = com.devson.vedinsta.database.NotificationPriority.NORMAL,
-                        postId = postId ?: fileName,
-                        postUrl = pUrl,
-                        thumbnailPath = com.devson.vedinsta.ui.ThumbnailHelper.getSafeThumbnailPath(applicationContext, filePath)
-                    )
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to insert success single notification in DB", e)
+                        notificationManager.addCustomNotification(
+                            title = title,
+                            message = msg,
+                            type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_COMPLETED,
+                            priority = com.devson.vedinsta.database.NotificationPriority.NORMAL,
+                            postId = postId ?: fileName,
+                            postUrl = pUrl,
+                            thumbnailPath = com.devson.vedinsta.ui.ThumbnailHelper.getSafeThumbnailPath(applicationContext, filePath)
+                        )
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to insert success single notification in DB", e)
+                    }
                 }
             }
             removeProgressFromDb(postId ?: fileName)
@@ -578,15 +593,19 @@ class DownloadService : Service() {
                         )
 
                         serviceScope.launch {
-                            try {
-                                notificationManager.addCustomNotification(
-                                    title = title,
-                                    message = msg,
-                                    type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_COMPLETED,
-                                    priority = com.devson.vedinsta.database.NotificationPriority.LOW
-                                )
-                            } catch (e: Exception) {
-                                Log.e(TAG, "Failed to insert partial success notification in DB", e)
+                            // BUG FIX: NonCancellable prevents JobCancellationException when
+                            // stopSelf() races ahead of this DB insert on batch partial-success.
+                            withContext(NonCancellable) {
+                                try {
+                                    notificationManager.addCustomNotification(
+                                        title = title,
+                                        message = msg,
+                                        type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_COMPLETED,
+                                        priority = com.devson.vedinsta.database.NotificationPriority.LOW
+                                    )
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Failed to insert partial success notification in DB", e)
+                                }
                             }
                         }
                     } else {
@@ -600,15 +619,19 @@ class DownloadService : Service() {
                         )
 
                         serviceScope.launch {
-                            try {
-                                notificationManager.addCustomNotification(
-                                    title = title,
-                                    message = msg,
-                                    type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_FAILED,
-                                    priority = com.devson.vedinsta.database.NotificationPriority.HIGH
-                                )
-                            } catch (e: Exception) {
-                                Log.e(TAG, "Failed to insert batch error notification in DB", e)
+                            // BUG FIX: NonCancellable prevents JobCancellationException when
+                            // stopSelf() races ahead of this DB insert on batch full-failure.
+                            withContext(NonCancellable) {
+                                try {
+                                    notificationManager.addCustomNotification(
+                                        title = title,
+                                        message = msg,
+                                        type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_FAILED,
+                                        priority = com.devson.vedinsta.database.NotificationPriority.HIGH
+                                    )
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Failed to insert batch error notification in DB", e)
+                                }
                             }
                         }
                     }
@@ -630,15 +653,19 @@ class DownloadService : Service() {
             )
 
             serviceScope.launch {
-                try {
-                    notificationManager.addCustomNotification(
-                        title = title,
-                        message = msg,
-                        type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_FAILED,
-                        priority = com.devson.vedinsta.database.NotificationPriority.HIGH
-                    )
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to insert single error notification in DB", e)
+                // BUG FIX: NonCancellable prevents JobCancellationException when
+                // stopSelf() races ahead of this single-download error DB insert.
+                withContext(NonCancellable) {
+                    try {
+                        notificationManager.addCustomNotification(
+                            title = title,
+                            message = msg,
+                            type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_FAILED,
+                            priority = com.devson.vedinsta.database.NotificationPriority.HIGH
+                        )
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to insert single error notification in DB", e)
+                    }
                 }
             }
             removeProgressFromDb(postId ?: fileName)
