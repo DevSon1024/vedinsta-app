@@ -16,6 +16,7 @@ sealed class Screen {
     object Notifications : Screen()
     object Login : Screen()
     object PrivacyPolicy : Screen()
+    object WhatsAppSaver : Screen()
 }
 
 internal fun getScreenOrderValue(screen: Screen): Int {
@@ -33,5 +34,6 @@ internal fun getScreenOrderValue(screen: Screen): Int {
         is Screen.Login -> 9
         is Screen.PostView -> 10
         is Screen.PrivacyPolicy -> 11
+        is Screen.WhatsAppSaver -> 13
     }
 }

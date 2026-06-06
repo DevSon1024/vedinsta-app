@@ -25,6 +25,7 @@ class MainActivity : ComponentActivity() {
     private val mainViewModel: MainViewModel by viewModels()
     private val notificationViewModel: NotificationViewModel by viewModels()
     private val settingsViewModel: SettingsViewModel by viewModels()
+    private val whatsAppViewModel: com.devson.vedinsta.viewmodel.WhatsAppViewModel by viewModels()
 
     private val currentIntent = mutableStateOf<Intent?>(null)
 
@@ -59,6 +60,7 @@ class MainActivity : ComponentActivity() {
                     mainViewModel = mainViewModel,
                     notificationViewModel = notificationViewModel,
                     settingsViewModel = settingsViewModel,
+                    whatsAppViewModel = whatsAppViewModel,
                     intent = currentIntent.value,
                     onThemeChanged = {
                         // Managed reactively by settingsViewModel!

@@ -42,6 +42,7 @@ fun HomeScreen(
     onNavigateToFavorites: () -> Unit,
     onNavigateToHistory: () -> Unit,
     onNavigateToSessions: () -> Unit,
+    onNavigateToWhatsAppSaver: () -> Unit,
     onPostClick: (DownloadedPost) -> Unit
 ) {
     val recentPosts by mainViewModel.recentPostsHome.observeAsState(emptyList())
@@ -187,7 +188,59 @@ fun HomeScreen(
                 }
             }
 
-            // Card 2: Go to Sessions
+            // Card 2: Go to WA Status
+            Card(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(120.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .clickable { onNavigateToWhatsAppSaver() },
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .background(
+                                MaterialTheme.colorScheme.primaryContainer,
+                                RoundedCornerShape(10.dp)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Download,
+                            contentDescription = "WA Status",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = "WA Status",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "Save statuses",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+
+            // Card 3: Go to Sessions
             Card(
                 modifier = Modifier
                     .weight(1f)

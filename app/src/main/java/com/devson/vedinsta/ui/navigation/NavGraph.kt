@@ -42,6 +42,7 @@ fun MainAppScreen(
     mainViewModel: MainViewModel,
     notificationViewModel: NotificationViewModel,
     settingsViewModel: SettingsViewModel,
+    whatsAppViewModel: WhatsAppViewModel,
     intent: Intent?,
     onThemeChanged: (Int) -> Unit
 ) {
@@ -62,6 +63,9 @@ fun MainAppScreen(
     LaunchedEffect(currentScreen) {
         if (currentScreen is Screen.Notifications) {
             notificationViewModel.pruneNotifications(settingsViewModel.maxNotificationsLimit)
+        }
+        if (currentScreen is Screen.WhatsAppSaver) {
+            whatsAppViewModel.checkPermission(context)
         }
     }
 
@@ -157,6 +161,7 @@ fun MainAppScreen(
                         Screen.About -> "About"
                         Screen.Notifications -> "Notifications"
                         Screen.PrivacyPolicy -> "Privacy Policy"
+                        Screen.WhatsAppSaver -> "WA Status"
                         else -> "VedInsta"
                     },
                     showBackButton = currentScreen !is Screen.Home,
@@ -205,6 +210,47 @@ fun MainAppScreen(
                         }
                     }
                 )
+            }
+        },
+        bottomBar = {
+            if (currentScreen is Screen.Home || currentScreen is Screen.History ||
+                currentScreen is Screen.Favorites || currentScreen is Screen.Sessions ||
+                currentScreen is Screen.WhatsAppSaver) {
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 8.dp
+                ) {
+                    NavigationBarItem(
+                        selected = currentScreen is Screen.Home,
+                        onClick = { navigateTo(Screen.Home) },
+                        icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
+                        label = { Text("Home") }
+                    )
+                    NavigationBarItem(
+                        selected = currentScreen is Screen.History,
+                        onClick = { navigateTo(Screen.History) },
+                        icon = { Icon(Icons.Default.History, contentDescription = "History") },
+                        label = { Text("History") }
+                    )
+                    NavigationBarItem(
+                        selected = currentScreen is Screen.Favorites,
+                        onClick = { navigateTo(Screen.Favorites) },
+                        icon = { Icon(Icons.Default.Favorite, contentDescription = "Favorites") },
+                        label = { Text("Favorites") }
+                    )
+                    NavigationBarItem(
+                        selected = currentScreen is Screen.WhatsAppSaver,
+                        onClick = { navigateTo(Screen.WhatsAppSaver) },
+                        icon = { Icon(Icons.Default.Download, contentDescription = "WA Status") },
+                        label = { Text("WA Status") }
+                    )
+                    NavigationBarItem(
+                        selected = currentScreen is Screen.Sessions,
+                        onClick = { navigateTo(Screen.Sessions) },
+                        icon = { Icon(Icons.Default.AccountBox, contentDescription = "Sessions") },
+                        label = { Text("Sessions") }
+                    )
+                }
             }
         },
         floatingActionButton = {
@@ -276,7 +322,7 @@ fun MainAppScreen(
                 .fillMaxSize()
                 .padding(
                     top = if (applyPadding) paddingValues.calculateTopPadding() else 0.dp,
-                    bottom = 0.dp
+                    bottom = if (applyPadding) paddingValues.calculateBottomPadding() else 0.dp
                 )
         ) {
             AnimatedContent(
@@ -312,6 +358,7 @@ fun MainAppScreen(
                                 onNavigateToFavorites = { navigateTo(Screen.Favorites) },
                                 onNavigateToHistory = { navigateTo(Screen.History) },
                                 onNavigateToSessions = { navigateTo(Screen.Sessions) },
+                                onNavigateToWhatsAppSaver = { navigateTo(Screen.WhatsAppSaver) },
                                 onPostClick = { post -> navigateTo(Screen.PostView(post)) }
                             )
                         }
@@ -453,6 +500,11 @@ fun MainAppScreen(
                                     Toast.makeText(context, "Post deleted", Toast.LENGTH_SHORT).show()
                                     navigateBack()
                                 }
+                            )
+                        }
+                        is Screen.WhatsAppSaver -> {
+                            WhatsAppSaverScreen(
+                                viewModel = whatsAppViewModel
                             )
                         }
                     }

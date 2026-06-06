@@ -27,14 +27,23 @@ This document serves as the absolute source of truth for any AI agent or LLM ass
 
 You must actively maintain the project's changelog. After every completed task, error resolution, or feature addition, you must append an entry to the `update_details.md` file.
 
-**Format for `update_details.md` entries:**
+**Format and Rules for `update_details.md`:**
 
-- **Type of Details:** (e.g., Error Solving, New Update, Refactor, Performance Improvement, More)
-- **Description:** A brief, clear summary of what was changed, fixed, or added in the recent chat/interaction.
-  After the details of the latest update, you must append only `---` to close out that specific chat area/session.
-- **Git:** do not commit or push anything until explicitly being asked to do so.
+- Do NOT read or rewrite the whole file every time. Simply append the new data at the very end of the document.
+- Include a Date and Time stamp for the update.
+  Whenever a fix, optimization, or feature is completed, you MUST document it using the following format:
 
-## 5. Project Architecture & Structure
+- **Issue:** (Briefly describe the exact issue or bottleneck that was just solved)
+- **Type:** (Specify the category: e.g., Error, Bug, UI, Performance, Architecture, Feature)
+- **Solution:** (Explain how the issue was solved. Maximum 10 lines.)
+- After the details of the latest update, you must append exactly `---` on a new line to close out that specific session.
+- Do not include any conversational filler in the file.
+
+## 5. Version Control (Git) Protocol
+
+- **Do not commit or push** any changes to the repository until explicitly being asked to do so by the developer.
+
+## 6. Project Architecture & Structure
 
 Adhere strictly to the **MVVM (Model-View-ViewModel)** architecture pattern and the existing directory structure:
 
@@ -46,11 +55,8 @@ Adhere strictly to the **MVVM (Model-View-ViewModel)** architecture pattern and 
 - **`com.devson.vedinsta.adapters`**: Contains RecyclerView/Compose adapters where applicable (e.g., `MediaCarouselAdapter`, `SessionAdapter`).
 - **`com.devson.vedinsta.notification`**: Contains notification managers and initializers.
 
-## 6. Specific Domain Rules (VedInsta Logic)
+## 7. Specific Domain Rules (VedInsta Logic)
 
-- **Python Integration (`mo3.py` / `insta_downloader.py`):** - Do not attempt to rewrite the Python media extraction script in Kotlin.
-  - Execute Python scripts using the established Chaquopy pattern.
-  - Parse the `stdout` JSON string safely using `kotlinx.serialization` or `Gson` into respective Kotlin Data Classes (e.g., `MediaResult`).
 - **Cookie Management:**
   - Instagram authentication cookies (`sessionid`, `csrftoken`, `ds_user_id`) must be intercepted via `WebViewClient`.
   - Store cookies securely using `EncryptedSharedPreferences` (`androidx.security.crypto`).
@@ -59,7 +65,7 @@ Adhere strictly to the **MVVM (Model-View-ViewModel)** architecture pattern and 
   - All physical file downloading must be handled by robust, resilient methods (e.g., `EnhancedDownloadManager` or Foreground Services) to handle large video files without timing out.
   - Media should be properly indexed into the Android `MediaStore` so it appears in native gallery applications immediately upon download.
 
-## 7. Dependency Management
+## 8. Dependency Management
 
 - **`libs.versions.toml`:** All dependency versions, libraries, and plugins are strictly managed in the version catalog. If an agent adds a new library, it MUST add it to `gradle/libs.versions.toml` and reference it appropriately in `build.gradle.kts` files. Do not hardcode version numbers inside `.gradle.kts` files.
 
