@@ -2,15 +2,20 @@ package com.devson.vedinsta.ui
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Environment
 import android.widget.Toast
+import java.io.File
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.*
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -28,17 +33,29 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.documentfile.provider.DocumentFile
 import coil.compose.AsyncImage
+import androidx.compose.ui.draw.clip
+import coil.request.CachePolicy
+import coil.request.ImageRequest
 import com.devson.vedinsta.viewmodel.WhatsAppState
 import com.devson.vedinsta.viewmodel.WhatsAppViewModel
 
 @Composable
 fun WhatsAppSaverScreen(
     viewModel: WhatsAppViewModel,
+    onStatusClick: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val state by viewModel.state.collectAsState()
     val savedStatuses by viewModel.savedStatuses.collectAsState()
+
+    val selectedFiles = remember { mutableStateListOf<DocumentFile>() }
+    var isSelectionMode by remember { mutableStateOf(false) }
+
+    LaunchedEffect(state) {
+        selectedFiles.clear()
+        isSelectionMode = false
+    }
 
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
@@ -76,7 +93,26 @@ fun WhatsAppSaverScreen(
             }
             is WhatsAppState.PermissionRequired -> {
                 PermissionRequiredView(onGrantClick = {
-                    val initialUri = Uri.parse("content://com.android.externalstorage.documents/tree/primary%3AAndroid%2Fmedia%2Fcom.whatsapp%2FWhatsApp%2FMedia%2F.Statuses")
+                    val whatsappDir = File(
+                        Environment.getExternalStorageDirectory(),
+                        "Android/media/com.whatsapp/WhatsApp/Media/.Statuses"
+                    )
+                    val businessDir = File(
+                        Environment.getExternalStorageDirectory(),
+                        "Android/media/com.whatsapp.w4b/WhatsApp Business/Media/.Statuses"
+                    )
+                    val initialUri = when {
+                        whatsappDir.exists() -> {
+                            Uri.parse("content://com.android.externalstorage.documents/tree/primary%3AAndroid%2Fmedia%2Fcom.whatsapp%2FWhatsApp%2FMedia%2F.Statuses")
+                        }
+                        businessDir.exists() -> {
+                            Uri.parse("content://com.android.externalstorage.documents/tree/primary%3AAndroid%2Fmedia%2Fcom.whatsapp.w4b%2FWhatsApp%20Business%2FMedia%2F.Statuses")
+                        }
+                        else -> {
+                            Toast.makeText(context, "WhatsApp status folder not found. Please select it manually.", Toast.LENGTH_LONG).show()
+                            null
+                        }
+                    }
                     launcher.launch(initialUri)
                 })
             }
@@ -89,11 +125,25 @@ fun WhatsAppSaverScreen(
                     StatusesGrid(
                         statuses = currentState.statuses,
                         savedStatuses = savedStatuses,
+                        selectedFiles = selectedFiles,
+                        isSelectionMode = isSelectionMode,
                         onSaveClick = { file ->
                             viewModel.saveStatus(context, file)
                         },
                         onSaveAudioClick = { file ->
                             viewModel.saveAudioFromVideo(context, file)
+                        },
+                        onStatusClick = onStatusClick,
+                        onToggleSelect = { file ->
+                            if (selectedFiles.contains(file)) {
+                                selectedFiles.remove(file)
+                                if (selectedFiles.isEmpty()) {
+                                    isSelectionMode = false
+                                }
+                            } else {
+                                isSelectionMode = true
+                                selectedFiles.add(file)
+                            }
                         }
                     )
                 }
@@ -105,6 +155,62 @@ fun WhatsAppSaverScreen(
                         viewModel.checkPermission(context)
                     }
                 )
+            }
+        }
+
+        // Contextual Floating Action Bar for Selection Mode
+        AnimatedVisibility(
+            visible = isSelectionMode,
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(16.dp)
+                .navigationBarsPadding()
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxWidth().height(64.dp),
+                shape = RoundedCornerShape(32.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                tonalElevation = 6.dp,
+                shadowElevation = 8.dp
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = {
+                            selectedFiles.clear()
+                            isSelectionMode = false
+                        }) {
+                            Icon(Icons.Default.Close, contentDescription = "Clear Selection", tint = MaterialTheme.colorScheme.onSurface)
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "${selectedFiles.size} Selected",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
+                    Button(
+                        onClick = {
+                            viewModel.saveStatuses(context, selectedFiles.toList())
+                            selectedFiles.clear()
+                            isSelectionMode = false
+                        },
+                        enabled = selectedFiles.isNotEmpty(),
+                        shape = RoundedCornerShape(18.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366))
+                    ) {
+                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color.White)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Save to Gallery", fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                }
             }
         }
     }
@@ -184,11 +290,13 @@ fun PermissionRequiredView(onGrantClick: () -> Unit) {
 fun StatusesGrid(
     statuses: List<DocumentFile>,
     savedStatuses: Set<String>,
+    selectedFiles: List<DocumentFile>,
+    isSelectionMode: Boolean,
     onSaveClick: (DocumentFile) -> Unit,
-    onSaveAudioClick: (DocumentFile) -> Unit
+    onSaveAudioClick: (DocumentFile) -> Unit,
+    onStatusClick: (Int) -> Unit,
+    onToggleSelect: (DocumentFile) -> Unit
 ) {
-    var previewFile by remember { mutableStateOf<DocumentFile?>(null) }
-
     LazyVerticalGrid(
         columns = GridCells.Fixed(3),
         contentPadding = PaddingValues(
@@ -201,60 +309,73 @@ fun StatusesGrid(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxSize()
     ) {
-        items(statuses, key = { it.uri.toString() }) { file ->
+        itemsIndexed(statuses, key = { _, file -> file.uri.toString() }) { index, file ->
             val isSaved = savedStatuses.contains(file.name)
+            val isSelected = selectedFiles.contains(file)
             StatusItem(
                 file = file,
                 isSaved = isSaved,
+                isSelected = isSelected,
+                isSelectionMode = isSelectionMode,
                 onSaveClick = { onSaveClick(file) },
                 onSaveAudioClick = { onSaveAudioClick(file) },
-                onItemClick = { previewFile = file }
+                onItemClick = {
+                    if (isSelectionMode) {
+                        onToggleSelect(file)
+                    } else {
+                        onStatusClick(index)
+                    }
+                },
+                onItemLongClick = {
+                    onToggleSelect(file)
+                }
             )
         }
     }
-
-    if (previewFile != null) {
-        val isSaved = savedStatuses.contains(previewFile!!.name)
-        StatusPreviewDialog(
-            file = previewFile!!,
-            isSaved = isSaved,
-            onDismiss = { previewFile = null },
-            onSaveClick = {
-                onSaveClick(previewFile!!)
-                previewFile = null
-            },
-            onSaveAudioClick = {
-                onSaveAudioClick(previewFile!!)
-                previewFile = null
-            }
-        )
-    }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun StatusItem(
     file: DocumentFile,
     isSaved: Boolean,
+    isSelected: Boolean,
+    isSelectionMode: Boolean,
     onSaveClick: () -> Unit,
     onSaveAudioClick: () -> Unit,
-    onItemClick: () -> Unit
+    onItemClick: () -> Unit,
+    onItemLongClick: () -> Unit
 ) {
+    val context = LocalContext.current
     val isVideo = remember(file.name) {
         file.name?.endsWith(".mp4", ignoreCase = true) == true
     }
-    var showMenu by remember { mutableStateOf(false) }
+
+    val imageRequest = remember(file.uri) {
+        ImageRequest.Builder(context)
+            .data(file.uri)
+            .size(300, 300) // Downsample to 300x300 px for fast scrolling performance and zero CPU choking
+            .diskCachePolicy(CachePolicy.DISABLED)
+            .memoryCachePolicy(CachePolicy.ENABLED)
+            .crossfade(true)
+            .build()
+    }
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(0.7f)
-            .clickable { onItemClick() },
+            .clip(RoundedCornerShape(12.dp))
+            .combinedClickable(
+                onClick = onItemClick,
+                onLongClick = onItemLongClick
+            ),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             AsyncImage(
-                model = file.uri,
+                model = imageRequest,
                 contentDescription = "WhatsApp Status",
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop
@@ -301,176 +422,35 @@ fun StatusItem(
                         )
                     }
                 }
-            } else {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(6.dp)
-                ) {
-                    IconButton(
-                        onClick = {
-                            if (isVideo) {
-                                showMenu = true
-                            } else {
-                                onSaveClick()
-                            }
-                        },
+            } else if (isSelectionMode) {
+                if (isSelected) {
+                    Box(
                         modifier = Modifier
-                            .size(32.dp)
-                            .background(
-                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.9f),
-                                androidx.compose.foundation.shape.CircleShape
-                            )
+                            .fillMaxSize()
+                            .background(Color(0xFF25D366).copy(alpha = 0.35f)),
+                        contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Download,
-                            contentDescription = "Download Status",
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.size(16.dp)
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = "Selected",
+                            tint = Color(0xFF25D366),
+                            modifier = Modifier.size(36.dp)
                         )
                     }
-
-                    if (isVideo) {
-                        DropdownMenu(
-                            expanded = showMenu,
-                            onDismissRequest = { showMenu = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Save Video") },
-                                onClick = {
-                                    showMenu = false
-                                    onSaveClick()
-                                },
-                                leadingIcon = { Icon(Icons.Default.Movie, contentDescription = null) }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Save Audio Only") },
-                                onClick = {
-                                    showMenu = false
-                                    onSaveAudioClick()
-                                },
-                                leadingIcon = { Icon(Icons.Default.MusicNote, contentDescription = null) }
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun StatusPreviewDialog(
-    file: DocumentFile,
-    isSaved: Boolean,
-    onDismiss: () -> Unit,
-    onSaveClick: () -> Unit,
-    onSaveAudioClick: () -> Unit
-) {
-    val isVideo = remember(file.name) {
-        file.name?.endsWith(".mp4", ignoreCase = true) == true
-    }
-
-    androidx.compose.ui.window.Dialog(
-        onDismissRequest = onDismiss
-    ) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(0.85f),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.Black)
-        ) {
-            Box(modifier = Modifier.fillMaxSize()) {
-                if (isVideo) {
-                    AndroidView(
-                        factory = { ctx ->
-                            android.widget.VideoView(ctx).apply {
-                                setVideoURI(file.uri)
-                                val mediaController = android.widget.MediaController(ctx)
-                                mediaController.setAnchorView(this)
-                                setMediaController(mediaController)
-                                setOnPreparedListener { mp ->
-                                    mp.isLooping = true
-                                    start()
-                                }
-                            }
-                        },
-                        modifier = Modifier.fillMaxSize()
-                    )
                 } else {
-                    AsyncImage(
-                        model = file.uri,
-                        contentDescription = "Status Preview",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Fit
-                    )
-                }
-
-                IconButton(
-                    onClick = onDismiss,
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(16.dp)
-                        .background(Color.Black.copy(alpha = 0.5f), androidx.compose.foundation.shape.CircleShape)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Close",
-                        tint = Color.White
-                    )
-                }
-
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    if (isSaved) {
-                        Button(
-                            onClick = { /* Dismiss */ },
-                            enabled = false,
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color.DarkGray,
-                                contentColor = Color.LightGray
-                            )
-                        ) {
-                            Icon(Icons.Default.Check, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Saved to Gallery", fontWeight = FontWeight.Bold)
-                        }
-                    } else if (isVideo) {
-                        Button(
-                            onClick = onSaveClick,
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                        ) {
-                            Icon(Icons.Default.Movie, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Save Video", fontWeight = FontWeight.Bold)
-                        }
-
-                        Button(
-                            onClick = onSaveAudioClick,
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
-                        ) {
-                            Icon(Icons.Default.MusicNote, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Save Audio Only", fontWeight = FontWeight.Bold)
-                        }
-                    } else {
-                        Button(
-                            onClick = onSaveClick,
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                        ) {
-                            Icon(Icons.Default.Download, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Save to Gallery", fontWeight = FontWeight.Bold)
-                        }
+                    Box(
+                        modifier = Modifier
+                            .padding(8.dp)
+                            .size(20.dp)
+                            .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+                            .align(Alignment.TopEnd),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(14.dp)
+                                .border(2.dp, Color.White, RoundedCornerShape(7.dp))
+                        )
                     }
                 }
             }

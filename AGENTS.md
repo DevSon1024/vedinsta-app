@@ -22,6 +22,7 @@ This document serves as the absolute source of truth for any AI agent or LLM ass
 - **Null Safety:** Handle nullable types safely. **Never** use the not-null assertion operator (`!!`) unless absolutely and undeniably necessary (and accompanied by an explanatory inline comment).
 - **Performance:** Prioritize lag-free, 60/120fps performance. Avoid memory thrashing by efficiently caching instances (like formatters) and using optimized data loading strategies (like Paging 3) for large media collections.
 - **File & I/O Operations:** Always dispatch database (Room), network, or file writing operations to `Dispatchers.IO`.
+- **Code Commments and notation** do not use '—' symbol in comments or strings, always use '-' symbol instead in codes and other files only once not repeat this at any place e.g.: '- example -' not '---------example------------' or blank line like '----------------'.
 
 ## 4. Documentation & Update Tracking
 

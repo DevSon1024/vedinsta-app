@@ -79,7 +79,7 @@ fun MainAppScreen(
     fun navigateTo(screen: Screen) {
         if (screen is Screen.Home || screen is Screen.History ||
             screen is Screen.Favorites || screen is Screen.Sessions ||
-            screen is Screen.Settings) {
+            screen is Screen.Settings || screen is Screen.WhatsAppSaver) {
             screenStack.clear()
         }
         screenStack.add(screen)
@@ -150,7 +150,7 @@ fun MainAppScreen(
 
     Scaffold(
         topBar = {
-            if (currentScreen !is Screen.PostView && currentScreen !is Screen.Login && currentScreen !is Screen.Appearance && currentScreen !is Screen.DownloaderDetails && currentScreen !is Screen.AdvancedSettings) {
+            if (currentScreen !is Screen.PostView && currentScreen !is Screen.Login && currentScreen !is Screen.Appearance && currentScreen !is Screen.DownloaderDetails && currentScreen !is Screen.AdvancedSettings && currentScreen !is Screen.WhatsAppStatusView) {
                 VedInstaTopAppBar(
                     title = when(currentScreen) {
                         Screen.Home -> "Home"
@@ -217,7 +217,7 @@ fun MainAppScreen(
                 currentScreen is Screen.Favorites || currentScreen is Screen.Sessions ||
                 currentScreen is Screen.WhatsAppSaver) {
                 NavigationBar(
-                    containerColor = MaterialTheme.colorScheme.surface,
+                    containerColor = MaterialTheme.colorScheme.background,
                     tonalElevation = 8.dp
                 ) {
                     NavigationBarItem(
@@ -316,7 +316,7 @@ fun MainAppScreen(
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
-        val applyPadding = currentScreen !is Screen.PostView && currentScreen !is Screen.Login && currentScreen !is Screen.Appearance && currentScreen !is Screen.DownloaderDetails
+        val applyPadding = currentScreen !is Screen.PostView && currentScreen !is Screen.Login && currentScreen !is Screen.Appearance && currentScreen !is Screen.DownloaderDetails && currentScreen !is Screen.WhatsAppStatusView
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -328,8 +328,9 @@ fun MainAppScreen(
             AnimatedContent(
                 targetState = currentScreen,
                 transitionSpec = {
-                    // Use smooth fade for PostView (edge-to-edge) to avoid ditch effect
-                    if (targetState is Screen.PostView || initialState is Screen.PostView) {
+                    // Use smooth fade for PostView and WhatsAppStatusView (edge-to-edge) to avoid ditch effect
+                    if (targetState is Screen.PostView || initialState is Screen.PostView ||
+                        targetState is Screen.WhatsAppStatusView || initialState is Screen.WhatsAppStatusView) {
                         fadeIn(animationSpec = tween(250)) togetherWith
                             fadeOut(animationSpec = tween(250))
                     } else {
@@ -504,7 +505,15 @@ fun MainAppScreen(
                         }
                         is Screen.WhatsAppSaver -> {
                             WhatsAppSaverScreen(
-                                viewModel = whatsAppViewModel
+                                viewModel = whatsAppViewModel,
+                                onStatusClick = { index -> navigateTo(Screen.WhatsAppStatusView(index)) }
+                            )
+                        }
+                        is Screen.WhatsAppStatusView -> {
+                            WhatsAppStatusViewScreen(
+                                viewModel = whatsAppViewModel,
+                                initialIndex = targetScreen.initialIndex,
+                                onNavigateBack = { navigateBack() }
                             )
                         }
                     }

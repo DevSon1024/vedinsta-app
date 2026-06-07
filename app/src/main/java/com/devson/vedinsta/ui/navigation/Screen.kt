@@ -17,6 +17,7 @@ sealed class Screen {
     object Login : Screen()
     object PrivacyPolicy : Screen()
     object WhatsAppSaver : Screen()
+    data class WhatsAppStatusView(val initialIndex: Int) : Screen()
 }
 
 internal fun getScreenOrderValue(screen: Screen): Int {
@@ -35,5 +36,6 @@ internal fun getScreenOrderValue(screen: Screen): Int {
         is Screen.PostView -> 10
         is Screen.PrivacyPolicy -> 11
         is Screen.WhatsAppSaver -> 13
+        is Screen.WhatsAppStatusView -> 14
     }
 }

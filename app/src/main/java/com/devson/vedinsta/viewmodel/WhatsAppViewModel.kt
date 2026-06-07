@@ -74,7 +74,9 @@ class WhatsAppViewModel(application: Application) : AndroidViewModel(application
 
     fun loadStatuses(context: Context, treeUri: Uri) {
         startObservingStatuses(context.applicationContext, treeUri)
-        _state.value = WhatsAppState.Loading
+        if (_state.value !is WhatsAppState.Success) {
+            _state.value = WhatsAppState.Loading
+        }
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val directory = DocumentFile.fromTreeUri(context, treeUri)
@@ -364,6 +366,69 @@ class WhatsAppViewModel(application: Application) : AndroidViewModel(application
             val current = _savedStatuses.value.toMutableSet()
             current.add(fileName)
             _savedStatuses.value = current
+        }
+    }
+
+    fun saveStatuses(context: Context, statusFiles: List<DocumentFile>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            var savedCount = 0
+            var failedCount = 0
+            for (statusFile in statusFiles) {
+                try {
+                    val resolver = context.contentResolver
+                    val inputStream = resolver.openInputStream(statusFile.uri) ?: continue
+
+                    val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                    val targetFolder = File(downloadsDir, "VedInstaStatusSaver")
+                    if (!targetFolder.exists()) {
+                        targetFolder.mkdirs()
+                    }
+
+                    val fileName = statusFile.name ?: "status_${System.currentTimeMillis()}"
+                    val targetFile = File(targetFolder, fileName)
+                    var finalFile = targetFile
+                    if (finalFile.exists()) {
+                        val nameWithoutExtension = fileName.substringBeforeLast(".")
+                        val extension = fileName.substringAfterLast(".", "")
+                        val extStr = if (extension.isNotEmpty()) ".$extension" else ""
+                        var count = 1
+                        while (finalFile.exists()) {
+                            finalFile = File(targetFolder, "${nameWithoutExtension}_$count$extStr")
+                            count++
+                        }
+                    }
+
+                    val outputStream = FileOutputStream(finalFile)
+                    val buffer = ByteArray(4096)
+                    var bytesRead: Int
+                    while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                        outputStream.write(buffer, 0, bytesRead)
+                    }
+                    outputStream.flush()
+                    outputStream.close()
+                    inputStream.close()
+
+                    markStatusAsSaved(fileName)
+
+                    MediaScannerConnection.scanFile(
+                        context,
+                        arrayOf(finalFile.absolutePath),
+                        null
+                    ) { _, _ -> }
+
+                    savedCount++
+                } catch (e: Exception) {
+                    failedCount++
+                }
+            }
+            withContext(Dispatchers.Main) {
+                if (savedCount > 0) {
+                    Toast.makeText(context, "Saved $savedCount statuses to Downloads/VedInstaStatusSaver", Toast.LENGTH_SHORT).show()
+                }
+                if (failedCount > 0) {
+                    Toast.makeText(context, "Failed to save $failedCount statuses", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
     }
 
