@@ -214,33 +214,35 @@ fun WhatsAppStatusViewScreen(
             contentAlignment = Alignment.Center
         ) {
             if (isVideo && transitionCompleted) {
-                key(currentIndex) {
-                    AndroidView(
-                        factory = { ctx ->
-                            VideoView(ctx).apply {
-                                setVideoURI(currentFile.uri)
-                                setOnPreparedListener { mp ->
-                                    videoDuration = mp.duration.toLong().coerceAtLeast(1000L)
-                                    if (!isPaused) {
-                                        start()
-                                    }
+                AndroidView(
+                    factory = { ctx ->
+                        VideoView(ctx).apply {
+                            setOnPreparedListener { mp ->
+                                videoDuration = mp.duration.toLong().coerceAtLeast(1000L)
+                                if (!isPaused) {
+                                    start()
                                 }
-                                setOnCompletionListener {
-                                    goToNext()
-                                }
-                                videoViewRef = this
                             }
-                        },
-                        update = { videoView ->
-                            if (isPaused) {
-                                videoView.pause()
-                            } else {
-                                videoView.start()
+                            setOnCompletionListener {
+                                goToNext()
                             }
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
+                            videoViewRef = this
+                        }
+                    },
+                    update = { videoView ->
+                        val currentUri = currentFile.uri
+                        if (videoView.tag != currentUri) {
+                            videoView.tag = currentUri
+                            videoView.setVideoURI(currentUri)
+                        }
+                        if (isPaused) {
+                            videoView.pause()
+                        } else {
+                            videoView.start()
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
             } else {
                 // Show static image preview during transition or for images
                 AsyncImage(
@@ -283,29 +285,11 @@ fun WhatsAppStatusViewScreen(
                         .padding(top = 8.dp)
                 ) {
                     // Segmented progress bars
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        for (i in 0 until statuses.size) {
-                            val segmentProgress = when {
-                                i < currentIndex -> 1.0f
-                                i > currentIndex -> 0.0f
-                                else -> progress
-                            }
-                            LinearProgressIndicator(
-                                progress = { segmentProgress },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(3.dp),
-                                color = Color(0xFF25D366),
-                                trackColor = Color.White.copy(alpha = 0.3f),
-                                strokeCap = StrokeCap.Round
-                            )
-                        }
-                    }
+                    StatusProgressRow(
+                        statusesSize = statuses.size,
+                        currentIndex = currentIndex,
+                        progressProvider = { progress }
+                    )
 
                     Spacer(modifier = Modifier.height(12.dp))
 
@@ -427,6 +411,40 @@ private fun formatLastModified(timestamp: Long): String {
             val date = Date(timestamp)
             val sdf = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault())
             sdf.format(date)
+        }
+    }
+}
+
+@Composable
+fun StatusProgressRow(
+    statusesSize: Int,
+    currentIndex: Int,
+    progressProvider: () -> Float,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        for (i in 0 until statusesSize) {
+            val segmentProgressProvider = {
+                when {
+                    i < currentIndex -> 1.0f
+                    i > currentIndex -> 0.0f
+                    else -> progressProvider()
+                }
+            }
+            LinearProgressIndicator(
+                progress = segmentProgressProvider,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(3.dp),
+                color = Color(0xFF25D366),
+                trackColor = Color.White.copy(alpha = 0.3f),
+                strokeCap = StrokeCap.Round
+            )
         }
     }
 }

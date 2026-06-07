@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
@@ -45,6 +46,7 @@ class WhatsAppViewModel(application: Application) : AndroidViewModel(application
     val savedStatuses: StateFlow<Set<String>> = _savedStatuses.asStateFlow()
 
     private var contentObserver: ContentObserver? = null
+    private var observerJob: kotlinx.coroutines.Job? = null
 
     private val _isSevenDaySaverEnabled = MutableStateFlow(
         sharedPrefs.getBoolean("seven_day_saver_enabled", false)
@@ -318,7 +320,11 @@ class WhatsAppViewModel(application: Application) : AndroidViewModel(application
         contentObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean, uri: Uri?) {
                 super.onChange(selfChange, uri)
-                loadStatuses(context, treeUri)
+                observerJob?.cancel()
+                observerJob = viewModelScope.launch(Dispatchers.IO) {
+                    delay(1000)
+                    loadStatuses(context, treeUri)
+                }
             }
         }
         try {

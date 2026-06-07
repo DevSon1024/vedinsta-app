@@ -56,18 +56,12 @@ fun WhatsAppSaverScreen(
     var selectedTab by remember { mutableIntStateOf(0) }
     var showSettingsBottomSheet by remember { mutableStateOf(false) }
 
-    val selectedFiles = remember { mutableStateListOf<DocumentFile>() }
+    var selectedFiles by remember { mutableStateOf(emptySet<Uri>()) }
     var isSelectionMode by remember { mutableStateOf(false) }
 
     LaunchedEffect(state) {
-        selectedFiles.clear()
+        selectedFiles = emptySet()
         isSelectionMode = false
-    }
-
-    LaunchedEffect(selectedTab) {
-        if (selectedTab == 1) {
-            viewModel.loadPreservedStatuses(context)
-        }
     }
 
     val launcher = rememberLauncherForActivityResult(
@@ -189,15 +183,17 @@ fun WhatsAppSaverScreen(
                                 },
                                 onStatusClick = onStatusClick,
                                 onToggleSelect = { file ->
-                                    if (selectedFiles.contains(file)) {
-                                        selectedFiles.remove(file)
-                                        if (selectedFiles.isEmpty()) {
+                                    val current = selectedFiles.toMutableSet()
+                                    if (current.contains(file.uri)) {
+                                        current.remove(file.uri)
+                                        if (current.isEmpty()) {
                                             isSelectionMode = false
                                         }
                                     } else {
                                         isSelectionMode = true
-                                        selectedFiles.add(file)
+                                        current.add(file.uri)
                                     }
+                                    selectedFiles = current
                                 }
                             )
                         }
@@ -227,12 +223,14 @@ fun WhatsAppSaverScreen(
                 visible = isSelectionMode && selectedTab == 0,
                 selectedCount = selectedFiles.size,
                 onClearSelection = {
-                    selectedFiles.clear()
+                    selectedFiles = emptySet()
                     isSelectionMode = false
                 },
                 onSaveClick = {
-                    viewModel.saveStatuses(context, selectedFiles.toList())
-                    selectedFiles.clear()
+                    val successState = state as? WhatsAppState.Success
+                    val filesToSave = successState?.statuses?.filter { it.uri in selectedFiles } ?: emptyList()
+                    viewModel.saveStatuses(context, filesToSave)
+                    selectedFiles = emptySet()
                     isSelectionMode = false
                 }
             )
@@ -324,7 +322,7 @@ fun PermissionRequiredView(onGrantClick: () -> Unit) {
 fun StatusesGrid(
     statuses: List<DocumentFile>,
     savedStatuses: Set<String>,
-    selectedFiles: List<DocumentFile>,
+    selectedFiles: Set<Uri>,
     isSelectionMode: Boolean,
     onSaveClick: (DocumentFile) -> Unit,
     onSaveAudioClick: (DocumentFile) -> Unit,
@@ -345,7 +343,7 @@ fun StatusesGrid(
     ) {
         itemsIndexed(statuses, key = { _, file -> file.uri.toString() }) { index, file ->
             val isSaved = savedStatuses.contains(file.name)
-            val isSelected = selectedFiles.contains(file)
+            val isSelected = selectedFiles.contains(file.uri)
             StatusItem(
                 file = file,
                 isSaved = isSaved,
