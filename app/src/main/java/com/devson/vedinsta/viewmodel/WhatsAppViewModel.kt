@@ -22,6 +22,10 @@ import android.database.ContentObserver
 import android.os.Handler
 import android.os.Looper
 import java.util.Calendar
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.ExistingPeriodicWorkPolicy
+import java.util.concurrent.TimeUnit
 
 sealed class WhatsAppState {
     object Loading : WhatsAppState()
@@ -42,8 +46,18 @@ class WhatsAppViewModel(application: Application) : AndroidViewModel(application
 
     private var contentObserver: ContentObserver? = null
 
+    private val _isSevenDaySaverEnabled = MutableStateFlow(
+        sharedPrefs.getBoolean("seven_day_saver_enabled", false)
+    )
+    val isSevenDaySaverEnabled: StateFlow<Boolean> = _isSevenDaySaverEnabled.asStateFlow()
+
+    private val _preservedStatuses = MutableStateFlow<List<File>>(emptyList())
+    val preservedStatuses: StateFlow<List<File>> = _preservedStatuses.asStateFlow()
+
     init {
         pruneOldSavedStatusRecords()
+        cleanupPreservedStatusesOnStartup()
+        enqueueStatusCleanupWorker(application)
     }
 
     fun checkPermission(context: Context) {
@@ -97,6 +111,7 @@ class WhatsAppViewModel(application: Application) : AndroidViewModel(application
                 }.sortedByDescending { it.lastModified() }
 
                 _state.value = WhatsAppState.Success(filteredFiles)
+                autoPreserveNewStatuses(context, filteredFiles)
             } catch (e: Exception) {
                 _state.value = WhatsAppState.Error(e.message ?: "Failed to load statuses.")
             }
@@ -429,6 +444,134 @@ class WhatsAppViewModel(application: Application) : AndroidViewModel(application
                     Toast.makeText(context, "Failed to save $failedCount statuses", Toast.LENGTH_SHORT).show()
                 }
             }
+        }
+    }
+
+    fun setSevenDaySaverEnabled(context: Context, enabled: Boolean) {
+        _isSevenDaySaverEnabled.value = enabled
+        sharedPrefs.edit().putBoolean("seven_day_saver_enabled", enabled).apply()
+        if (enabled) {
+            val currentState = _state.value
+            if (currentState is WhatsAppState.Success) {
+                viewModelScope.launch(Dispatchers.IO) {
+                    autoPreserveNewStatuses(context, currentState.statuses)
+                }
+            }
+            enqueueStatusCleanupWorker(context)
+        }
+    }
+
+    fun loadPreservedStatuses(context: Context) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val preserverDir = context.getExternalFilesDir("WAPreserver")
+                val files = if (preserverDir != null && preserverDir.exists()) {
+                    preserverDir.listFiles()?.filter { file ->
+                        val name = file.name
+                        name.endsWith(".jpg", ignoreCase = true) ||
+                                name.endsWith(".jpeg", ignoreCase = true) ||
+                                name.endsWith(".png", ignoreCase = true) ||
+                                name.endsWith(".mp4", ignoreCase = true)
+                    }?.sortedByDescending { it.lastModified() } ?: emptyList()
+                } else {
+                    emptyList()
+                }
+                _preservedStatuses.value = files
+            } catch (e: Exception) {
+                // Ignore
+            }
+        }
+    }
+
+    fun deletePreservedStatus(context: Context, file: File) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                if (file.exists()) {
+                    val deleted = file.delete()
+                    if (deleted) {
+                        loadPreservedStatuses(context)
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, "Status deleted", Toast.LENGTH_SHORT).show()
+                        }
+                    } else {
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, "Failed to delete file", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Error: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    private fun autoPreserveNewStatuses(context: Context, newStatuses: List<DocumentFile>) {
+        if (!_isSevenDaySaverEnabled.value) return
+        val preserverDir = context.getExternalFilesDir("WAPreserver") ?: return
+        if (!preserverDir.exists()) {
+            preserverDir.mkdirs()
+        }
+        val preservedNames = preserverDir.listFiles()?.map { it.name }?.toSet() ?: emptySet()
+        
+        for (statusFile in newStatuses) {
+            val fileName = statusFile.name ?: continue
+            if (fileName in preservedNames) continue
+            
+            try {
+                val resolver = context.contentResolver
+                resolver.openInputStream(statusFile.uri)?.use { inputStream ->
+                    val targetFile = File(preserverDir, fileName)
+                    FileOutputStream(targetFile).use { outputStream ->
+                        val buffer = ByteArray(4096)
+                        var bytesRead: Int
+                        while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                            outputStream.write(buffer, 0, bytesRead)
+                        }
+                        outputStream.flush()
+                    }
+                }
+            } catch (e: Exception) {
+                // Silently ignore copy failures
+            }
+        }
+        loadPreservedStatuses(context)
+    }
+
+    private fun cleanupPreservedStatusesOnStartup() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val context = getApplication<Application>()
+                val preserverDir = context.getExternalFilesDir("WAPreserver") ?: return@launch
+                if (preserverDir.exists()) {
+                    val now = System.currentTimeMillis()
+                    val threshold = 7L * 24L * 60L * 60L * 1000L // 7 days in ms
+                    preserverDir.listFiles()?.forEach { file ->
+                        if (now - file.lastModified() > threshold) {
+                            file.delete()
+                        }
+                    }
+                }
+                loadPreservedStatuses(context)
+            } catch (e: Exception) {
+                // Ignore
+            }
+        }
+    }
+
+    private fun enqueueStatusCleanupWorker(context: Context) {
+        try {
+            val request = PeriodicWorkRequestBuilder<com.devson.vedinsta.service.StatusCleanupWorker>(
+                24, TimeUnit.HOURS
+            ).build()
+            WorkManager.getInstance(context.applicationContext).enqueueUniquePeriodicWork(
+                "WAPreserverCleanup",
+                ExistingPeriodicWorkPolicy.KEEP,
+                request
+            )
+        } catch (e: Exception) {
+            // Ignore
         }
     }
 
