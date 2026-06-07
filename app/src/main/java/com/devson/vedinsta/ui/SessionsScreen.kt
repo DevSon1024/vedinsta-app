@@ -35,7 +35,8 @@ import com.devson.vedinsta.viewmodel.InstagramAuthViewModel
 @Composable
 fun SessionsScreen(
     authViewModel: InstagramAuthViewModel,
-    onNavigateToLogin: () -> Unit
+    onNavigateToLogin: () -> Unit,
+    contentPadding: PaddingValues = PaddingValues(0.dp)
 ) {
     val authState by authViewModel.authState.collectAsStateWithLifecycle()
     var showLogoutDialog by remember { mutableStateOf(false) }
@@ -68,18 +69,17 @@ fun SessionsScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .navigationBarsPadding()
             .padding(horizontal = 16.dp),
         contentAlignment = Alignment.TopCenter
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(vertical = 16.dp),
+                .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            Spacer(modifier = Modifier.height(contentPadding.calculateTopPadding() + 16.dp))
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -314,6 +314,7 @@ fun SessionsScreen(
                     )
                 )
             )
+            Spacer(modifier = Modifier.height(contentPadding.calculateBottomPadding() + 16.dp))
         }
     }
 

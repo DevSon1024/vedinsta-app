@@ -38,7 +38,8 @@ fun SettingsScreen(
     onNavigateToAppearance: () -> Unit,
     onNavigateToPrivacyPolicy: () -> Unit,
     onNavigateToAdvancedSettings: () -> Unit,
-    onThemeChanged: (Int) -> Unit
+    onThemeChanged: (Int) -> Unit,
+    contentPadding: PaddingValues = PaddingValues(0.dp)
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -92,9 +93,9 @@ fun SettingsScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .verticalScroll(scrollState)
-            .navigationBarsPadding()
-            .padding(16.dp)
+            .padding(horizontal = 16.dp)
     ) {
+        Spacer(modifier = Modifier.height(contentPadding.calculateTopPadding() + 16.dp))
 
         // 1. Display Settings Category
         SettingsCategoryHeader("Display Settings")
@@ -103,6 +104,15 @@ fun SettingsScreen(
             title = "App Theme",
             subtitle = "Theme selection, palette & navbar transparency",
             onClick = onNavigateToAppearance
+        )
+
+        val isBlurEnabled by settingsViewModel.isBlurEnabled.collectAsState()
+
+        SettingsSwitchItem(
+            title = "Blur Effect",
+            subtitle = "Transparent blurred top and bottom bars (glassmorphism)",
+            checked = isBlurEnabled,
+            onCheckedChange = { settingsViewModel.setBlurEnabled(it) }
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -178,6 +188,7 @@ fun SettingsScreen(
             subtitle = "Version, developer info, license",
             onClick = onNavigateToAbout
         )
+        Spacer(modifier = Modifier.height(contentPadding.calculateBottomPadding() + 16.dp))
     }
 
     // Shared Link Action Dialog Selection
@@ -291,6 +302,53 @@ fun SettingsClickableItem(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = "Arrow Right",
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+            )
+        }
+    }
+}
+
+@Composable
+fun SettingsSwitchItem(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = subtitle,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    fontSize = 12.sp
+                )
+            }
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = MaterialTheme.colorScheme.primary,
+                    checkedTrackColor = MaterialTheme.colorScheme.primaryContainer
+                )
             )
         }
     }

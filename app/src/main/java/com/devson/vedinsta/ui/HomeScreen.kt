@@ -9,8 +9,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.carousel.HorizontalUncontainedCarousel
+import androidx.compose.material3.carousel.rememberCarouselState
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -35,6 +39,7 @@ import com.devson.vedinsta.viewmodel.MainViewModel
 import java.io.File
 import java.util.Calendar
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     mainViewModel: MainViewModel,
@@ -43,7 +48,8 @@ fun HomeScreen(
     onNavigateToHistory: () -> Unit,
     onNavigateToSessions: () -> Unit,
     onNavigateToWhatsAppSaver: () -> Unit,
-    onPostClick: (DownloadedPost) -> Unit
+    onPostClick: (DownloadedPost) -> Unit,
+    contentPadding: PaddingValues
 ) {
     val recentPosts by mainViewModel.recentPostsHome.observeAsState(emptyList())
     val scrollState = rememberScrollState()
@@ -61,9 +67,8 @@ fun HomeScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .verticalScroll(scrollState)
-            .navigationBarsPadding()
-            .padding(bottom = 24.dp)
     ) {
+        Spacer(modifier = Modifier.height(contentPadding.calculateTopPadding()))
         // 1. Material You Header Greeting Card
         val gradientBrush = Brush.linearGradient(
             colors = listOf(
@@ -377,30 +382,74 @@ fun HomeScreen(
                 }
             }
         } else {
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            val carouselCount = remember(recentPosts) {
+                if (recentPosts.size > 9) 10 else recentPosts.size + 1
+            }
+            HorizontalUncontainedCarousel(
+                state = rememberCarouselState { carouselCount },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(180.dp)
-            ) {
-                items(recentPosts, key = { it.postId }) { post ->
+                    .wrapContentHeight()
+                    .padding(vertical = 8.dp),
+                itemWidth = 186.dp,
+                itemSpacing = 8.dp,
+                contentPadding = PaddingValues(horizontal = 16.dp)
+            ) { i ->
+                if (i == carouselCount - 1) {
+                    // See More card
                     Card(
                         modifier = Modifier
-                            .width(135.dp)
-                            .fillMaxHeight()
-                            .clip(RoundedCornerShape(12.dp))
+                            .width(186.dp)
+                            .height(205.dp)
+                            .clip(MaterialTheme.shapes.extraLarge)
+                            .clickable { onNavigateToHistory() },
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = "See More",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(36.dp)
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "See More",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "View history",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
+                        }
+                    }
+                } else {
+                    // Post card
+                    val post = recentPosts[i]
+                    Card(
+                        modifier = Modifier
+                            .width(186.dp)
+                            .height(205.dp)
+                            .clip(MaterialTheme.shapes.extraLarge)
                             .clickable { onPostClick(post) },
-                        shape = RoundedCornerShape(12.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                     ) {
                         Box(modifier = Modifier.fillMaxSize()) {
-                            // Thumbnail Image
                             val context = androidx.compose.ui.platform.LocalContext.current
                             val imageRequest = remember(post.thumbnailPath) {
                                 ImageRequest.Builder(context)
                                     .data(if (post.thumbnailPath.isNotEmpty()) File(post.thumbnailPath) else null)
-                                    .size(300, 300)
+                                    .size(400, 400)
                                     .crossfade(true)
                                     .diskCachePolicy(CachePolicy.ENABLED)
                                     .memoryCachePolicy(CachePolicy.ENABLED)
@@ -416,7 +465,6 @@ fun HomeScreen(
                                 contentScale = ContentScale.Crop
                             )
 
-                            // Gradient Overlay at the bottom
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -432,15 +480,14 @@ fun HomeScreen(
                                     )
                             )
 
-                            // Video indicator overlay
                             if (post.hasVideo) {
                                 Box(
                                     modifier = Modifier
-                                        .size(32.dp)
+                                        .size(36.dp)
                                         .align(Alignment.Center)
                                         .background(
                                             Color.Black.copy(alpha = 0.6f),
-                                            RoundedCornerShape(16.dp)
+                                            RoundedCornerShape(18.dp)
                                         ),
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -448,27 +495,27 @@ fun HomeScreen(
                                         imageVector = Icons.Default.PlayArrow,
                                         contentDescription = "Video",
                                         tint = Color.White,
-                                        modifier = Modifier.size(18.dp)
+                                        modifier = Modifier.size(20.dp)
                                     )
                                 }
                             }
 
-                            // Uploader's @username at the bottom
                             Text(
                                 text = "@${post.username}",
                                 color = Color.White,
-                                fontSize = 11.sp,
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier
                                     .align(Alignment.BottomStart)
-                                    .padding(8.dp)
+                                    .padding(12.dp)
                             )
                         }
                     }
                 }
             }
         }
+        Spacer(modifier = Modifier.height(contentPadding.calculateBottomPadding() + 24.dp))
     }
 }

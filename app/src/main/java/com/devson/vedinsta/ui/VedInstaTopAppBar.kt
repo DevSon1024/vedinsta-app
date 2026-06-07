@@ -5,6 +5,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -14,7 +16,9 @@ fun VedInstaTopAppBar(
     titleContent: (@Composable () -> Unit)? = null,
     showBackButton: Boolean = true,
     onBackClick: () -> Unit = {},
-    actions: @Composable RowScope.() -> Unit = {}
+    actions: @Composable RowScope.() -> Unit = {},
+    modifier: Modifier = Modifier,
+    containerColor: Color = MaterialTheme.colorScheme.background
 ) {
     TopAppBar(
         title = {
@@ -41,7 +45,8 @@ fun VedInstaTopAppBar(
         },
         actions = actions,
         colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = MaterialTheme.colorScheme.background
-        )
+            containerColor = containerColor
+        ),
+        modifier = modifier
     )
 }

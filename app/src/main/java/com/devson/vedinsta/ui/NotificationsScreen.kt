@@ -33,7 +33,8 @@ fun NotificationsScreen(
     onNotificationClick: (NotificationEntity) -> Unit,
     onDeleteClick: (Long) -> Unit,
     settingsViewModel: SettingsViewModel,
-    notificationViewModel: NotificationViewModel
+    notificationViewModel: NotificationViewModel,
+    contentPadding: PaddingValues = PaddingValues(0.dp)
 ) {
     var showSettingsSheet by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -57,6 +58,7 @@ fun NotificationsScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .padding(top = contentPadding.calculateTopPadding())
     ) {
         // Accessibility Header Row for settings configuration
         Row(
@@ -98,8 +100,9 @@ fun NotificationsScreen(
                 contentPadding = PaddingValues(
                     start = 12.dp,
                     end = 12.dp,
-                    top = 4.dp,
-                    bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 60.dp
+                    top = contentPadding.calculateTopPadding() + 4.dp,
+                    bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() +
+                            if (contentPadding.calculateBottomPadding() > 0.dp) contentPadding.calculateBottomPadding() else 60.dp
                 ),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {

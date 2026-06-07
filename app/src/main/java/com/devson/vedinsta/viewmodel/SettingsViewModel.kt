@@ -172,4 +172,14 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         prefs.edit().putBoolean("nav_bar_transparent", transparent).apply()
         _isNavBarTransparent.value = transparent
     }
+
+    private val _isBlurEnabled = MutableStateFlow(
+        prefs.getBoolean("is_blur_enabled", true)
+    )
+    val isBlurEnabled: StateFlow<Boolean> = _isBlurEnabled.asStateFlow()
+
+    fun setBlurEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("is_blur_enabled", enabled).apply()
+        _isBlurEnabled.value = enabled
+    }
 }

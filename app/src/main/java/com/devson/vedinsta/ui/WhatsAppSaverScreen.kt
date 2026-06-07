@@ -45,7 +45,7 @@ import com.devson.vedinsta.viewmodel.WhatsAppViewModel
 fun WhatsAppSaverScreen(
     viewModel: WhatsAppViewModel,
     onStatusClick: (Int) -> Unit,
-    modifier: Modifier = Modifier
+    contentPadding: PaddingValues = PaddingValues(0.dp)
 ) {
     val context = LocalContext.current
     val state by viewModel.state.collectAsState()
@@ -84,10 +84,11 @@ fun WhatsAppSaverScreen(
     }
 
     Column(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
+        Spacer(modifier = Modifier.height(contentPadding.calculateTopPadding()))
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -194,7 +195,8 @@ fun WhatsAppSaverScreen(
                                         current.add(file.uri)
                                     }
                                     selectedFiles = current
-                                }
+                                },
+                                contentPadding = contentPadding
                             )
                         }
                     }
@@ -215,7 +217,8 @@ fun WhatsAppSaverScreen(
                     },
                     onStatusClick = { file ->
                         viewPreservedStatus(context, file)
-                    }
+                    },
+                    contentPadding = contentPadding
                 )
             }
 
@@ -327,15 +330,22 @@ fun StatusesGrid(
     onSaveClick: (DocumentFile) -> Unit,
     onSaveAudioClick: (DocumentFile) -> Unit,
     onStatusClick: (Int) -> Unit,
-    onToggleSelect: (DocumentFile) -> Unit
+    onToggleSelect: (DocumentFile) -> Unit,
+    contentPadding: PaddingValues = PaddingValues(0.dp)
 ) {
+    val bottomPadding = if (contentPadding.calculateBottomPadding() > 0.dp) {
+        contentPadding.calculateBottomPadding() + 68.dp
+    } else {
+        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 68.dp
+    }
+
     LazyVerticalGrid(
         columns = GridCells.Fixed(3),
         contentPadding = PaddingValues(
             start = 8.dp,
             top = 8.dp,
             end = 8.dp,
-            bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 68.dp
+            bottom = bottomPadding
         ),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -494,8 +504,15 @@ fun StatusItem(
 fun PreservedStatusesGrid(
     statuses: List<File>,
     onDeleteClick: (File) -> Unit,
-    onStatusClick: (File) -> Unit
+    onStatusClick: (File) -> Unit,
+    contentPadding: PaddingValues = PaddingValues(0.dp)
 ) {
+    val bottomPadding = if (contentPadding.calculateBottomPadding() > 0.dp) {
+        contentPadding.calculateBottomPadding() + 68.dp
+    } else {
+        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 68.dp
+    }
+
     if (statuses.isEmpty()) {
         Box(
             modifier = Modifier
@@ -537,7 +554,7 @@ fun PreservedStatusesGrid(
                 start = 8.dp,
                 top = 8.dp,
                 end = 8.dp,
-                bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 68.dp
+                bottom = bottomPadding
             ),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),

@@ -63,7 +63,8 @@ fun HistoryScreen(
     isFavorite: (String) -> Boolean,
     onToggleFavorite: (String) -> Unit,
     onPostClick: (DownloadedPost) -> Unit,
-    posts: List<DownloadedPost>? = null
+    posts: List<DownloadedPost>? = null,
+    contentPadding: PaddingValues = PaddingValues(0.dp)
 ) {
     val observedPosts by mainViewModel.allDownloadedPosts.observeAsState(emptyList())
     val displayPosts = posts ?: observedPosts
@@ -122,7 +123,7 @@ fun HistoryScreen(
                 contentPadding = PaddingValues(
                     start = 12.dp,
                     end = 12.dp,
-                    top = 6.dp,
+                    top = contentPadding.calculateTopPadding() + 6.dp,
                     bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 60.dp
                 ),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -216,7 +217,7 @@ fun HistoryScreen(
                 contentPadding = PaddingValues(
                     start = 10.dp,
                     end = 10.dp,
-                    top = 10.dp,
+                    top = contentPadding.calculateTopPadding() + 10.dp,
                     bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 60.dp
                 ),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),

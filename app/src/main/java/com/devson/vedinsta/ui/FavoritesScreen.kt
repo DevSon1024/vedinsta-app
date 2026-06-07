@@ -24,7 +24,8 @@ fun FavoritesScreen(
     onListViewChanged: (Boolean) -> Unit,
     isFavorite: (String) -> Boolean,
     onToggleFavorite: (String) -> Unit,
-    onPostClick: (DownloadedPost) -> Unit
+    onPostClick: (DownloadedPost) -> Unit,
+    contentPadding: PaddingValues = PaddingValues(0.dp)
 ) {
     val posts by mainViewModel.allDownloadedPosts.observeAsState(emptyList())
     val favoritePosts = posts.filter { isFavorite(it.postId) }
@@ -33,7 +34,8 @@ fun FavoritesScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
+                .background(MaterialTheme.colorScheme.background)
+                .padding(contentPadding),
             contentAlignment = Alignment.Center
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -61,7 +63,8 @@ fun FavoritesScreen(
             onListViewChanged = onListViewChanged,
             isFavorite = isFavorite,
             onToggleFavorite = onToggleFavorite,
-            onPostClick = onPostClick
+            onPostClick = onPostClick,
+            contentPadding = contentPadding
         )
     }
 }

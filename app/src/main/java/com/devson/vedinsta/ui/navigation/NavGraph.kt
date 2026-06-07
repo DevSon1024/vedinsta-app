@@ -21,6 +21,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -68,6 +70,8 @@ fun MainAppScreen(
             whatsAppViewModel.checkPermission(context)
         }
     }
+
+    val isBlurEnabled by settingsViewModel.isBlurEnabled.collectAsStateWithLifecycle()
 
     // Local states for Favorites tracking using SharedPreferences via SettingsViewModel
     val favoritePostIds by mainViewModel.favoritePostIds.collectAsStateWithLifecycle()
@@ -151,6 +155,7 @@ fun MainAppScreen(
     Scaffold(
         topBar = {
             if (currentScreen !is Screen.PostView && currentScreen !is Screen.Login && currentScreen !is Screen.Appearance && currentScreen !is Screen.DownloaderDetails && currentScreen !is Screen.AdvancedSettings && currentScreen !is Screen.WhatsAppStatusView) {
+                val onSurfaceColor = MaterialTheme.colorScheme.onSurface
                 VedInstaTopAppBar(
                     title = when(currentScreen) {
                         Screen.Home -> "Home"
@@ -166,6 +171,23 @@ fun MainAppScreen(
                     },
                     showBackButton = currentScreen !is Screen.Home,
                     onBackClick = { navigateBack() },
+                    containerColor = if (isBlurEnabled) {
+                        MaterialTheme.colorScheme.background.copy(alpha = 0.7f)
+                    } else {
+                        MaterialTheme.colorScheme.background
+                    },
+                    modifier = if (isBlurEnabled) {
+                        Modifier.drawBehind {
+                            drawLine(
+                                color = onSurfaceColor.copy(alpha = 0.08f),
+                                start = Offset(0f, size.height),
+                                end = Offset(size.width, size.height),
+                                strokeWidth = 1.dp.toPx()
+                            )
+                        }
+                    } else {
+                        Modifier
+                    },
                     actions = {
                         if (currentScreen == Screen.Home) {
                             // Notification badge icon
@@ -216,13 +238,32 @@ fun MainAppScreen(
             if (currentScreen is Screen.Home || currentScreen is Screen.History ||
                 currentScreen is Screen.Favorites || currentScreen is Screen.Sessions ||
                 currentScreen is Screen.WhatsAppSaver) {
+                val onSurfaceColor = MaterialTheme.colorScheme.onSurface
                 NavigationBar(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    tonalElevation = 8.dp,
+                    containerColor = if (isBlurEnabled) {
+                        MaterialTheme.colorScheme.background.copy(alpha = 0.7f)
+                    } else {
+                        MaterialTheme.colorScheme.background
+                    },
+                    tonalElevation = if (isBlurEnabled) 0.dp else 8.dp,
                     windowInsets = WindowInsets(0.dp),
                     modifier = Modifier
                         .navigationBarsPadding()
                         .height(60.dp)
+                        .let { modifier ->
+                            if (isBlurEnabled) {
+                                modifier.drawBehind {
+                                    drawLine(
+                                        color = onSurfaceColor.copy(alpha = 0.08f),
+                                        start = Offset(0f, 0f),
+                                        end = Offset(size.width, 0f),
+                                        strokeWidth = 1.dp.toPx()
+                                    )
+                                }
+                            } else {
+                                modifier
+                            }
+                        }
                 ) {
                     NavigationBarItem(
                         selected = currentScreen is Screen.Home,
@@ -326,12 +367,13 @@ fun MainAppScreen(
         containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         val applyPadding = currentScreen !is Screen.PostView && currentScreen !is Screen.Login && currentScreen !is Screen.Appearance && currentScreen !is Screen.DownloaderDetails && currentScreen !is Screen.WhatsAppStatusView
+        val screenPadding = if (isBlurEnabled && applyPadding) paddingValues else PaddingValues(0.dp)
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(
-                    top = if (applyPadding) paddingValues.calculateTopPadding() else 0.dp,
-                    bottom = if (applyPadding) paddingValues.calculateBottomPadding() else 0.dp
+                    top = if (applyPadding && !isBlurEnabled) paddingValues.calculateTopPadding() else 0.dp,
+                    bottom = if (applyPadding && !isBlurEnabled) paddingValues.calculateBottomPadding() else 0.dp
                 )
         ) {
             AnimatedContent(
@@ -369,7 +411,8 @@ fun MainAppScreen(
                                 onNavigateToHistory = { navigateTo(Screen.History) },
                                 onNavigateToSessions = { navigateTo(Screen.Sessions) },
                                 onNavigateToWhatsAppSaver = { navigateTo(Screen.WhatsAppSaver) },
-                                onPostClick = { post -> navigateTo(Screen.PostView(post)) }
+                                onPostClick = { post -> navigateTo(Screen.PostView(post)) },
+                                contentPadding = screenPadding
                             )
                         }
                         is Screen.DownloaderDetails -> {
@@ -407,7 +450,8 @@ fun MainAppScreen(
                                 },
                                 isFavorite = isFavoriteHelper,
                                 onToggleFavorite = toggleFavoriteHelper,
-                                onPostClick = { post -> navigateTo(Screen.PostView(post)) }
+                                onPostClick = { post -> navigateTo(Screen.PostView(post)) },
+                                contentPadding = screenPadding
                             )
                         }
                         is Screen.Favorites -> {
@@ -427,13 +471,15 @@ fun MainAppScreen(
                                 },
                                 isFavorite = isFavoriteHelper,
                                 onToggleFavorite = toggleFavoriteHelper,
-                                onPostClick = { post -> navigateTo(Screen.PostView(post)) }
+                                onPostClick = { post -> navigateTo(Screen.PostView(post)) },
+                                contentPadding = screenPadding
                             )
                         }
                         is Screen.Sessions -> {
                             SessionsScreen(
                                 authViewModel = authViewModel,
-                                onNavigateToLogin = { navigateTo(Screen.Login) }
+                                onNavigateToLogin = { navigateTo(Screen.Login) },
+                                contentPadding = screenPadding
                             )
                         }
                         is Screen.Login -> {
@@ -456,7 +502,8 @@ fun MainAppScreen(
                                 onNavigateToAppearance = { navigateTo(Screen.Appearance) },
                                 onNavigateToPrivacyPolicy = { navigateTo(Screen.PrivacyPolicy) },
                                 onNavigateToAdvancedSettings = { navigateTo(Screen.AdvancedSettings) },
-                                onThemeChanged = onThemeChanged
+                                onThemeChanged = onThemeChanged,
+                                contentPadding = screenPadding
                             )
                         }
                         is Screen.AdvancedSettings -> {
@@ -496,7 +543,8 @@ fun MainAppScreen(
                                 },
                                 onDeleteClick = { id -> notificationViewModel.deleteNotification(id) },
                                 settingsViewModel = settingsViewModel,
-                                notificationViewModel = notificationViewModel
+                                notificationViewModel = notificationViewModel,
+                                contentPadding = screenPadding
                             )
                         }
                         is Screen.PostView -> {
@@ -515,7 +563,8 @@ fun MainAppScreen(
                         is Screen.WhatsAppSaver -> {
                             WhatsAppSaverScreen(
                                 viewModel = whatsAppViewModel,
-                                onStatusClick = { index -> navigateTo(Screen.WhatsAppStatusView(index)) }
+                                onStatusClick = { index -> navigateTo(Screen.WhatsAppStatusView(index)) },
+                                contentPadding = screenPadding
                             )
                         }
                         is Screen.WhatsAppStatusView -> {
