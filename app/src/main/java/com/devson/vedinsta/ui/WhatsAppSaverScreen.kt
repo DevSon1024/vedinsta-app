@@ -303,7 +303,7 @@ fun StatusesGrid(
             start = 8.dp,
             top = 8.dp,
             end = 8.dp,
-            bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 88.dp
+            bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 68.dp
         ),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),

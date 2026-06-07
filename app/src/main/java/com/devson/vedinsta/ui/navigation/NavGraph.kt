@@ -218,37 +218,46 @@ fun MainAppScreen(
                 currentScreen is Screen.WhatsAppSaver) {
                 NavigationBar(
                     containerColor = MaterialTheme.colorScheme.background,
-                    tonalElevation = 8.dp
+                    tonalElevation = 8.dp,
+                    windowInsets = WindowInsets(0.dp),
+                    modifier = Modifier
+                        .navigationBarsPadding()
+                        .height(60.dp)
                 ) {
                     NavigationBarItem(
                         selected = currentScreen is Screen.Home,
                         onClick = { navigateTo(Screen.Home) },
                         icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
-                        label = { Text("Home") }
+                        label = { Text("Home", fontSize = 11.sp, fontWeight = FontWeight.Medium) },
+                        alwaysShowLabel = false
                     )
                     NavigationBarItem(
                         selected = currentScreen is Screen.History,
                         onClick = { navigateTo(Screen.History) },
                         icon = { Icon(Icons.Default.History, contentDescription = "History") },
-                        label = { Text("History") }
+                        label = { Text("History", fontSize = 11.sp, fontWeight = FontWeight.Medium) },
+                        alwaysShowLabel = false
                     )
                     NavigationBarItem(
                         selected = currentScreen is Screen.Favorites,
                         onClick = { navigateTo(Screen.Favorites) },
                         icon = { Icon(Icons.Default.Favorite, contentDescription = "Favorites") },
-                        label = { Text("Favorites") }
+                        label = { Text("Favorites", fontSize = 11.sp, fontWeight = FontWeight.Medium) },
+                        alwaysShowLabel = false
                     )
                     NavigationBarItem(
                         selected = currentScreen is Screen.WhatsAppSaver,
                         onClick = { navigateTo(Screen.WhatsAppSaver) },
                         icon = { Icon(Icons.Default.Download, contentDescription = "WA Status") },
-                        label = { Text("WA Status") }
+                        label = { Text("WA Status", fontSize = 11.sp, fontWeight = FontWeight.Medium) },
+                        alwaysShowLabel = false
                     )
                     NavigationBarItem(
                         selected = currentScreen is Screen.Sessions,
                         onClick = { navigateTo(Screen.Sessions) },
                         icon = { Icon(Icons.Default.AccountBox, contentDescription = "Sessions") },
-                        label = { Text("Sessions") }
+                        label = { Text("Sessions", fontSize = 11.sp, fontWeight = FontWeight.Medium) },
+                        alwaysShowLabel = false
                     )
                 }
             }
