@@ -15,10 +15,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -103,6 +106,9 @@ fun SettingsScreen(
         SettingsClickableItem(
             title = "App Theme",
             subtitle = "Theme selection, palette & navbar transparency",
+            icon = Icons.Default.Palette,
+            iconContainerColor = MaterialTheme.colorScheme.primaryContainer,
+            iconColor = MaterialTheme.colorScheme.primary,
             onClick = onNavigateToAppearance
         )
 
@@ -111,6 +117,9 @@ fun SettingsScreen(
         SettingsSwitchItem(
             title = "Blur Effect",
             subtitle = "Transparent blurred top and bottom bars (glassmorphism)",
+            icon = Icons.Default.Opacity,
+            iconContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+            iconColor = MaterialTheme.colorScheme.secondary,
             checked = isBlurEnabled,
             onCheckedChange = { settingsViewModel.setBlurEnabled(it) }
         )
@@ -123,6 +132,9 @@ fun SettingsScreen(
         SettingsClickableItem(
             title = "Images Save Location",
             subtitle = imagePath,
+            icon = Icons.Default.Image,
+            iconContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
+            iconColor = MaterialTheme.colorScheme.tertiary,
             onClick = {
                 val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
                 imagePicker.launch(intent)
@@ -132,6 +144,9 @@ fun SettingsScreen(
         SettingsClickableItem(
             title = "Videos Save Location",
             subtitle = videoPath,
+            icon = Icons.Default.Movie,
+            iconContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
+            iconColor = MaterialTheme.colorScheme.tertiary,
             onClick = {
                 val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
                 videoPicker.launch(intent)
@@ -146,6 +161,9 @@ fun SettingsScreen(
         SettingsClickableItem(
             title = "When sharing a link:",
             subtitle = linkActionLabel,
+            icon = Icons.Default.Link,
+            iconContainerColor = MaterialTheme.colorScheme.primaryContainer,
+            iconColor = MaterialTheme.colorScheme.primary,
             onClick = { showLinkActionDialog = true }
         )
 
@@ -156,6 +174,9 @@ fun SettingsScreen(
         SettingsClickableItem(
             title = "Advanced Network Settings",
             subtitle = "Custom user-agent, app ID, and connection timeouts",
+            icon = Icons.Default.Dns,
+            iconContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+            iconColor = MaterialTheme.colorScheme.secondary,
             onClick = onNavigateToAdvancedSettings
         )
 
@@ -167,6 +188,9 @@ fun SettingsScreen(
         SettingsClickableItem(
             title = "Clear Cache",
             subtitle = "Clears media preview thumbnails & temp files",
+            icon = Icons.Default.Delete,
+            iconContainerColor = MaterialTheme.colorScheme.errorContainer,
+            iconColor = MaterialTheme.colorScheme.error,
             onClick = {
                 clearApplicationCache(context, coroutineScope)
             }
@@ -180,12 +204,18 @@ fun SettingsScreen(
         SettingsClickableItem(
             title = "Privacy Policy",
             subtitle = "View VedInsta privacy conditions",
+            icon = Icons.Default.Security,
+            iconContainerColor = MaterialTheme.colorScheme.primaryContainer,
+            iconColor = MaterialTheme.colorScheme.primary,
             onClick = onNavigateToPrivacyPolicy
         )
 
         SettingsClickableItem(
             title = "About Application",
             subtitle = "Version, developer info, license",
+            icon = Icons.Default.Info,
+            iconContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+            iconColor = MaterialTheme.colorScheme.secondary,
             onClick = onNavigateToAbout
         )
         Spacer(modifier = Modifier.height(contentPadding.calculateBottomPadding() + 16.dp))
@@ -253,11 +283,12 @@ fun SettingsScreen(
 @Composable
 fun SettingsCategoryHeader(title: String) {
     Text(
-        text = title,
+        text = title.uppercase(),
         color = MaterialTheme.colorScheme.primary,
-        fontSize = 12.sp,
+        fontSize = 11.sp,
         fontWeight = FontWeight.Bold,
-        modifier = Modifier.padding(vertical = 8.dp)
+        letterSpacing = 1.sp,
+        modifier = Modifier.padding(start = 4.dp, top = 16.dp, bottom = 6.dp)
     )
 }
 
@@ -265,6 +296,9 @@ fun SettingsCategoryHeader(title: String) {
 fun SettingsClickableItem(
     title: String,
     subtitle: String,
+    icon: ImageVector,
+    iconContainerColor: Color,
+    iconColor: Color,
     onClick: () -> Unit
 ) {
     Card(
@@ -272,27 +306,40 @@ fun SettingsClickableItem(
             .fillMaxWidth()
             .padding(vertical = 4.dp)
             .clickable { onClick() },
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f))
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .background(iconContainerColor, RoundedCornerShape(10.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = iconColor,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = subtitle,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                     fontSize = 12.sp,
                     maxLines = 1,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
@@ -301,7 +348,8 @@ fun SettingsClickableItem(
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = "Arrow Right",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.size(20.dp)
             )
         }
     }
@@ -311,6 +359,9 @@ fun SettingsClickableItem(
 fun SettingsSwitchItem(
     title: String,
     subtitle: String,
+    icon: ImageVector,
+    iconContainerColor: Color,
+    iconColor: Color,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
@@ -318,27 +369,40 @@ fun SettingsSwitchItem(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f))
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .background(iconContainerColor, RoundedCornerShape(10.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = iconColor,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = subtitle,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                     fontSize = 12.sp
                 )
             }
