@@ -161,6 +161,7 @@ dependencies {
     implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.compose.runtime.livedata)
     implementation(libs.androidx.graphics.shapes)   // LoadingIndicator morphing polygons
+    implementation(libs.haze)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 

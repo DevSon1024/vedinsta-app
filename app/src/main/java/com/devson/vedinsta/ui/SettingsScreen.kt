@@ -124,6 +124,77 @@ fun SettingsScreen(
             onCheckedChange = { settingsViewModel.setBlurEnabled(it) }
         )
 
+        if (isBlurEnabled) {
+            val blurOpacity by settingsViewModel.blurOpacity.collectAsState()
+            val blurRadius by settingsViewModel.blurRadius.collectAsState()
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Blur Tint Opacity",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "${(blurOpacity * 100).toInt()}%",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Slider(
+                    value = blurOpacity,
+                    onValueChange = { settingsViewModel.setBlurOpacity(it) },
+                    valueRange = 0.1f..0.9f,
+                    colors = SliderDefaults.colors(
+                        activeTrackColor = MaterialTheme.colorScheme.primary,
+                        thumbColor = MaterialTheme.colorScheme.primary
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Blur Intensity (Radius)",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "${blurRadius.toInt()} dp",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Slider(
+                    value = blurRadius,
+                    onValueChange = { settingsViewModel.setBlurRadius(it) },
+                    valueRange = 5f..50f,
+                    colors = SliderDefaults.colors(
+                        activeTrackColor = MaterialTheme.colorScheme.primary,
+                        thumbColor = MaterialTheme.colorScheme.primary
+                    )
+                )
+            }
+        }
+
         Spacer(modifier = Modifier.height(16.dp))
 
         // 2. Storage Location Category

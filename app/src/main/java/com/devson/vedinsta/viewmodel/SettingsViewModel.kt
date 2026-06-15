@@ -182,4 +182,24 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         prefs.edit().putBoolean("is_blur_enabled", enabled).apply()
         _isBlurEnabled.value = enabled
     }
+
+    private val _blurOpacity = MutableStateFlow(
+        prefs.getFloat("blur_opacity", 0.5f)
+    )
+    val blurOpacity: StateFlow<Float> = _blurOpacity.asStateFlow()
+
+    fun setBlurOpacity(opacity: Float) {
+        prefs.edit().putFloat("blur_opacity", opacity).apply()
+        _blurOpacity.value = opacity
+    }
+
+    private val _blurRadius = MutableStateFlow(
+        prefs.getFloat("blur_radius", 20f)
+    )
+    val blurRadius: StateFlow<Float> = _blurRadius.asStateFlow()
+
+    fun setBlurRadius(radius: Float) {
+        prefs.edit().putFloat("blur_radius", radius).apply()
+        _blurRadius.value = radius
+    }
 }

@@ -35,6 +35,10 @@ import com.devson.vedinsta.viewmodel.*
 import java.io.File
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.haze
+import dev.chrisbanes.haze.hazeChild
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,6 +53,7 @@ fun MainAppScreen(
     onThemeChanged: (Int) -> Unit
 ) {
     val context = LocalContext.current
+    val hazeState = remember { HazeState() }
     val screenStack = remember { mutableStateListOf<Screen>(Screen.Home) }
     val currentScreen = screenStack.last()
     val scope = rememberCoroutineScope()
@@ -72,6 +77,8 @@ fun MainAppScreen(
     }
 
     val isBlurEnabled by settingsViewModel.isBlurEnabled.collectAsStateWithLifecycle()
+    val blurOpacity by settingsViewModel.blurOpacity.collectAsStateWithLifecycle()
+    val blurRadius by settingsViewModel.blurRadius.collectAsStateWithLifecycle()
 
     // Local states for Favorites tracking using SharedPreferences via SettingsViewModel
     val favoritePostIds by mainViewModel.favoritePostIds.collectAsStateWithLifecycle()
@@ -172,19 +179,18 @@ fun MainAppScreen(
                     showBackButton = currentScreen !is Screen.Home,
                     onBackClick = { navigateBack() },
                     containerColor = if (isBlurEnabled) {
-                        MaterialTheme.colorScheme.background.copy(alpha = 0.7f)
+                        Color.Transparent
                     } else {
                         MaterialTheme.colorScheme.background
                     },
                     modifier = if (isBlurEnabled) {
-                        Modifier.drawBehind {
-                            drawLine(
-                                color = onSurfaceColor.copy(alpha = 0.08f),
-                                start = Offset(0f, size.height),
-                                end = Offset(size.width, size.height),
-                                strokeWidth = 1.dp.toPx()
+                        Modifier.hazeChild(
+                            state = hazeState,
+                            style = HazeStyle(
+                                blurRadius = blurRadius.dp,
+                                tint = MaterialTheme.colorScheme.surface.copy(alpha = blurOpacity)
                             )
-                        }
+                        )
                     } else {
                         Modifier
                     },
@@ -241,29 +247,27 @@ fun MainAppScreen(
                 val onSurfaceColor = MaterialTheme.colorScheme.onSurface
                 NavigationBar(
                     containerColor = if (isBlurEnabled) {
-                        MaterialTheme.colorScheme.background.copy(alpha = 0.7f)
+                        Color.Transparent
                     } else {
                         MaterialTheme.colorScheme.background
                     },
-                    tonalElevation = if (isBlurEnabled) 0.dp else 8.dp,
-                    windowInsets = WindowInsets(0.dp),
+                    tonalElevation = 0.dp,
+                    windowInsets = WindowInsets.navigationBars,
                     modifier = Modifier
-                        .navigationBarsPadding()
-                        .height(60.dp)
                         .let { modifier ->
                             if (isBlurEnabled) {
-                                modifier.drawBehind {
-                                    drawLine(
-                                        color = onSurfaceColor.copy(alpha = 0.08f),
-                                        start = Offset(0f, 0f),
-                                        end = Offset(size.width, 0f),
-                                        strokeWidth = 1.dp.toPx()
+                                modifier.hazeChild(
+                                    state = hazeState,
+                                    style = HazeStyle(
+                                        blurRadius = blurRadius.dp,
+                                        tint = MaterialTheme.colorScheme.surface.copy(alpha = blurOpacity)
                                     )
-                                }
+                                )
                             } else {
                                 modifier
                             }
                         }
+                        .height(60.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())
                 ) {
                     NavigationBarItem(
                         selected = currentScreen is Screen.Home,
@@ -371,6 +375,13 @@ fun MainAppScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .let { modifier ->
+                    if (isBlurEnabled) {
+                        modifier.haze(hazeState)
+                    } else {
+                        modifier
+                    }
+                }
                 .padding(
                     top = if (applyPadding && !isBlurEnabled) paddingValues.calculateTopPadding() else 0.dp,
                     bottom = if (applyPadding && !isBlurEnabled) paddingValues.calculateBottomPadding() else 0.dp

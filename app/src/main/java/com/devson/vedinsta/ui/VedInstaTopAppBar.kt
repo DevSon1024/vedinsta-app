@@ -45,7 +45,8 @@ fun VedInstaTopAppBar(
         },
         actions = actions,
         colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = containerColor
+            containerColor = containerColor,
+            scrolledContainerColor = containerColor
         ),
         modifier = modifier
     )
