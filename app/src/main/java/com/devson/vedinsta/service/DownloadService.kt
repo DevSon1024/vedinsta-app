@@ -71,6 +71,19 @@ class DownloadService : Service() {
         // ConcurrentMaps for batch download progress tracking
         private val batchProgressMap = ConcurrentHashMap<String, Pair<AtomicInteger, AtomicInteger>>()
         private val batchCompletedFilesMap = ConcurrentHashMap<String, CopyOnWriteArrayList<String>>()
+
+        // Map to keep track of active download jobs for cancellation
+        val activeJobs = ConcurrentHashMap<String, Job>()
+
+        fun cancelDownload(postId: String): Boolean {
+            val job = activeJobs.remove(postId)
+            return if (job != null) {
+                job.cancel()
+                true
+            } else {
+                false
+            }
+        }
     }
 
     override fun onCreate() {
@@ -80,11 +93,12 @@ class DownloadService : Service() {
         // ANR FIX: Semaphore(1) enforces strictly sequential downloads.
         // With Semaphore(3), three coroutines hammered the SAME notification ID concurrently,
         // causing system_server IPC deadlocks and glitched/stuck progress bars.
-        // Sequential execution guarantees the progress bar moves smoothly 0→100% without races.
+        // Sequential execution guarantees the progress bar moves smoothly 0-100% without races.
         val semaphore = Semaphore(1)
         serviceScope.launch {
             for (request in downloadChannel) {
-                launch {
+                val jobId = request.postId ?: request.fileName
+                val job = launch {
                     semaphore.withPermit {
                         try {
                             downloadFile(
@@ -109,6 +123,8 @@ class DownloadService : Service() {
                         }
                     }
                 }
+                activeJobs[jobId] = job
+                job.invokeOnCompletion { activeJobs.remove(jobId) }
             }
         }
     }
@@ -121,7 +137,14 @@ class DownloadService : Service() {
             val mediaTypes = it.getStringArrayListExtra(EXTRA_MEDIA_TYPES_LIST)
 
             if (urls != null && filePaths != null && fileNames != null && urls.isNotEmpty()) {
-                val totalImages = it.getIntExtra(EXTRA_TOTAL_IMAGES, urls.size)
+                val size = minOf(urls.size, filePaths.size, fileNames.size)
+                if (size == 0) {
+                    if (activeTasks.get() == 0) {
+                        stopSelfResult(startId)
+                    }
+                    return START_NOT_STICKY
+                }
+                val totalImages = it.getIntExtra(EXTRA_TOTAL_IMAGES, size)
                 val postId = it.getStringExtra(EXTRA_POST_ID)
                 val postUrl = it.getStringExtra(EXTRA_POST_URL)
                 val username = it.getStringExtra(EXTRA_USERNAME)
@@ -146,8 +169,8 @@ class DownloadService : Service() {
                     updateProgressInDb(postId ?: fileNames.firstOrNull(), username, "0/1")
                 }
 
-                val currentTaskCount = activeTasks.addAndGet(urls.size)
-                val isFirstTask = (currentTaskCount - urls.size) == 0
+                val currentTaskCount = activeTasks.addAndGet(size)
+                val isFirstTask = (currentTaskCount - size) == 0
 
                 if (isFirstTask) {
                     val notification = if (isBatch) {
@@ -161,7 +184,7 @@ class DownloadService : Service() {
                         }
                         NotificationCompat.Builder(this, VedInstaNotificationManager.CHANNEL_ID_SILENT)
                             .setSmallIcon(android.R.drawable.stat_sys_download)
-                            .setContentTitle("VedInsta · Downloading")
+                            .setContentTitle("VedInsta ⋅ Downloading")
                             .setContentText("Downloading... ($finished/$totalImages files)")
                             .setSubText(subText)
                             .setProgress(totalImages, finished, false)
@@ -196,7 +219,7 @@ class DownloadService : Service() {
 
                 // Send the download requests to the sequential queue channel
                 serviceScope.launch {
-                    for (i in urls.indices) {
+                    for (i in 0 until size) {
                         val url = urls[i]
                         val filePath = filePaths[i]
                         val fileName = fileNames[i]
@@ -359,7 +382,7 @@ class DownloadService : Service() {
 
             httpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
-                    handleDownloadFailure(postId, totalImages, username, fileName, "HTTP ${response.code}", notificationId)
+                    handleDownloadFailure(postId, postUrl, totalImages, username, fileName, "HTTP ${response.code}", notificationId)
                     return
                 }
 
@@ -440,7 +463,7 @@ class DownloadService : Service() {
                     }
                 }
             }
-            handleDownloadFailure(postId, totalImages, username, fileName, e.message ?: "Unknown error", notificationId)
+            handleDownloadFailure(postId, postUrl, totalImages, username, fileName, e.message ?: "Unknown error", notificationId)
         }
     }
 
@@ -553,6 +576,7 @@ class DownloadService : Service() {
 
     private fun handleDownloadFailure(
         postId: String?,
+        postUrl: String?,
         totalImages: Int,
         username: String?,
         fileName: String,
@@ -592,7 +616,9 @@ class DownloadService : Service() {
                                         title = title,
                                         message = msg,
                                         type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_COMPLETED,
-                                        priority = com.devson.vedinsta.database.NotificationPriority.LOW
+                                        priority = com.devson.vedinsta.database.NotificationPriority.LOW,
+                                        postId = postId,
+                                        postUrl = postUrl
                                     )
                                 } catch (e: Exception) {
                                     Log.e(TAG, "Failed to insert partial success notification in DB", e)
@@ -618,7 +644,9 @@ class DownloadService : Service() {
                                         title = title,
                                         message = msg,
                                         type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_FAILED,
-                                        priority = com.devson.vedinsta.database.NotificationPriority.HIGH
+                                        priority = com.devson.vedinsta.database.NotificationPriority.HIGH,
+                                        postId = postId,
+                                        postUrl = postUrl
                                     )
                                 } catch (e: Exception) {
                                     Log.e(TAG, "Failed to insert batch error notification in DB", e)
@@ -652,7 +680,9 @@ class DownloadService : Service() {
                             title = title,
                             message = msg,
                             type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_FAILED,
-                            priority = com.devson.vedinsta.database.NotificationPriority.HIGH
+                            priority = com.devson.vedinsta.database.NotificationPriority.HIGH,
+                            postId = postId ?: fileName,
+                            postUrl = postUrl
                         )
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to insert single error notification in DB", e)

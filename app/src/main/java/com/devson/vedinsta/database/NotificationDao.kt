@@ -50,4 +50,7 @@ interface NotificationDao {
 
     @Query("SELECT * FROM notifications WHERE type = :type ORDER BY timestamp DESC")
     fun getNotificationsByType(type: NotificationType): LiveData<List<NotificationEntity>>
+
+    @Query("UPDATE notifications SET type = 'DOWNLOAD_FAILED', title = 'Download Failed', message = 'The download was interrupted or timed out.' WHERE type = 'DOWNLOAD_PROGRESS' AND timestamp < :cutoffTime")
+    suspend fun markStaleDownloadsAsFailed(cutoffTime: Long)
 }

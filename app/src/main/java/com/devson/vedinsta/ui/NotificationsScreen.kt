@@ -32,6 +32,8 @@ fun NotificationsScreen(
     notifications: List<NotificationEntity>,
     onNotificationClick: (NotificationEntity) -> Unit,
     onDeleteClick: (Long) -> Unit,
+    onCancelClick: (NotificationEntity) -> Unit,
+    onRetryClick: (NotificationEntity) -> Unit,
     settingsViewModel: SettingsViewModel,
     notificationViewModel: NotificationViewModel,
     contentPadding: PaddingValues = PaddingValues(0.dp)
@@ -201,13 +203,24 @@ fun NotificationsScreen(
                                     )
                                 }
                             }
-                            if (!isProgress) {
-                                IconButton(onClick = { onDeleteClick(item.id) }) {
-                                    Icon(
-                                        imageVector = Icons.Default.Delete,
-                                        contentDescription = "Delete",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                    )
+                            if (isProgress) {
+                                TextButton(onClick = { onCancelClick(item) }) {
+                                    Text("Cancel", color = MaterialTheme.colorScheme.error)
+                                }
+                            } else {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (item.type == com.devson.vedinsta.database.NotificationType.DOWNLOAD_FAILED && item.postUrl != null) {
+                                        TextButton(onClick = { onRetryClick(item) }) {
+                                            Text("Retry", color = MaterialTheme.colorScheme.primary)
+                                        }
+                                    }
+                                    IconButton(onClick = { onDeleteClick(item.id) }) {
+                                        Icon(
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = "Delete",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                        )
+                                    }
                                 }
                             }
                         }

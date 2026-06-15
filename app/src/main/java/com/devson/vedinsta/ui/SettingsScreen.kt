@@ -105,7 +105,7 @@ fun SettingsScreen(
 
         SettingsClickableItem(
             title = "App Theme",
-            subtitle = "Theme selection, palette & navbar transparency",
+            subtitle = "Theme selection, Palette & Navbar Transparency",
             icon = Icons.Default.Palette,
             iconContainerColor = MaterialTheme.colorScheme.primaryContainer,
             iconColor = MaterialTheme.colorScheme.primary,
@@ -116,7 +116,7 @@ fun SettingsScreen(
 
         SettingsSwitchItem(
             title = "Blur Effect",
-            subtitle = "Transparent blurred top and bottom bars (glassmorphism)",
+            subtitle = "Blurred Top & Bottom Navbars (glassmorphism)",
             icon = Icons.Default.Opacity,
             iconContainerColor = MaterialTheme.colorScheme.secondaryContainer,
             iconColor = MaterialTheme.colorScheme.secondary,
@@ -159,7 +159,7 @@ fun SettingsScreen(
         SettingsCategoryHeader("Link Behaviors")
 
         SettingsClickableItem(
-            title = "When sharing a link:",
+            title = "When Sharing a Link",
             subtitle = linkActionLabel,
             icon = Icons.Default.Link,
             iconContainerColor = MaterialTheme.colorScheme.primaryContainer,

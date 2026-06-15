@@ -542,6 +542,8 @@ fun MainAppScreen(
                                     }
                                 },
                                 onDeleteClick = { id -> notificationViewModel.deleteNotification(id) },
+                                onCancelClick = { item -> notificationViewModel.cancelDownload(item) },
+                                onRetryClick = { item -> notificationViewModel.retryDownload(item) },
                                 settingsViewModel = settingsViewModel,
                                 notificationViewModel = notificationViewModel,
                                 contentPadding = screenPadding

@@ -132,7 +132,7 @@ class SharedLinkProcessingService : Service() {
                     // MULTIPLE CONTENT: Check Settings
                     when (settingsViewModel.defaultLinkAction) {
                         SettingsViewModel.ACTION_DOWNLOAD_ALL -> {
-                            handleDownloadAll(url, -1)
+                            handleDownloadAll(url, startId)
                             shouldStopSelf = false
                         }
                         SettingsViewModel.ACTION_OPEN_SELECTION -> {
