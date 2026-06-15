@@ -77,6 +77,24 @@ class SharedLinkHandlerActivity : AppCompatActivity() {
     }
 
     private fun extractInstagramUrl(text: String): String? {
+        // First check for story URL patterns
+        val storyPatterns = listOf(
+            Regex("https?://(?:www\\.)?instagram\\.com/stories/([A-Za-z0-9_.-]+)(?:/([0-9]+))?/?.*"),
+            Regex("instagram\\.com/stories/([A-Za-z0-9_.-]+)(?:/([0-9]+))?/?.*")
+        )
+
+        storyPatterns.forEach { pattern ->
+            pattern.find(text)?.let { matchResult ->
+                val username = matchResult.groupValues[1]
+                val storyId = matchResult.groupValues.getOrNull(2)
+                return if (!storyId.isNullOrEmpty()) {
+                    "https://www.instagram.com/stories/$username/$storyId/"
+                } else {
+                    "https://www.instagram.com/stories/$username/"
+                }
+            }
+        }
+
         // Instagram URL patterns
         val patterns = listOf(
             Regex("https?://(?:www\\.)?instagram\\.com/(?:p|reel|tv)/([A-Za-z0-9_-]+)/?.*"),

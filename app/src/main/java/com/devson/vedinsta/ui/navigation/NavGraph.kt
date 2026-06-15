@@ -152,7 +152,19 @@ fun MainAppScreen(
                 }
             }
             is ExtractionState.Error -> {
-                Toast.makeText(context, state.message, Toast.LENGTH_LONG).show()
+                val msg = state.message
+                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                
+                if (msg.contains("sessionid missing", ignoreCase = true) ||
+                    msg.contains("re-export cookies", ignoreCase = true) ||
+                    msg.contains("cookie file not found", ignoreCase = true) ||
+                    msg.contains("Login required", ignoreCase = true) ||
+                    msg.contains("API returned 401", ignoreCase = true) ||
+                    msg.contains("API returned 403", ignoreCase = true) ||
+                    msg.contains("Session expired", ignoreCase = true)) {
+                    navigateTo(Screen.Login)
+                }
+                
                 extractionViewModel.reset()
             }
             else -> { /* Idle / Loading - no routing action needed */ }

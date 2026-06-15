@@ -241,11 +241,14 @@ fun MediaSelectionCarouselScreen(
                                     .memoryCachePolicy(CachePolicy.ENABLED)
                                     .build()
                             }
+                            val isStory = remember {
+                                extractionViewModel.lastExtractedUrl.contains("/stories/", ignoreCase = true)
+                            }
                             AsyncImage(
                                 model = imageRequest,
                                 contentDescription = "Media Preview",
                                 modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop
+                                contentScale = if (isStory) ContentScale.Fit else ContentScale.Crop
                             )
 
                             if (item.type == "video") {

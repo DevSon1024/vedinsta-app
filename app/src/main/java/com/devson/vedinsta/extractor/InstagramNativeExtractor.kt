@@ -20,6 +20,9 @@ object InstagramNativeExtractor {
         appId: String? = null,
         timeoutSeconds: Int = 15
     ): String {
+        if (isStoryUrl(url)) {
+            return getStoryMediaUrls(url, cookieFilePath, userAgent, appId, timeoutSeconds)
+        }
         val sc = extractShortcode(url)
         val cookieFile = File(cookieFilePath)
         if (!cookieFile.exists()) {
@@ -208,7 +211,7 @@ object InstagramNativeExtractor {
                     }
                 }
             } else {
-                val entry = parseBest(item, 1)
+                val entry = parseBest(item, i + 1)
                 if (entry != null) {
                     results.put(entry)
                 }
@@ -292,6 +295,157 @@ object InstagramNativeExtractor {
                 put("index", index)
                 put("qualities", qualities)
             }
+        }
+    }
+
+    private fun isStoryUrl(url: String): Boolean {
+        return url.contains("/stories/", ignoreCase = true)
+    }
+
+    fun parseStoryUrl(url: String): Pair<String, String> {
+        val pattern = Regex("/stories/([A-Za-z0-9_.-]+)(?:/([0-9]+))?")
+        val match = pattern.find(url)
+        if (match != null) {
+            val username = match.groupValues[1]
+            val storyId = match.groupValues.getOrNull(2) ?: ""
+            return Pair(username, storyId)
+        }
+        return Pair("", "")
+    }
+
+    private fun getUserIdFromUsername(
+        username: String,
+        cookies: Map<String, String>,
+        userAgent: String? = null,
+        appId: String? = null,
+        timeoutSeconds: Int = 15
+    ): String {
+        return try {
+            val apiUrl = "https://i.instagram.com/api/v1/users/$username/usernameinfo/"
+            val jsonResponseStr = performGetRequest(apiUrl, cookies, userAgent, appId, timeoutSeconds)
+            val data = JSONObject(jsonResponseStr)
+            val user = data.optJSONObject("user")
+            val pkId = user?.optString("pk_id", "") ?: ""
+            if (pkId.isNotEmpty()) {
+                pkId
+            } else {
+                user?.optString("pk", "") ?: ""
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error resolving user ID for username $username", e)
+            ""
+        }
+    }
+
+    private fun getStoryMediaUrls(
+        url: String,
+        cookieFilePath: String,
+        userAgent: String? = null,
+        appId: String? = null,
+        timeoutSeconds: Int = 15
+    ): String {
+        val (username, storyId) = parseStoryUrl(url)
+        if (username.isEmpty()) {
+            return JSONObject().apply {
+                put("status", "error")
+                put("message", "Could not parse username from story URL")
+            }.toString()
+        }
+
+        val cookieFile = File(cookieFilePath)
+        if (!cookieFile.exists()) {
+            return JSONObject().apply {
+                put("status", "error")
+                put("message", "Cookie file not found: $cookieFilePath")
+            }.toString()
+        }
+
+        return try {
+            val cookies = parseCookies(cookieFile)
+            if (!cookies.containsKey("sessionid")) {
+                return JSONObject().apply {
+                    put("status", "login_required")
+                    put("message", "sessionid missing - re-export cookies")
+                }.toString()
+            }
+
+            val userId = getUserIdFromUsername(username, cookies, userAgent, appId, timeoutSeconds)
+            if (userId.isEmpty()) {
+                return JSONObject().apply {
+                    put("status", "error")
+                    put("message", "Failed to resolve username to user ID")
+                }.toString()
+            }
+
+            val reelApiUrl = "https://i.instagram.com/api/v1/feed/user/$userId/reel_media/"
+            val jsonResponseStr = performGetRequest(reelApiUrl, cookies, userAgent, appId, timeoutSeconds)
+            val data = JSONObject(jsonResponseStr)
+
+            val items = data.optJSONArray("items")
+            if (items == null || items.length() == 0) {
+                return JSONObject().apply {
+                    put("status", "not_found")
+                    put("message", "No active stories found for @$username")
+                }.toString()
+            }
+
+            var filteredItems = JSONArray()
+            if (storyId.isNotEmpty()) {
+                for (i in 0 until items.length()) {
+                    val item = items.getJSONObject(i)
+                    val pk = item.optString("pk", "")
+                    val id = item.optString("id", "")
+                    if (pk == storyId || id.startsWith(storyId)) {
+                        filteredItems.put(item)
+                        break
+                    }
+                }
+            }
+
+            if (filteredItems.length() == 0) {
+                filteredItems = items
+            }
+
+            val filteredData = JSONObject().apply {
+                put("items", filteredItems)
+            }
+            val mediaList = parseItems(filteredData)
+
+            if (mediaList.length() == 0) {
+                return JSONObject().apply {
+                    put("status", "not_found")
+                    put("message", "Failed to parse story media items")
+                }.toString()
+            }
+
+            val userObj = data.optJSONObject("user")
+            val realUsername = userObj?.optString("username", username) ?: username
+
+            JSONObject().apply {
+                put("status", "success")
+                put("username", realUsername)
+                put("caption", "")
+                put("media", mediaList)
+                put("media_count", mediaList.length())
+                put("shortcode", if (storyId.isNotEmpty() && filteredItems.length() == 1) "story_${realUsername}_$storyId" else "story_${realUsername}_reel")
+            }.toString()
+        } catch (e: HTTPException) {
+            if (e.statusCode == 401 || e.statusCode == 403) {
+                JSONObject().apply {
+                    put("status", "login_required")
+                    put("message", "Session expired or access denied (API returned ${e.statusCode}). Please login again.")
+                }.toString()
+            } else {
+                JSONObject().apply {
+                    put("status", "error")
+                    put("message", "API returned ${e.statusCode} for story request")
+                }.toString()
+            }
+        } catch (e: Exception) {
+            JSONObject().apply {
+                put("status", "error")
+                put("message", "Story extraction failed: ${e.message}")
+            }.toString()
         }
     }
 
