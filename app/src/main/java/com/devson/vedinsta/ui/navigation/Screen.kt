@@ -1,27 +1,33 @@
 package com.devson.vedinsta.ui.navigation
 
-import com.devson.vedinsta.database.DownloadedPost
-
-sealed class Screen {
-    object Home : Screen()
-    object DownloaderDetails : Screen()
-    object History : Screen()
-    object Favorites : Screen()
-    object Sessions : Screen()
-    object Settings : Screen()
-    object Appearance : Screen()
-    object AdvancedSettings : Screen()
-    data class PostView(val post: DownloadedPost) : Screen()
-    object About : Screen()
-    object Notifications : Screen()
-    object Login : Screen()
-    object PrivacyPolicy : Screen()
-    object WhatsAppSaver : Screen()
-    data class WhatsAppStatusView(val initialIndex: Int) : Screen()
+sealed class Screen(val route: String) {
+    object MainPager : Screen("main_pager")
+    object Home : Screen("home")
+    object DownloaderDetails : Screen("downloader_details")
+    object History : Screen("history")
+    object Favorites : Screen("favorites")
+    object Sessions : Screen("sessions")
+    object Settings : Screen("settings")
+    object Appearance : Screen("appearance")
+    object AdvancedSettings : Screen("advanced_settings")
+    object About : Screen("about")
+    object Notifications : Screen("notifications")
+    object Login : Screen("login")
+    object PrivacyPolicy : Screen("privacy_policy")
+    object WhatsAppSaver : Screen("whatsapp_saver")
+    
+    object PostView : Screen("post_view/{postId}") {
+        fun createRoute(postId: String) = "post_view/$postId"
+    }
+    
+    object WhatsAppStatusView : Screen("whatsapp_status_view/{initialIndex}") {
+        fun createRoute(initialIndex: Int) = "whatsapp_status_view/$initialIndex"
+    }
 }
 
 internal fun getScreenOrderValue(screen: Screen): Int {
     return when (screen) {
+        is Screen.MainPager -> -1
         is Screen.Home -> 0
         is Screen.DownloaderDetails -> 1
         is Screen.History -> 2

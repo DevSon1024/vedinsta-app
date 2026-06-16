@@ -24,7 +24,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.runtime.livedata.observeAsState
-import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.graphics.shapes.CornerRounding
 import androidx.graphics.shapes.RoundedPolygon
@@ -39,6 +38,13 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.haze
 import dev.chrisbanes.haze.hazeChild
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
+import androidx.compose.foundation.pager.rememberPagerState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,57 +60,29 @@ fun MainAppScreen(
 ) {
     val context = LocalContext.current
     val hazeState = remember { HazeState() }
-    val screenStack = remember { mutableStateListOf<Screen>(Screen.Home) }
-    val currentScreen = screenStack.last()
+    val navController = rememberNavController()
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route
+    val pagerState = rememberPagerState(pageCount = { 5 })
     val scope = rememberCoroutineScope()
-    val saveableStateHolder = rememberSaveableStateHolder()
 
     var gridColumnCount by remember { mutableStateOf(settingsViewModel.gridColumnCount) }
     var isListView by remember { mutableStateOf(settingsViewModel.isListView) }
     var showViewSettingsSheet by remember { mutableStateOf(false) }
     val viewSettingsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    // Collect extraction state for FAB animation and reactive routing
     val extractionState by extractionViewModel.extractionState.collectAsStateWithLifecycle()
-
-    LaunchedEffect(currentScreen) {
-        if (currentScreen is Screen.Notifications) {
-            notificationViewModel.pruneNotifications(settingsViewModel.maxNotificationsLimit)
-        }
-        if (currentScreen is Screen.WhatsAppSaver) {
-            whatsAppViewModel.checkPermission(context)
-        }
-    }
 
     val isBlurEnabled by settingsViewModel.isBlurEnabled.collectAsStateWithLifecycle()
     val blurOpacity by settingsViewModel.blurOpacity.collectAsStateWithLifecycle()
     val blurRadius by settingsViewModel.blurRadius.collectAsStateWithLifecycle()
 
-    // Local states for Favorites tracking using SharedPreferences via SettingsViewModel
     val favoritePostIds by mainViewModel.favoritePostIds.collectAsStateWithLifecycle()
     val isFavoriteHelper = { postId: String -> favoritePostIds.contains(postId) }
     val toggleFavoriteHelper: (String) -> Unit = { postId ->
         mainViewModel.toggleFavorite(postId)
     }
 
-    fun navigateTo(screen: Screen) {
-        if (screen is Screen.Home || screen is Screen.History ||
-            screen is Screen.Favorites || screen is Screen.Sessions ||
-            screen is Screen.Settings || screen is Screen.WhatsAppSaver) {
-            screenStack.clear()
-        }
-        screenStack.add(screen)
-    }
-
-    fun navigateBack() {
-        if (screenStack.size > 1) {
-            screenStack.removeAt(screenStack.lastIndex)
-        } else {
-            navigateTo(Screen.Home)
-        }
-    }
-
-    // Clipboard extraction action - invoked from FAB and HomeScreen
     val onFabAction: () -> Unit = {
         if (extractionState !is ExtractionState.Loading) {
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -120,32 +98,30 @@ fun MainAppScreen(
         }
     }
 
-    // Handle system back button
-    BackHandler(enabled = currentScreen !is Screen.Home) {
-        navigateBack()
+    BackHandler(enabled = currentRoute != Screen.MainPager.route || pagerState.currentPage > 0) {
+        if (currentRoute == Screen.MainPager.route) {
+            scope.launch { pagerState.animateScrollToPage(0) }
+        } else {
+            navController.popBackStack()
+        }
     }
 
-    // Handle deep link intents reactively
     LaunchedEffect(intent) {
         val url = intent?.getStringExtra("POST_URL") ?: intent?.getStringExtra("instagram_url")
         if (!url.isNullOrEmpty()) {
             extractionViewModel.extractMedia(url, authViewModel)
             intent?.removeExtra("POST_URL")
             intent?.removeExtra("instagram_url")
-            // Navigation is handled by the reactive extractionState router below
         }
     }
 
-    //  Reactive extraction router 
     LaunchedEffect(extractionState) {
         when (val state = extractionState) {
             is ExtractionState.Success -> {
                 val extractedPost = state.extractedPost
                 if (extractedPost.mediaList.size > 1) {
-                    // Multiple items → send to Carousel selection screen
-                    navigateTo(Screen.DownloaderDetails)
+                    navController.navigate(Screen.DownloaderDetails.route)
                 } else {
-                    // Single item → auto-download immediately, stay on HomeScreen
                     extractionViewModel.downloadSelected(extractedPost, extractionViewModel.lastExtractedUrl)
                     Toast.makeText(context, "Download started!", Toast.LENGTH_SHORT).show()
                     extractionViewModel.reset()
@@ -162,34 +138,44 @@ fun MainAppScreen(
                     msg.contains("API returned 401", ignoreCase = true) ||
                     msg.contains("API returned 403", ignoreCase = true) ||
                     msg.contains("Session expired", ignoreCase = true)) {
-                    navigateTo(Screen.Login)
+                    navController.navigate(Screen.Login.route)
                 }
                 
                 extractionViewModel.reset()
             }
-            else -> { /* Idle / Loading - no routing action needed */ }
+            else -> {}
         }
     }
 
     Scaffold(
         topBar = {
-            if (currentScreen !is Screen.PostView && currentScreen !is Screen.Login && currentScreen !is Screen.Appearance && currentScreen !is Screen.DownloaderDetails && currentScreen !is Screen.AdvancedSettings && currentScreen !is Screen.WhatsAppStatusView) {
-                val onSurfaceColor = MaterialTheme.colorScheme.onSurface
+            if (currentRoute != Screen.PostView.route &&
+                currentRoute != Screen.Login.route &&
+                currentRoute != Screen.Appearance.route &&
+                currentRoute != Screen.DownloaderDetails.route &&
+                currentRoute != Screen.AdvancedSettings.route &&
+                currentRoute != Screen.WhatsAppStatusView.route) {
                 VedInstaTopAppBar(
-                    title = when(currentScreen) {
-                        Screen.Home -> "Home"
-                        Screen.History -> "History"
-                        Screen.Favorites -> "Favorites"
-                        Screen.Sessions -> "Sessions"
-                        Screen.Settings -> "Settings"
-                        Screen.About -> "About"
-                        Screen.Notifications -> "Notifications"
-                        Screen.PrivacyPolicy -> "Privacy Policy"
-                        Screen.WhatsAppSaver -> "WA Status"
-                        else -> "VedInsta"
+                    title = if (currentRoute == Screen.MainPager.route) {
+                        when (pagerState.currentPage) {
+                            0 -> "Home"
+                            1 -> "History"
+                            2 -> "Favorites"
+                            3 -> "WA Status"
+                            4 -> "Sessions"
+                            else -> "VedInsta"
+                        }
+                    } else {
+                        when (currentRoute) {
+                            Screen.Settings.route -> "Settings"
+                            Screen.About.route -> "About"
+                            Screen.Notifications.route -> "Notifications"
+                            Screen.PrivacyPolicy.route -> "Privacy Policy"
+                            else -> "VedInsta"
+                        }
                     },
-                    showBackButton = currentScreen !is Screen.Home,
-                    onBackClick = { navigateBack() },
+                    showBackButton = currentRoute != Screen.MainPager.route,
+                    onBackClick = { navController.popBackStack() },
                     containerColor = if (isBlurEnabled) {
                         Color.Transparent
                     } else {
@@ -207,45 +193,44 @@ fun MainAppScreen(
                         Modifier
                     },
                     actions = {
-                        if (currentScreen == Screen.Home) {
-                            // Notification badge icon
-                            NotificationBadge(
-                                notificationViewModel = notificationViewModel,
-                                onClick = {
-                                    notificationViewModel.markAllAsRead()
-                                    navigateTo(Screen.Notifications)
-                                }
-                            )
+                        if (currentRoute == Screen.MainPager.route) {
+                            if (pagerState.currentPage == 0) {
+                                NotificationBadge(
+                                    notificationViewModel = notificationViewModel,
+                                    onClick = {
+                                        notificationViewModel.markAllAsRead()
+                                        navController.navigate(Screen.Notifications.route)
+                                    }
+                                )
 
-                            // Settings Button in TopAppBar
-                            IconButton(
-                                onClick = { navigateTo(Screen.Settings) },
-                                modifier = Modifier.padding(end = 8.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Settings,
-                                    contentDescription = "Settings",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        } else if (currentScreen == Screen.History || currentScreen == Screen.Favorites) {
-                            // View settings bottom sheet trigger (using hamburger menu)
-                            IconButton(onClick = { showViewSettingsSheet = true }) {
-                                Icon(
-                                    imageVector = Icons.Default.Tune,
-                                    contentDescription = "View Settings",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            IconButton(
-                                onClick = { navigateTo(Screen.Settings) },
-                                modifier = Modifier.padding(end = 8.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Settings,
-                                    contentDescription = "Settings",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                                IconButton(
+                                    onClick = { navController.navigate(Screen.Settings.route) },
+                                    modifier = Modifier.padding(end = 8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Settings,
+                                        contentDescription = "Settings",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            } else if (pagerState.currentPage == 1 || pagerState.currentPage == 2) {
+                                IconButton(onClick = { showViewSettingsSheet = true }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Tune,
+                                        contentDescription = "View Settings",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                IconButton(
+                                    onClick = { navController.navigate(Screen.Settings.route) },
+                                    modifier = Modifier.padding(end = 8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Settings,
+                                        contentDescription = "Settings",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                         }
                     }
@@ -253,10 +238,7 @@ fun MainAppScreen(
             }
         },
         bottomBar = {
-            if (currentScreen is Screen.Home || currentScreen is Screen.History ||
-                currentScreen is Screen.Favorites || currentScreen is Screen.Sessions ||
-                currentScreen is Screen.WhatsAppSaver) {
-                val onSurfaceColor = MaterialTheme.colorScheme.onSurface
+            if (currentRoute == Screen.MainPager.route) {
                 NavigationBar(
                     containerColor = if (isBlurEnabled) {
                         Color.Transparent
@@ -282,36 +264,36 @@ fun MainAppScreen(
                         .height(60.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())
                 ) {
                     NavigationBarItem(
-                        selected = currentScreen is Screen.Home,
-                        onClick = { navigateTo(Screen.Home) },
+                        selected = pagerState.currentPage == 0,
+                        onClick = { scope.launch { pagerState.animateScrollToPage(0) } },
                         icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
                         label = { Text("Home", fontSize = 11.sp, fontWeight = FontWeight.Medium) },
                         alwaysShowLabel = false
                     )
                     NavigationBarItem(
-                        selected = currentScreen is Screen.History,
-                        onClick = { navigateTo(Screen.History) },
+                        selected = pagerState.currentPage == 1,
+                        onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
                         icon = { Icon(Icons.Default.History, contentDescription = "History") },
                         label = { Text("History", fontSize = 11.sp, fontWeight = FontWeight.Medium) },
                         alwaysShowLabel = false
                     )
                     NavigationBarItem(
-                        selected = currentScreen is Screen.Favorites,
-                        onClick = { navigateTo(Screen.Favorites) },
+                        selected = pagerState.currentPage == 2,
+                        onClick = { scope.launch { pagerState.animateScrollToPage(2) } },
                         icon = { Icon(Icons.Default.Favorite, contentDescription = "Favorites") },
                         label = { Text("Favorites", fontSize = 11.sp, fontWeight = FontWeight.Medium) },
                         alwaysShowLabel = false
                     )
                     NavigationBarItem(
-                        selected = currentScreen is Screen.WhatsAppSaver,
-                        onClick = { navigateTo(Screen.WhatsAppSaver) },
+                        selected = pagerState.currentPage == 3,
+                        onClick = { scope.launch { pagerState.animateScrollToPage(3) } },
                         icon = { Icon(Icons.Default.Download, contentDescription = "WA Status") },
                         label = { Text("WA Status", fontSize = 11.sp, fontWeight = FontWeight.Medium) },
                         alwaysShowLabel = false
                     )
                     NavigationBarItem(
-                        selected = currentScreen is Screen.Sessions,
-                        onClick = { navigateTo(Screen.Sessions) },
+                        selected = pagerState.currentPage == 4,
+                        onClick = { scope.launch { pagerState.animateScrollToPage(4) } },
                         icon = { Icon(Icons.Default.AccountBox, contentDescription = "Sessions") },
                         label = { Text("Sessions", fontSize = 11.sp, fontWeight = FontWeight.Medium) },
                         alwaysShowLabel = false
@@ -320,26 +302,20 @@ fun MainAppScreen(
             }
         },
         floatingActionButton = {
-            // FAB is only visible on the HomeScreen
-            if (currentScreen is Screen.Home) {
+            if (currentRoute == Screen.MainPager.route && pagerState.currentPage == 0) {
                 val isLoading = extractionState is ExtractionState.Loading
 
-                // Pre-compute the morphing polygon list once - avoids per-frame allocations
-                // and keeps the GPU-driven animation fully smooth at 60/120fps.
                 val loadingPolygons = remember {
                     listOf(
-                        // 1. Rounded star with 6 points
                         RoundedPolygon.star(
                             numVerticesPerRadius = 6,
                             innerRadius = 0.55f,
                             rounding = CornerRounding(radius = 0.15f)
                         ),
-                        // 2. Soft circle (12-sided with heavy rounding → looks circular)
                         RoundedPolygon(
                             numVertices = 12,
                             rounding = CornerRounding(radius = 1f)
                         ),
-                        // 3. Squircle-like blob (4 vertices, heavy rounding)
                         RoundedPolygon(
                             numVertices = 4,
                             rounding = CornerRounding(radius = 0.5f)
@@ -364,7 +340,6 @@ fun MainAppScreen(
                         label = "FabContentAnim"
                     ) { loading ->
                         if (loading) {
-                            // Material3 Expressive morphing LoadingIndicator
                             LoadingIndicator(
                                 modifier = Modifier.size(28.dp),
                                 color = MaterialTheme.colorScheme.onPrimary,
@@ -382,8 +357,13 @@ fun MainAppScreen(
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
-        val applyPadding = currentScreen !is Screen.PostView && currentScreen !is Screen.Login && currentScreen !is Screen.Appearance && currentScreen !is Screen.DownloaderDetails && currentScreen !is Screen.WhatsAppStatusView
+        val applyPadding = currentRoute != Screen.PostView.route &&
+            currentRoute != Screen.Login.route &&
+            currentRoute != Screen.Appearance.route &&
+            currentRoute != Screen.DownloaderDetails.route &&
+            currentRoute != Screen.WhatsAppStatusView.route
         val screenPadding = if (isBlurEnabled && applyPadding) paddingValues else PaddingValues(0.dp)
+        
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -399,230 +379,188 @@ fun MainAppScreen(
                     bottom = if (applyPadding && !isBlurEnabled) paddingValues.calculateBottomPadding() else 0.dp
                 )
         ) {
-            AnimatedContent(
-                targetState = currentScreen,
-                transitionSpec = {
-                    // Use smooth fade for PostView and WhatsAppStatusView (edge-to-edge) to avoid ditch effect
-                    if (targetState is Screen.PostView || initialState is Screen.PostView ||
-                        targetState is Screen.WhatsAppStatusView || initialState is Screen.WhatsAppStatusView) {
-                        fadeIn(animationSpec = tween(250)) togetherWith
-                            fadeOut(animationSpec = tween(250))
-                    } else {
-                        val initialOrder = getScreenOrderValue(initialState)
-                        val targetOrder = getScreenOrderValue(targetState)
-                        if (targetOrder > initialOrder) {
-                            // Opening: Left to Right
-                            slideInHorizontally(initialOffsetX = { -it }) + fadeIn() togetherWith
-                                slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
-                        } else {
-                            // Closing: Right to Left
-                            slideInHorizontally(initialOffsetX = { it }) + fadeIn() togetherWith
-                                slideOutHorizontally(targetOffsetX = { -it }) + fadeOut()
+            NavHost(
+                navController = navController,
+                startDestination = Screen.MainPager.route,
+                modifier = Modifier.fillMaxSize(),
+                enterTransition = {
+                    slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300))
+                },
+                exitTransition = {
+                    slideOutHorizontally(targetOffsetX = { -it }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300))
+                },
+                popEnterTransition = {
+                    slideInHorizontally(initialOffsetX = { -it }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300))
+                },
+                popExitTransition = {
+                    slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300))
+                }
+            ) {
+                composable(Screen.MainPager.route) {
+                    MainPagerScreen(
+                        pagerState = pagerState,
+                        mainViewModel = mainViewModel,
+                        authViewModel = authViewModel,
+                        whatsAppViewModel = whatsAppViewModel,
+                        gridColumnCount = gridColumnCount,
+                        onGridColumnsChanged = { cols ->
+                            gridColumnCount = cols
+                            scope.launch(Dispatchers.IO) {
+                                settingsViewModel.gridColumnCount = cols
+                            }
+                        },
+                        isListView = isListView,
+                        onListViewChanged = { listMode ->
+                            settingsViewModel.isListView = listMode
+                            isListView = listMode
+                        },
+                        isFavorite = isFavoriteHelper,
+                        onToggleFavorite = toggleFavoriteHelper,
+                        onFabAction = onFabAction,
+                        onPostClick = { post ->
+                            navController.navigate(Screen.PostView.createRoute(post.postId))
+                        },
+                        onNavigateToWhatsAppStatus = { index ->
+                            navController.navigate(Screen.WhatsAppStatusView.createRoute(index))
+                        },
+                        onNavigateToLogin = {
+                            navController.navigate(Screen.Login.route)
+                        },
+                        contentPadding = screenPadding
+                    )
+                }
+                composable(Screen.DownloaderDetails.route) {
+                    MediaSelectionCarouselScreen(
+                        authViewModel = authViewModel,
+                        extractionViewModel = extractionViewModel,
+                        onNavigateBack = {
+                            extractionViewModel.reset()
+                            navController.popBackStack()
+                        },
+                        onNavigateToNotifications = {
+                            extractionViewModel.reset()
+                            navController.navigate(Screen.Notifications.route) {
+                                popUpTo(Screen.MainPager.route)
+                            }
+                            notificationViewModel.markAllAsRead()
+                        }
+                    )
+                }
+                composable(Screen.Login.route) {
+                    InstagramLoginScreen(
+                        authViewModel = authViewModel,
+                        onBackClick = { navController.popBackStack() }
+                    )
+                    val authState by authViewModel.authState.collectAsStateWithLifecycle()
+                    LaunchedEffect(authState) {
+                        if (authState is InstagramAuthState.LoggedIn) {
+                            navController.popBackStack()
                         }
                     }
-                },
-                label = "ScreenTransition",
-                modifier = Modifier.fillMaxSize()
-            ) { targetScreen ->
-                saveableStateHolder.SaveableStateProvider(targetScreen::class.java.name) {
-                    when (targetScreen) {
-                        is Screen.Home -> {
-                            HomeScreen(
-                                mainViewModel = mainViewModel,
-                                onFabAction = onFabAction,
-                                onNavigateToFavorites = { navigateTo(Screen.Favorites) },
-                                onNavigateToHistory = { navigateTo(Screen.History) },
-                                onNavigateToSessions = { navigateTo(Screen.Sessions) },
-                                onNavigateToWhatsAppSaver = { navigateTo(Screen.WhatsAppSaver) },
-                                onPostClick = { post -> navigateTo(Screen.PostView(post)) },
-                                contentPadding = screenPadding
-                            )
-                        }
-                        is Screen.DownloaderDetails -> {
-                            MediaSelectionCarouselScreen(
-                                authViewModel = authViewModel,
-                                extractionViewModel = extractionViewModel,
-                                onNavigateBack = {
-                                    extractionViewModel.reset()
-                                    navigateBack()
-                                },
-                                onNavigateToNotifications = {
-                                    extractionViewModel.reset()
-                                    if (screenStack.lastOrNull() == Screen.DownloaderDetails) {
-                                        screenStack.removeAt(screenStack.lastIndex)
+                }
+                composable(Screen.Settings.route) {
+                    SettingsScreen(
+                        settingsViewModel = settingsViewModel,
+                        onNavigateToAbout = { navController.navigate(Screen.About.route) },
+                        onNavigateToAppearance = { navController.navigate(Screen.Appearance.route) },
+                        onNavigateToPrivacyPolicy = { navController.navigate(Screen.PrivacyPolicy.route) },
+                        onNavigateToAdvancedSettings = { navController.navigate(Screen.AdvancedSettings.route) },
+                        onThemeChanged = onThemeChanged,
+                        contentPadding = screenPadding
+                    )
+                }
+                composable(Screen.AdvancedSettings.route) {
+                    AdvancedSettingsScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                        settingsViewModel = settingsViewModel
+                    )
+                }
+                composable(Screen.Appearance.route) {
+                    AppearanceSettingsScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                        settingsViewModel = settingsViewModel
+                    )
+                }
+                composable(Screen.About.route) {
+                    AboutScreen()
+                }
+                composable(Screen.PrivacyPolicy.route) {
+                    PrivacyPolicyScreen()
+                }
+                composable(Screen.Notifications.route) {
+                    val notifications by notificationViewModel.allNotifications.observeAsState(emptyList())
+                    LaunchedEffect(Unit) {
+                        notificationViewModel.pruneNotifications(settingsViewModel.maxNotificationsLimit)
+                    }
+                    NotificationsScreen(
+                        notifications = notifications,
+                        onNotificationClick = { notification ->
+                            notificationViewModel.markAsRead(notification.id)
+                            if (notification.type == com.devson.vedinsta.database.NotificationType.DOWNLOAD_COMPLETED && notification.postId != null) {
+                                scope.launch {
+                                    val post = mainViewModel.getPostById(notification.postId)
+                                    if (post != null) {
+                                        navController.navigate(Screen.PostView.createRoute(notification.postId))
+                                    } else {
+                                        Toast.makeText(context, "Post files were deleted or moved", Toast.LENGTH_SHORT).show()
                                     }
-                                    notificationViewModel.markAllAsRead()
-                                    navigateTo(Screen.Notifications)
-                                }
-                            )
-                        }
-                        is Screen.History -> {
-                            HistoryScreen(
-                                mainViewModel = mainViewModel,
-                                gridColumnCount = gridColumnCount,
-                                onGridColumnsChanged = { cols ->
-                                    gridColumnCount = cols
-                                    scope.launch(Dispatchers.IO) {
-                                        settingsViewModel.gridColumnCount = cols
-                                    }
-                                },
-                                isListView = isListView,
-                                onListViewChanged = { listMode ->
-                                    settingsViewModel.isListView = listMode
-                                    isListView = listMode
-                                },
-                                isFavorite = isFavoriteHelper,
-                                onToggleFavorite = toggleFavoriteHelper,
-                                onPostClick = { post -> navigateTo(Screen.PostView(post)) },
-                                contentPadding = screenPadding
-                            )
-                        }
-                        is Screen.Favorites -> {
-                            FavoritesScreen(
-                                mainViewModel = mainViewModel,
-                                gridColumnCount = gridColumnCount,
-                                onGridColumnsChanged = { cols ->
-                                    gridColumnCount = cols
-                                    scope.launch(Dispatchers.IO) {
-                                        settingsViewModel.gridColumnCount = cols
-                                    }
-                                },
-                                isListView = isListView,
-                                onListViewChanged = { listMode ->
-                                    settingsViewModel.isListView = listMode
-                                    isListView = listMode
-                                },
-                                isFavorite = isFavoriteHelper,
-                                onToggleFavorite = toggleFavoriteHelper,
-                                onPostClick = { post -> navigateTo(Screen.PostView(post)) },
-                                contentPadding = screenPadding
-                            )
-                        }
-                        is Screen.Sessions -> {
-                            SessionsScreen(
-                                authViewModel = authViewModel,
-                                onNavigateToLogin = { navigateTo(Screen.Login) },
-                                contentPadding = screenPadding
-                            )
-                        }
-                        is Screen.Login -> {
-                            InstagramLoginScreen(
-                                authViewModel = authViewModel,
-                                onBackClick = { navigateBack() }
-                            )
-                            // Navigate back automatically on login completion
-                            val authState by authViewModel.authState.collectAsStateWithLifecycle()
-                            LaunchedEffect(authState) {
-                                if (authState is InstagramAuthState.LoggedIn) {
-                                    navigateBack()
                                 }
                             }
-                        }
-                        is Screen.Settings -> {
-                            SettingsScreen(
-                                settingsViewModel = settingsViewModel,
-                                onNavigateToAbout = { navigateTo(Screen.About) },
-                                onNavigateToAppearance = { navigateTo(Screen.Appearance) },
-                                onNavigateToPrivacyPolicy = { navigateTo(Screen.PrivacyPolicy) },
-                                onNavigateToAdvancedSettings = { navigateTo(Screen.AdvancedSettings) },
-                                onThemeChanged = onThemeChanged,
-                                contentPadding = screenPadding
-                            )
-                        }
-                        is Screen.AdvancedSettings -> {
-                            AdvancedSettingsScreen(
-                                onNavigateBack = { navigateBack() },
-                                settingsViewModel = settingsViewModel
-                            )
-                        }
-                        is Screen.Appearance -> {
-                            AppearanceSettingsScreen(
-                                onNavigateBack = { navigateBack() },
-                                settingsViewModel = settingsViewModel
-                            )
-                        }
-                        is Screen.About -> {
-                            AboutScreen()
-                        }
-                        is Screen.PrivacyPolicy -> {
-                            PrivacyPolicyScreen()
-                        }
-                        is Screen.Notifications -> {
-                            val notifications by notificationViewModel.allNotifications.observeAsState(emptyList())
-                            NotificationsScreen(
-                                notifications = notifications,
-                                onNotificationClick = { notification ->
-                                    notificationViewModel.markAsRead(notification.id)
-                                    if (notification.type == com.devson.vedinsta.database.NotificationType.DOWNLOAD_COMPLETED && notification.postId != null) {
-                                        scope.launch {
-                                            val post = mainViewModel.getPostById(notification.postId)
-                                            if (post != null) {
-                                                navigateTo(Screen.PostView(post))
-                                            } else {
-                                                Toast.makeText(context, "Post files were deleted or moved", Toast.LENGTH_SHORT).show()
-                                            }
-                                        }
-                                    }
-                                },
-                                onDeleteClick = { id -> notificationViewModel.deleteNotification(id) },
-                                onCancelClick = { item -> notificationViewModel.cancelDownload(item) },
-                                onRetryClick = { item -> notificationViewModel.retryDownload(item) },
-                                settingsViewModel = settingsViewModel,
-                                notificationViewModel = notificationViewModel,
-                                contentPadding = screenPadding
-                            )
-                        }
-                        is Screen.PostView -> {
-                            PostViewScreen(
-                                post = targetScreen.post,
-                                isFavorite = isFavoriteHelper,
-                                onToggleFavorite = toggleFavoriteHelper,
-                                onBackClick = { navigateBack() },
-                                onDeletePost = { post ->
-                                    mainViewModel.deleteDownloadedPost(post)
-                                    Toast.makeText(context, "Post deleted", Toast.LENGTH_SHORT).show()
-                                    navigateBack()
-                                }
-                            )
-                        }
-                        is Screen.WhatsAppSaver -> {
-                            WhatsAppSaverScreen(
-                                viewModel = whatsAppViewModel,
-                                onStatusClick = { index -> navigateTo(Screen.WhatsAppStatusView(index)) },
-                                contentPadding = screenPadding
-                            )
-                        }
-                        is Screen.WhatsAppStatusView -> {
-                            WhatsAppStatusViewScreen(
-                                viewModel = whatsAppViewModel,
-                                initialIndex = targetScreen.initialIndex,
-                                onNavigateBack = { navigateBack() }
-                            )
-                        }
+                        },
+                        onDeleteClick = { id -> notificationViewModel.deleteNotification(id) },
+                        onCancelClick = { item -> notificationViewModel.cancelDownload(item) },
+                        onRetryClick = { item -> notificationViewModel.retryDownload(item) },
+                        settingsViewModel = settingsViewModel,
+                        notificationViewModel = notificationViewModel,
+                        contentPadding = screenPadding
+                    )
+                }
+                composable(
+                    route = Screen.PostView.route,
+                    arguments = listOf(navArgument("postId") { type = NavType.StringType }),
+                    enterTransition = { fadeIn(tween(250)) },
+                    exitTransition = { fadeOut(tween(250)) },
+                    popEnterTransition = { fadeIn(tween(250)) },
+                    popExitTransition = { fadeOut(tween(250)) }
+                ) { backStackEntry ->
+                    val postId = backStackEntry.arguments?.getString("postId").orEmpty()
+                    var post by remember { mutableStateOf<DownloadedPost?>(null) }
+                    
+                    LaunchedEffect(postId) {
+                        post = mainViewModel.getPostById(postId)
                     }
+                    
+                    post?.let { loadedPost ->
+                        PostViewScreen(
+                            post = loadedPost,
+                            isFavorite = isFavoriteHelper,
+                            onToggleFavorite = toggleFavoriteHelper,
+                            onBackClick = { navController.popBackStack() },
+                            onDeletePost = { deletedPost ->
+                                mainViewModel.deleteDownloadedPost(deletedPost)
+                                Toast.makeText(context, "Post deleted", Toast.LENGTH_SHORT).show()
+                                navController.popBackStack()
+                            }
+                        )
+                    }
+                }
+                composable(
+                    route = Screen.WhatsAppStatusView.route,
+                    arguments = listOf(navArgument("initialIndex") { type = NavType.IntType }),
+                    enterTransition = { fadeIn(tween(250)) },
+                    exitTransition = { fadeOut(tween(250)) },
+                    popEnterTransition = { fadeIn(tween(250)) },
+                    popExitTransition = { fadeOut(tween(250)) }
+                ) { backStackEntry ->
+                    val initialIndex = backStackEntry.arguments?.getInt("initialIndex") ?: 0
+                    WhatsAppStatusViewScreen(
+                        viewModel = whatsAppViewModel,
+                        initialIndex = initialIndex,
+                        onNavigateBack = { navController.popBackStack() }
+                    )
                 }
             }
         }
-    }
-
-    // View Settings Bottom Sheet
-    if (showViewSettingsSheet) {
-        ViewSettingBottomSheet(
-            sheetState = viewSettingsSheetState,
-            isListView = isListView,
-            onListViewChanged = { listMode ->
-                settingsViewModel.isListView = listMode
-                isListView = listMode
-            },
-            gridColumnCount = gridColumnCount,
-            onGridColumnsChanged = { cols ->
-                gridColumnCount = cols
-                scope.launch(Dispatchers.IO) {
-                    settingsViewModel.gridColumnCount = cols
-                }
-            },
-            onDismissRequest = { showViewSettingsSheet = false }
-        )
     }
 }
 

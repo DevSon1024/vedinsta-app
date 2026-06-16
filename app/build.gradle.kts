@@ -162,6 +162,7 @@ dependencies {
     implementation(libs.androidx.compose.runtime.livedata)
     implementation(libs.androidx.graphics.shapes)   // LoadingIndicator morphing polygons
     implementation(libs.haze)
+    implementation(libs.androidx.navigation.compose)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 

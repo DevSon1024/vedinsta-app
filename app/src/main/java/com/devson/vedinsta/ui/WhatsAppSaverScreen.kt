@@ -116,7 +116,7 @@ fun WhatsAppSaverScreen(
                 modifier = Modifier.padding(horizontal = 8.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.Settings,
+                    imageVector = Icons.Default.Tune,
                     contentDescription = "Saver Settings",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )

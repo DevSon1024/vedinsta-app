@@ -385,137 +385,138 @@ fun HomeScreen(
             val carouselCount = remember(recentPosts) {
                 if (recentPosts.size > 9) 10 else recentPosts.size + 1
             }
-            HorizontalUncontainedCarousel(
-                state = rememberCarouselState { carouselCount },
+            LazyRow(
                 modifier = Modifier
                     .fillMaxWidth()
                     .wrapContentHeight()
                     .padding(vertical = 8.dp),
-                itemWidth = 186.dp,
-                itemSpacing = 8.dp,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(horizontal = 16.dp)
-            ) { i ->
-                if (i == carouselCount - 1) {
-                    // See More card
-                    Card(
-                        modifier = Modifier
-                            .width(186.dp)
-                            .height(205.dp)
-                            .clip(MaterialTheme.shapes.extraLarge)
-                            .clickable { onNavigateToHistory() },
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                    ) {
-                        Column(
+            ) {
+                items(carouselCount) { i ->
+                    if (i == carouselCount - 1) {
+                        // See More card
+                        Card(
                             modifier = Modifier
-                                .fillMaxSize()
-                                .padding(16.dp),
-                            verticalArrangement = Arrangement.Center,
-                            horizontalAlignment = Alignment.CenterHorizontally
+                                .width(186.dp)
+                                .height(205.dp)
+                                .clip(MaterialTheme.shapes.extraLarge)
+                                .clickable { onNavigateToHistory() },
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                         ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                                contentDescription = "See More",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(36.dp)
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                text = "See More",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "View history",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                            )
-                        }
-                    }
-                } else {
-                    // Post card
-                    val post = recentPosts[i]
-                    Card(
-                        modifier = Modifier
-                            .width(186.dp)
-                            .height(205.dp)
-                            .clip(MaterialTheme.shapes.extraLarge)
-                            .clickable { onPostClick(post) },
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                    ) {
-                        Box(modifier = Modifier.fillMaxSize()) {
-                            val context = androidx.compose.ui.platform.LocalContext.current
-                            val imageRequest = remember(post.thumbnailPath) {
-                                ImageRequest.Builder(context)
-                                    .data(if (post.thumbnailPath.isNotEmpty()) File(post.thumbnailPath) else null)
-                                    .size(400, 400)
-                                    .crossfade(true)
-                                    .diskCachePolicy(CachePolicy.ENABLED)
-                                    .memoryCachePolicy(CachePolicy.ENABLED)
-                                    .memoryCacheKey(post.thumbnailPath)
-                                    .diskCacheKey(post.thumbnailPath)
-                                    .error(android.R.drawable.ic_menu_report_image)
-                                    .build()
-                            }
-                            AsyncImage(
-                                model = imageRequest,
-                                contentDescription = "Post Thumbnail",
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop
-                            )
-
-                            Box(
+                            Column(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .fillMaxHeight(0.45f)
-                                    .align(Alignment.BottomCenter)
-                                    .background(
-                                        Brush.verticalGradient(
-                                            colors = listOf(
-                                                Color.Transparent,
-                                                Color.Black.copy(alpha = 0.85f)
-                                            )
-                                        )
-                                    )
-                            )
+                                    .fillMaxSize()
+                                    .padding(16.dp),
+                                verticalArrangement = Arrangement.Center,
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                    contentDescription = "See More",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(36.dp)
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    text = "See More",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "View history",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                )
+                            }
+                        }
+                    } else {
+                        // Post card
+                        val post = recentPosts[i]
+                        Card(
+                            modifier = Modifier
+                                .width(186.dp)
+                                .height(205.dp)
+                                .clip(MaterialTheme.shapes.extraLarge)
+                                .clickable { onPostClick(post) },
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                        ) {
+                            Box(modifier = Modifier.fillMaxSize()) {
+                                val context = androidx.compose.ui.platform.LocalContext.current
+                                val imageRequest = remember(post.thumbnailPath) {
+                                    ImageRequest.Builder(context)
+                                        .data(if (post.thumbnailPath.isNotEmpty()) File(post.thumbnailPath) else null)
+                                        .size(300, 300)
+                                        .crossfade(true)
+                                        .diskCachePolicy(CachePolicy.ENABLED)
+                                        .memoryCachePolicy(CachePolicy.ENABLED)
+                                        .memoryCacheKey(post.thumbnailPath)
+                                        .diskCacheKey(post.thumbnailPath)
+                                        .error(android.R.drawable.ic_menu_report_image)
+                                        .build()
+                                }
+                                AsyncImage(
+                                    model = imageRequest,
+                                    contentDescription = "Post Thumbnail",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
 
-                            if (post.hasVideo) {
                                 Box(
                                     modifier = Modifier
-                                        .size(36.dp)
-                                        .align(Alignment.Center)
+                                        .fillMaxWidth()
+                                        .fillMaxHeight(0.45f)
+                                        .align(Alignment.BottomCenter)
                                         .background(
-                                            Color.Black.copy(alpha = 0.6f),
-                                            RoundedCornerShape(18.dp)
-                                        ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.PlayArrow,
-                                        contentDescription = "Video",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                            }
+                                            Brush.verticalGradient(
+                                                colors = listOf(
+                                                    Color.Transparent,
+                                                    Color.Black.copy(alpha = 0.85f)
+                                                )
+                                            )
+                                        )
+                                )
 
-                            Text(
-                                text = "@${post.username}",
-                                color = Color.White,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier
-                                    .align(Alignment.BottomStart)
-                                    .padding(12.dp)
-                            )
+                                if (post.hasVideo) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .align(Alignment.Center)
+                                            .background(
+                                                Color.Black.copy(alpha = 0.6f),
+                                                RoundedCornerShape(18.dp)
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.PlayArrow,
+                                            contentDescription = "Video",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+
+                                Text(
+                                    text = "@${post.username}",
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier
+                                        .align(Alignment.BottomStart)
+                                        .padding(12.dp)
+                                )
+                            }
                         }
                     }
                 }
             }
         }
+
         Spacer(modifier = Modifier.height(contentPadding.calculateBottomPadding() + 24.dp))
     }
 }
