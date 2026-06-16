@@ -58,7 +58,19 @@ class SharedLinkProcessingService : Service() {
             try {
                 notificationManager.showLinkProcessing()
 
-                val postDataJson = fetchPostData(url)
+                val processedUrl = if (url.contains("/stories/", ignoreCase = true)) {
+                    val storyRegex = Regex("instagram\\.com/stories/([A-Za-z0-9_.-]+)")
+                    val matchResult = storyRegex.find(url)
+                    if (matchResult != null) {
+                        "https://www.instagram.com/stories/${matchResult.groupValues[1]}/"
+                    } else {
+                        url
+                    }
+                } else {
+                    url
+                }
+
+                val postDataJson = fetchPostData(processedUrl)
                 if (postDataJson == null) {
                     notificationManager.showLinkError("Failed to fetch content. Private or removed.")
                     try {
@@ -81,7 +93,7 @@ class SharedLinkProcessingService : Service() {
                 val caption = postData.optString("caption", "")
 
                 // Cache data so Activity/App can use it without re-fetching
-                (application as VedInstaApplication).cachePostMetadata(url, username, caption)
+                (application as VedInstaApplication).cachePostMetadata(processedUrl, username, caption)
 
                 notificationManager.cancelLinkProcessingNotification()
 
@@ -91,7 +103,7 @@ class SharedLinkProcessingService : Service() {
                     val mediaObj = mediaArray!!.getJSONObject(0)
                     val downloadUrl = mediaObj.getString("url")
                     val mediaType = mediaObj.getString("type")
-                    val itemId = mediaObj.optString("story_item_id", postData.optString("shortcode", url))
+                    val itemId = mediaObj.optString("story_item_id", postData.optString("shortcode", processedUrl))
 
                     (application as VedInstaApplication).enqueueSingleDownload(
                         applicationContext,
@@ -132,14 +144,14 @@ class SharedLinkProcessingService : Service() {
                     // MULTIPLE CONTENT: Check Settings
                     when (settingsViewModel.defaultLinkAction) {
                         SettingsViewModel.ACTION_DOWNLOAD_ALL -> {
-                            handleDownloadAll(url, startId)
+                            handleDownloadAll(processedUrl, startId)
                             shouldStopSelf = false
                         }
                         SettingsViewModel.ACTION_OPEN_SELECTION -> {
-                            notificationManager.showMultipleContentOptions(url, mediaCount, autoOpenSelection = true)
+                            notificationManager.showMultipleContentOptions(processedUrl, mediaCount, autoOpenSelection = true)
                         }
                         else -> {
-                            notificationManager.showMultipleContentOptions(url, mediaCount)
+                            notificationManager.showMultipleContentOptions(processedUrl, mediaCount)
                         }
                     }
                 } else {
@@ -178,7 +190,19 @@ class SharedLinkProcessingService : Service() {
             try {
                 notificationManager.cancelMultipleContentNotification()
 
-                val postDataJson = fetchPostData(url)
+                val processedUrl = if (url.contains("/stories/", ignoreCase = true)) {
+                    val storyRegex = Regex("instagram\\.com/stories/([A-Za-z0-9_.-]+)")
+                    val matchResult = storyRegex.find(url)
+                    if (matchResult != null) {
+                        "https://www.instagram.com/stories/${matchResult.groupValues[1]}/"
+                    } else {
+                        url
+                    }
+                } else {
+                    url
+                }
+
+                val postDataJson = fetchPostData(processedUrl)
 
                 if (postDataJson == null) {
                     notificationManager.showLinkError("Failed to fetch post data")

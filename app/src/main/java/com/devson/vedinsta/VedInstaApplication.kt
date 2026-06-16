@@ -207,6 +207,7 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
     ) {
         withContext(Dispatchers.IO) {
             try {
+                VedInstaNotificationManager.getInstance(this@VedInstaApplication).cancelMultipleContentNotification()
                 val totalItems = mediaItems.size
                 val urlsList = ArrayList<String>()
                 val filePathsList = ArrayList<String>()
@@ -254,6 +255,7 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
         withContext(Dispatchers.IO) {
             try {
                 Log.d("VedInstaApp", "Starting download for: $url")
+                VedInstaNotificationManager.getInstance(this@VedInstaApplication).cancelMultipleContentNotification()
 
                 val cookieFile = File(filesDir, "instagram_cookies.txt")
                 if (!cookieFile.exists()) {

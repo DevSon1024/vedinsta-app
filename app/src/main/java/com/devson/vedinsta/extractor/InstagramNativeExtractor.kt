@@ -21,7 +21,14 @@ object InstagramNativeExtractor {
         timeoutSeconds: Int = 15
     ): String {
         if (isStoryUrl(url)) {
-            return getStoryMediaUrls(url, cookieFilePath, userAgent, appId, timeoutSeconds)
+            val storyRegex = Regex("instagram\\.com/stories/([A-Za-z0-9_.-]+)")
+            val matchResult = storyRegex.find(url)
+            val cleanedUrl = if (matchResult != null) {
+                "https://www.instagram.com/stories/${matchResult.groupValues[1]}/"
+            } else {
+                url
+            }
+            return getStoryMediaUrls(cleanedUrl, cookieFilePath, userAgent, appId, timeoutSeconds)
         }
         val sc = extractShortcode(url)
         val cookieFile = File(cookieFilePath)
@@ -320,20 +327,15 @@ object InstagramNativeExtractor {
         appId: String? = null,
         timeoutSeconds: Int = 15
     ): String {
-        return try {
-            val apiUrl = "https://i.instagram.com/api/v1/users/$username/usernameinfo/"
-            val jsonResponseStr = performGetRequest(apiUrl, cookies, userAgent, appId, timeoutSeconds)
-            val data = JSONObject(jsonResponseStr)
-            val user = data.optJSONObject("user")
-            val pkId = user?.optString("pk_id", "") ?: ""
-            if (pkId.isNotEmpty()) {
-                pkId
-            } else {
-                user?.optString("pk", "") ?: ""
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error resolving user ID for username $username", e)
-            ""
+        val apiUrl = "https://i.instagram.com/api/v1/users/$username/usernameinfo/"
+        val jsonResponseStr = performGetRequest(apiUrl, cookies, userAgent, appId, timeoutSeconds)
+        val data = JSONObject(jsonResponseStr)
+        val user = data.optJSONObject("user")
+        val pkId = user?.optString("pk_id", "") ?: ""
+        return if (pkId.isNotEmpty()) {
+            pkId
+        } else {
+            user?.optString("pk", "") ?: ""
         }
     }
 
@@ -385,7 +387,7 @@ object InstagramNativeExtractor {
             if (items == null || items.length() == 0) {
                 return JSONObject().apply {
                     put("status", "not_found")
-                    put("message", "No active stories found for @$username")
+                    put("message", "No active stories found for this user.")
                 }.toString()
             }
 
@@ -447,6 +449,57 @@ object InstagramNativeExtractor {
                 put("message", "Story extraction failed: ${e.message}")
             }.toString()
         }
+    }
+
+    fun extractUserStories(
+        username: String,
+        cookieFilePath: String,
+        userAgent: String? = null,
+        appId: String? = null,
+        timeoutSeconds: Int = 15
+    ): List<com.devson.vedinsta.model.MediaItem> {
+        val cookieFile = File(cookieFilePath)
+        if (!cookieFile.exists()) {
+            throw Exception("Cookie file not found: $cookieFilePath")
+        }
+
+        val cookies = parseCookies(cookieFile)
+        if (!cookies.containsKey("sessionid")) {
+            throw Exception("Login required: sessionid missing")
+        }
+
+        val userId = getUserIdFromUsername(username, cookies, userAgent, appId, timeoutSeconds)
+        if (userId.isEmpty()) {
+            throw Exception("Failed to resolve username to user ID")
+        }
+
+        val reelApiUrl = "https://i.instagram.com/api/v1/feed/user/$userId/reel_media/"
+        val jsonResponseStr = performGetRequest(reelApiUrl, cookies, userAgent, appId, timeoutSeconds)
+        val data = JSONObject(jsonResponseStr)
+
+        val items = data.optJSONArray("items") ?: return emptyList()
+        val mediaItems = mutableListOf<com.devson.vedinsta.model.MediaItem>()
+
+        val filteredData = JSONObject().apply {
+            put("items", items)
+        }
+        val mediaList = parseItems(filteredData)
+
+        for (i in 0 until mediaList.length()) {
+            val mediaObj = mediaList.getJSONObject(i)
+            val downloadUrl = mediaObj.getString("url")
+            val mediaType = mediaObj.getString("type")
+            val index = mediaObj.optInt("index", i + 1)
+            mediaItems.add(
+                com.devson.vedinsta.model.MediaItem(
+                    url = downloadUrl,
+                    type = mediaType,
+                    index = index,
+                    isSelected = true
+                )
+            )
+        }
+        return mediaItems
     }
 
     private class HTTPException(val statusCode: Int, message: String) : Exception(message)

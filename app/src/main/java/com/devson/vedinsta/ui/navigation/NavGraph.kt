@@ -109,6 +109,7 @@ fun MainAppScreen(
     LaunchedEffect(intent) {
         val url = intent?.getStringExtra("POST_URL") ?: intent?.getStringExtra("instagram_url")
         if (!url.isNullOrEmpty()) {
+            com.devson.vedinsta.notification.VedInstaNotificationManager.getInstance(context).cancelMultipleContentNotification()
             extractionViewModel.extractMedia(url, authViewModel)
             intent?.removeExtra("POST_URL")
             intent?.removeExtra("instagram_url")

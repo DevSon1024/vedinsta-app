@@ -73,6 +73,10 @@ fun MediaSelectionCarouselScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
+    LaunchedEffect(Unit) {
+        com.devson.vedinsta.notification.VedInstaNotificationManager.getInstance(context).cancelMultipleContentNotification()
+    }
+
     Scaffold(
         topBar = {
             if (extractionState is ExtractionState.Success && (extractionState as ExtractionState.Success).extractedPost.mediaList.isNotEmpty()) {

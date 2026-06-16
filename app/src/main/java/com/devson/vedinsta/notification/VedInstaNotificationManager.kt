@@ -254,10 +254,13 @@ class VedInstaNotificationManager private constructor(private val context: Conte
             pendingIntentFlags
         )
 
+        val isStory = url.contains("/stories/", ignoreCase = true)
+        val contentTitle = if (isStory) "Found $itemCount Stories" else "Found $itemCount items"
+
         // ALERT CHANNEL (Heads-up)
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_ALERT)
             .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle("Found $itemCount items")
+            .setContentTitle(contentTitle)
             .setContentText("Tap to Select or Download All")
             .setPriority(NotificationCompat.PRIORITY_HIGH) // Popup
             .setCategory(NotificationCompat.CATEGORY_CALL)
