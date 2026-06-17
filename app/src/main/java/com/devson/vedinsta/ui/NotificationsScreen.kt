@@ -103,8 +103,7 @@ fun NotificationsScreen(
                     start = 12.dp,
                     end = 12.dp,
                     top = 4.dp,
-                    bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() +
-                            if (contentPadding.calculateBottomPadding() > 0.dp) contentPadding.calculateBottomPadding() else 60.dp
+                    bottom = contentPadding.calculateBottomPadding() + 16.dp
                 ),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
