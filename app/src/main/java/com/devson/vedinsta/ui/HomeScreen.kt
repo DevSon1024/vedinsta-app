@@ -2,44 +2,50 @@ package com.devson.vedinsta.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.material3.carousel.HorizontalUncontainedCarousel
-import androidx.compose.material3.carousel.rememberCarouselState
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
-import coil.request.videoFrameMillis
-import coil.size.Size
 import coil.request.CachePolicy
 import com.devson.vedinsta.database.DownloadedPost
-import androidx.compose.runtime.livedata.observeAsState
-import androidx.compose.runtime.getValue
+import com.devson.vedinsta.database.FavoriteAccount
+import com.devson.vedinsta.model.StoryTrayItem
 import com.devson.vedinsta.viewmodel.MainViewModel
 import java.io.File
-import java.util.Calendar
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen(
     mainViewModel: MainViewModel,
@@ -49,81 +55,80 @@ fun HomeScreen(
     onNavigateToSessions: () -> Unit,
     onNavigateToWhatsAppSaver: () -> Unit,
     onPostClick: (DownloadedPost) -> Unit,
+    onNavigateToInstagramStory: (Int) -> Unit,
     contentPadding: PaddingValues
 ) {
     val recentPosts by mainViewModel.recentPostsHome.observeAsState(emptyList())
     val scrollState = rememberScrollState()
-    val greeting = remember {
-        val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-        when {
-            hour < 12 -> "Good Morning"
-            hour < 17 -> "Good Afternoon"
-            else -> "Good Evening"
-        }
-    }
+    val context = LocalContext.current
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .verticalScroll(scrollState)
-    ) {
-        Spacer(modifier = Modifier.height(contentPadding.calculateTopPadding()))
-        // 1. Material You Header Greeting Card
-        val gradientBrush = Brush.linearGradient(
-            colors = listOf(
-                MaterialTheme.colorScheme.primary,
-                MaterialTheme.colorScheme.tertiary
-            )
-        )
+    val isRefreshingStories by mainViewModel.isRefreshingStories.collectAsState()
+    val storyTray by mainViewModel.storyTray.collectAsState()
+    val favoriteAccounts by mainViewModel.favoriteAccounts.observeAsState(emptyList())
+    val isLoadingStories by mainViewModel.isLoadingStories.collectAsState()
 
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            shape = RoundedCornerShape(20.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .background(gradientBrush)
-                    .padding(24.dp)
-                    .fillMaxWidth()
-            ) {
-                Column {
-                    Text(
-                        text = greeting,
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        fontSize = 26.sp,
-                        fontWeight = FontWeight.Black
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "Your high-speed secure media hub is active.",
-                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f),
-                        fontSize = 14.sp
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Done,
-                            contentDescription = "Stats",
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "${recentPosts.size} Total Downloads",
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+    var showAddFavoriteDialog by remember { mutableStateOf(false) }
+    var addFavoriteErrorMessage by remember { mutableStateOf<String?>(null) }
+    var isAddingFavorite by remember { mutableStateOf(false) }
+
+    if (showAddFavoriteDialog) {
+        AddFavoriteDialog(
+            onDismiss = {
+                showAddFavoriteDialog = false
+                addFavoriteErrorMessage = null
+                isAddingFavorite = false
+            },
+            onAdd = { username ->
+                isAddingFavorite = true
+                addFavoriteErrorMessage = null
+                mainViewModel.addFavoriteAccount(username) { error ->
+                    isAddingFavorite = false
+                    if (error == null) {
+                        showAddFavoriteDialog = false
+                    } else {
+                        addFavoriteErrorMessage = error
                     }
                 }
-            }
-        }
+            },
+            errorMessage = addFavoriteErrorMessage,
+            isAdding = isAddingFavorite
+        )
+    }
+
+    PullToRefreshBox(
+        isRefreshing = isRefreshingStories,
+        onRefresh = { mainViewModel.fetchReelsTray(force = true) },
+        modifier = Modifier.fillMaxSize()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .verticalScroll(scrollState)
+        ) {
+            Spacer(modifier = Modifier.height(contentPadding.calculateTopPadding() + 8.dp))
+
+            // Stories Section
+            StoriesSection(
+                storyTray = storyTray,
+                favoriteAccounts = favoriteAccounts,
+                onAddFavoriteClick = { showAddFavoriteDialog = true },
+                onUserStoryClick = { userId, username, profilePicUrl ->
+                    if (isLoadingStories) return@StoriesSection
+                    mainViewModel.loadStoriesForUser(userId, username, profilePicUrl) { success ->
+                        if (success) {
+                            onNavigateToInstagramStory(0)
+                        } else {
+                            android.widget.Toast.makeText(context, "No active stories found for @$username", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                },
+                onRemoveFavoriteClick = { username ->
+                    mainViewModel.removeFavoriteAccount(username)
+                }
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
 
         // 2. Quick Navigation Section Title
         Text(
@@ -518,5 +523,330 @@ fun HomeScreen(
         }
 
         Spacer(modifier = Modifier.height(contentPadding.calculateBottomPadding() + 24.dp))
+        }
+
+        if (isLoadingStories) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.5f))
+                    .clickable(enabled = false) {}, // Scrim blocking interaction
+                contentAlignment = Alignment.Center
+            ) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = RoundedCornerShape(16.dp),
+                    elevation = CardDefaults.cardElevation(8.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        CircularProgressIndicator(
+                            color = Color(0xFFE1306C), // IG Theme Pink-Red
+                            strokeWidth = 3.dp,
+                            modifier = Modifier.size(40.dp)
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "Loading stories...",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            }
+        }
     }
+}
+
+@Composable
+fun StoriesSection(
+    storyTray: List<StoryTrayItem>,
+    favoriteAccounts: List<FavoriteAccount>,
+    onAddFavoriteClick: () -> Unit,
+    onUserStoryClick: (userId: String, username: String, profilePicUrl: String) -> Unit,
+    onRemoveFavoriteClick: (String) -> Unit
+) {
+    var favoriteToRemove by remember { mutableStateOf<String?>(null) }
+    
+    if (favoriteToRemove != null) {
+        RemoveFavoriteDialog(
+            username = favoriteToRemove!!,
+            onDismiss = { favoriteToRemove = null },
+            onRemove = { onRemoveFavoriteClick(favoriteToRemove!!) }
+        )
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+    ) {
+        Text(
+            text = "Favorites",
+            color = MaterialTheme.colorScheme.onBackground,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+        )
+
+        LazyRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            item {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .width(80.dp)
+                        .clickable { onAddFavoriteClick() }
+                        .padding(horizontal = 4.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(68.dp)
+                            .padding(3.dp)
+                            .border(1.5.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                            .padding(3.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Add Favorite",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Add Star",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                }
+            }
+
+            items(favoriteAccounts) { fav ->
+                val trayMatch = storyTray.firstOrNull { it.username.equals(fav.username, ignoreCase = true) }
+                val isSeen = trayMatch?.isSeen
+
+                StoryAvatarItem(
+                    username = fav.username,
+                    profilePicUrl = fav.profilePicUrl,
+                    isSeen = isSeen,
+                    onClick = {
+                        onUserStoryClick(trayMatch?.userId ?: "", fav.username, fav.profilePicUrl)
+                    },
+                    onLongClick = {
+                        favoriteToRemove = fav.username
+                    }
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Text(
+            text = "Latest Stories",
+            color = MaterialTheme.colorScheme.onBackground,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+        )
+
+        if (storyTray.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(80.dp)
+                    .padding(horizontal = 16.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                Text(
+                    text = "No active stories found from followed accounts.",
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
+                    fontSize = 12.sp
+                )
+            }
+        } else {
+            LazyRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(storyTray) { item ->
+                    StoryAvatarItem(
+                        username = item.username,
+                        profilePicUrl = item.profilePicUrl,
+                        isSeen = item.isSeen,
+                        onClick = {
+                            onUserStoryClick(item.userId, item.username, item.profilePicUrl)
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun StoryAvatarItem(
+    username: String,
+    profilePicUrl: String,
+    isSeen: Boolean?,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .width(80.dp)
+            .then(
+                if (onLongClick != null) {
+                    Modifier.combinedClickable(
+                        onClick = onClick,
+                        onLongClick = onLongClick
+                    )
+                } else {
+                    Modifier.clickable(onClick = onClick)
+                }
+            )
+            .padding(horizontal = 4.dp)
+    ) {
+        val borderModifier = when (isSeen) {
+            false -> {
+                val igGradient = Brush.sweepGradient(
+                    colors = listOf(
+                        Color(0xFF833AB4),
+                        Color(0xFFFD1D1D),
+                        Color(0xFFF56040),
+                        Color(0xFFFCAF45),
+                        Color(0xFF833AB4)
+                    )
+                )
+                Modifier.border(2.5.dp, igGradient, CircleShape)
+            }
+            true -> {
+                Modifier.border(1.5.dp, Color.Gray, CircleShape)
+            }
+            null -> {
+                Modifier
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .size(68.dp)
+                .padding(3.dp)
+                .then(borderModifier)
+                .padding(3.dp)
+        ) {
+            AsyncImage(
+                model = profilePicUrl,
+                contentDescription = username,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentScale = ContentScale.Crop
+            )
+        }
+        
+        Spacer(modifier = Modifier.height(4.dp))
+        
+        Text(
+            text = username,
+            fontSize = 11.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+    }
+}
+
+@Composable
+fun AddFavoriteDialog(
+    onDismiss: () -> Unit,
+    onAdd: (String) -> Unit,
+    errorMessage: String?,
+    isAdding: Boolean
+) {
+    var usernameInput by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add Favorite Account") },
+        text = {
+            Column {
+                Text("Enter the Instagram username of the account to star:", fontSize = 14.sp)
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = usernameInput,
+                    onValueChange = { usernameInput = it },
+                    label = { Text("Username") },
+                    placeholder = { Text("e.g. instagram") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (!errorMessage.isNullOrEmpty()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(text = errorMessage, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onAdd(usernameInput) },
+                enabled = usernameInput.isNotBlank() && !isAdding
+            ) {
+                if (isAdding) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
+                } else {
+                    Text("Add")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isAdding) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+@Composable
+fun RemoveFavoriteDialog(
+    username: String,
+    onDismiss: () -> Unit,
+    onRemove: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Remove Favorite") },
+        text = { Text("Are you sure you want to remove @$username from your Favorites?") },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onRemove()
+                    onDismiss()
+                }
+            ) {
+                Text("Remove", color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }

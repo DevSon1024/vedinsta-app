@@ -63,6 +63,9 @@ fun MainAppScreen(
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+    val isStoryViewer = currentRoute?.startsWith("instagram_story_viewer") == true
+    val isWhatsAppStatus = currentRoute?.startsWith("whatsapp_status_view") == true
+    val isPostView = currentRoute?.startsWith("post_view") == true
     val pagerState = rememberPagerState(pageCount = { 5 })
     val scope = rememberCoroutineScope()
 
@@ -150,12 +153,14 @@ fun MainAppScreen(
 
     Scaffold(
         topBar = {
-            if (currentRoute != Screen.PostView.route &&
+            if (currentRoute != null &&
+                !isPostView &&
                 currentRoute != Screen.Login.route &&
                 currentRoute != Screen.Appearance.route &&
                 currentRoute != Screen.DownloaderDetails.route &&
                 currentRoute != Screen.AdvancedSettings.route &&
-                currentRoute != Screen.WhatsAppStatusView.route) {
+                !isWhatsAppStatus &&
+                !isStoryViewer) {
                 VedInstaTopAppBar(
                     title = if (currentRoute == Screen.MainPager.route) {
                         when (pagerState.currentPage) {
@@ -358,11 +363,13 @@ fun MainAppScreen(
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
-        val applyPadding = currentRoute != Screen.PostView.route &&
+        val applyPadding = currentRoute != null &&
+            !isPostView &&
             currentRoute != Screen.Login.route &&
             currentRoute != Screen.Appearance.route &&
             currentRoute != Screen.DownloaderDetails.route &&
-            currentRoute != Screen.WhatsAppStatusView.route
+            !isWhatsAppStatus &&
+            !isStoryViewer
         val screenPadding = if (isBlurEnabled && applyPadding) paddingValues else PaddingValues(0.dp)
         
         Box(
@@ -423,6 +430,9 @@ fun MainAppScreen(
                         },
                         onNavigateToWhatsAppStatus = { index ->
                             navController.navigate(Screen.WhatsAppStatusView.createRoute(index))
+                        },
+                        onNavigateToInstagramStory = { index ->
+                            navController.navigate(Screen.InstagramStoryViewer.createRoute(index))
                         },
                         onNavigateToLogin = {
                             navController.navigate(Screen.Login.route)
@@ -556,6 +566,21 @@ fun MainAppScreen(
                     val initialIndex = backStackEntry.arguments?.getInt("initialIndex") ?: 0
                     WhatsAppStatusViewScreen(
                         viewModel = whatsAppViewModel,
+                        initialIndex = initialIndex,
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
+                composable(
+                    route = Screen.InstagramStoryViewer.route,
+                    arguments = listOf(navArgument("initialIndex") { type = NavType.IntType }),
+                    enterTransition = { fadeIn(tween(250)) },
+                    exitTransition = { fadeOut(tween(250)) },
+                    popEnterTransition = { fadeIn(tween(250)) },
+                    popExitTransition = { fadeOut(tween(250)) }
+                ) { backStackEntry ->
+                    val initialIndex = backStackEntry.arguments?.getInt("initialIndex") ?: 0
+                    InstagramStoryViewerScreen(
+                        mainViewModel = mainViewModel,
                         initialIndex = initialIndex,
                         onNavigateBack = { navController.popBackStack() }
                     )

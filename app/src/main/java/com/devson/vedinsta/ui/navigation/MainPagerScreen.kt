@@ -36,6 +36,7 @@ fun MainPagerScreen(
     onFabAction: () -> Unit,
     onPostClick: (DownloadedPost) -> Unit,
     onNavigateToWhatsAppStatus: (Int) -> Unit,
+    onNavigateToInstagramStory: (Int) -> Unit,
     onNavigateToLogin: () -> Unit,
     contentPadding: PaddingValues
 ) {
@@ -70,6 +71,7 @@ fun MainPagerScreen(
                     coroutineScope.launch { pagerState.animateScrollToPage(3) }
                 },
                 onPostClick = onPostClick,
+                onNavigateToInstagramStory = onNavigateToInstagramStory,
                 contentPadding = contentPadding
             )
             1 -> HistoryScreen(
