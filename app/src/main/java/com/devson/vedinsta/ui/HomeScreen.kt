@@ -3,8 +3,6 @@ package com.devson.vedinsta.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -12,9 +10,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.material3.carousel.HorizontalUncontainedCarousel
+import androidx.compose.material3.carousel.HorizontalMultiBrowseCarousel
 import androidx.compose.material3.carousel.rememberCarouselState
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -29,17 +28,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
-import coil.request.videoFrameMillis
-import coil.size.Size
 import coil.request.CachePolicy
 import com.devson.vedinsta.database.DownloadedPost
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.getValue
 import com.devson.vedinsta.viewmodel.MainViewModel
 import java.io.File
-import java.util.Calendar
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun HomeScreen(
     mainViewModel: MainViewModel,
@@ -62,7 +58,7 @@ fun HomeScreen(
     ) {
         Spacer(modifier = Modifier.height(contentPadding.calculateTopPadding() + 16.dp))
 
-        // 2. Quick Navigation Section Title
+        // Quick Actions Section Title
         Text(
             text = "Quick Actions",
             color = MaterialTheme.colorScheme.onBackground,
@@ -71,14 +67,14 @@ fun HomeScreen(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
         )
 
-        // 2. Three columns of quick access cards
+        // Three quick access cards
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Card 1: Go to Favorites
+            // Card 1: Favorites
             Card(
                 modifier = Modifier
                     .weight(1f)
@@ -130,7 +126,7 @@ fun HomeScreen(
                 }
             }
 
-            // Card 2: Go to WA Status
+            // Card 2: WA Status
             Card(
                 modifier = Modifier
                     .weight(1f)
@@ -182,7 +178,7 @@ fun HomeScreen(
                 }
             }
 
-            // Card 3: Go to Sessions
+            // Card 3: Sessions
             Card(
                 modifier = Modifier
                     .weight(1f)
@@ -237,7 +233,7 @@ fun HomeScreen(
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        // 3. Recent Downloads Header
+        // Recent Downloads Header
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -264,7 +260,9 @@ fun HomeScreen(
             }
         }
 
-        // 4. Horizontal Uncontained Carousel
+        // M3 Expressive HorizontalMultiBrowseCarousel - replaces the old LazyRow.
+        // The carousel natively handles its own horizontal scroll isolation so it
+        // does not leak velocity to the parent HorizontalPager.
         if (recentPosts.isEmpty()) {
             Card(
                 modifier = Modifier
@@ -319,136 +317,150 @@ fun HomeScreen(
                 }
             }
         } else {
+            // Build the item list: up to 10 real post cards + 1 "See All" card at the end.
+            // carouselCount is at most 11 items (10 posts + See All).
             val carouselCount = remember(recentPosts) {
-                if (recentPosts.size > 9) 10 else recentPosts.size + 1
+                if (recentPosts.size > 9) 10 + 1 else recentPosts.size + 1
             }
-            LazyRow(
+
+            val carouselState = rememberCarouselState { carouselCount }
+            val context = androidx.compose.ui.platform.LocalContext.current
+
+            HorizontalMultiBrowseCarousel(
+                state = carouselState,
                 modifier = Modifier
                     .fillMaxWidth()
                     .wrapContentHeight()
                     .padding(vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                preferredItemWidth = 186.dp,
+                itemSpacing = 8.dp,
                 contentPadding = PaddingValues(horizontal = 16.dp)
-            ) {
-                items(carouselCount) { i ->
-                    if (i == carouselCount - 1) {
-                        // See More card
-                        Card(
-                            modifier = Modifier
-                                .width(186.dp)
-                                .height(205.dp)
-                                .clip(MaterialTheme.shapes.extraLarge)
-                                .clickable { onNavigateToHistory() },
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) { index ->
+                if (index == carouselCount - 1) {
+                    // "See All" card - uses maskClip for the M3 Expressive edge-squish animation
+                    Box(
+                        modifier = Modifier
+                            .height(205.dp)
+                            .maskClip(MaterialTheme.shapes.extraLarge)
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .clickable { onNavigateToHistory() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Column(
+                            Box(
                                 modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(16.dp),
-                                verticalArrangement = Arrangement.Center,
-                                horizontalAlignment = Alignment.CenterHorizontally
+                                    .size(52.dp)
+                                    .background(
+                                        MaterialTheme.colorScheme.primaryContainer,
+                                        RoundedCornerShape(26.dp)
+                                    ),
+                                contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                                    contentDescription = "See More",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(36.dp)
-                                )
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Text(
-                                    text = "See More",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 16.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "View history",
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                    contentDescription = "See All",
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(28.dp)
                                 )
                             }
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "See All",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(3.dp))
+                            Text(
+                                text = "View history",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
                         }
-                    } else {
-                        // Post card
-                        val post = recentPosts[i]
-                        Card(
+                    }
+                } else {
+                    // Post thumbnail card - maskClip gives the Expressive carousel edge animation
+                    val post = recentPosts[index]
+                    val imageRequest = remember(post.thumbnailPath) {
+                        ImageRequest.Builder(context)
+                            .data(if (post.thumbnailPath.isNotEmpty()) File(post.thumbnailPath) else null)
+                            .size(300, 300)
+                            .crossfade(true)
+                            .diskCachePolicy(CachePolicy.ENABLED)
+                            .memoryCachePolicy(CachePolicy.ENABLED)
+                            .memoryCacheKey(post.thumbnailPath)
+                            .diskCacheKey(post.thumbnailPath)
+                            .error(android.R.drawable.ic_menu_report_image)
+                            .build()
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .height(205.dp)
+                            .maskClip(MaterialTheme.shapes.extraLarge)
+                            .clickable { onPostClick(post) }
+                    ) {
+                        // Thumbnail
+                        AsyncImage(
+                            model = imageRequest,
+                            contentDescription = "Post Thumbnail",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+
+                        // Bottom gradient scrim for readability
+                        Box(
                             modifier = Modifier
-                                .width(186.dp)
-                                .height(205.dp)
-                                .clip(MaterialTheme.shapes.extraLarge)
-                                .clickable { onPostClick(post) },
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                        ) {
-                            Box(modifier = Modifier.fillMaxSize()) {
-                                val context = androidx.compose.ui.platform.LocalContext.current
-                                val imageRequest = remember(post.thumbnailPath) {
-                                    ImageRequest.Builder(context)
-                                        .data(if (post.thumbnailPath.isNotEmpty()) File(post.thumbnailPath) else null)
-                                        .size(300, 300)
-                                        .crossfade(true)
-                                        .diskCachePolicy(CachePolicy.ENABLED)
-                                        .memoryCachePolicy(CachePolicy.ENABLED)
-                                        .memoryCacheKey(post.thumbnailPath)
-                                        .diskCacheKey(post.thumbnailPath)
-                                        .error(android.R.drawable.ic_menu_report_image)
-                                        .build()
-                                }
-                                AsyncImage(
-                                    model = imageRequest,
-                                    contentDescription = "Post Thumbnail",
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop
-                                )
-
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .fillMaxHeight(0.45f)
-                                        .align(Alignment.BottomCenter)
-                                        .background(
-                                            Brush.verticalGradient(
-                                                colors = listOf(
-                                                    Color.Transparent,
-                                                    Color.Black.copy(alpha = 0.85f)
-                                                )
-                                            )
+                                .fillMaxWidth()
+                                .fillMaxHeight(0.5f)
+                                .align(Alignment.BottomCenter)
+                                .background(
+                                    Brush.verticalGradient(
+                                        colors = listOf(
+                                            Color.Transparent,
+                                            Color.Black.copy(alpha = 0.85f)
                                         )
+                                    )
                                 )
+                        )
 
-                                if (post.hasVideo) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(36.dp)
-                                            .align(Alignment.Center)
-                                            .background(
-                                                Color.Black.copy(alpha = 0.6f),
-                                                RoundedCornerShape(18.dp)
-                                            ),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.PlayArrow,
-                                            contentDescription = "Video",
-                                            tint = Color.White,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                }
-
-                                Text(
-                                    text = "@${post.username}",
-                                    color = Color.White,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier
-                                        .align(Alignment.BottomStart)
-                                        .padding(12.dp)
+                        // Video play badge
+                        if (post.hasVideo) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .align(Alignment.Center)
+                                    .background(
+                                        Color.Black.copy(alpha = 0.55f),
+                                        RoundedCornerShape(20.dp)
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.PlayArrow,
+                                    contentDescription = "Video",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(22.dp)
                                 )
                             }
                         }
+
+                        // Username label
+                        Text(
+                            text = "@${post.username}",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(12.dp)
+                        )
                     }
                 }
             }
