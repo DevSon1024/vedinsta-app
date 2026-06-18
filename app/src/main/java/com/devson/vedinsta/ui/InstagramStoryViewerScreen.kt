@@ -55,7 +55,12 @@ fun InstagramStoryViewerScreen(
 
     LaunchedEffect(username) {
         viewModel.loadStories(username)
-        viewModel.markStoriesAsViewed(username)
+    }
+
+    DisposableEffect(username) {
+        onDispose {
+            viewModel.resetStoryState()
+        }
     }
 
     Box(
@@ -93,7 +98,8 @@ fun InstagramStoryViewerScreen(
                     stories = state.stories,
                     initialIndex = initialIndex,
                     username = username,
-                    onNavigateBack = onNavigateBack
+                    onNavigateBack = onNavigateBack,
+                    onStoryViewed = { viewModel.markStoryAsViewed(it) }
                 )
             }
         }
@@ -106,7 +112,8 @@ fun StoryViewerContent(
     stories: List<CachedStoryEntity>,
     initialIndex: Int,
     username: String,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onStoryViewed: (Long) -> Unit
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as? VedInstaApplication
@@ -150,12 +157,17 @@ fun StoryViewerContent(
         }
     }
 
-    // Reset progress on story change
+    // Reset progress on story change and mark as viewed
     LaunchedEffect(currentIndex) {
         progress = 0f
         videoDuration = 5000L
         videoPosition = 0L
         videoViewRef = null
+
+        val story = stories.getOrNull(currentIndex)
+        if (story != null && !story.isViewed) {
+            onStoryViewed(story.id)
+        }
     }
 
     // Progress timer controller
@@ -199,9 +211,9 @@ fun StoryViewerContent(
             },
             label = "StoryBgBlur"
         ) { targetStory ->
-            val bgImageRequest = remember(targetStory.mediaUrl) {
+            val bgImageRequest = remember(targetStory.localFilePath) {
                 ImageRequest.Builder(context)
-                    .data(targetStory.mediaUrl)
+                    .data(java.io.File(targetStory.localFilePath))
                     .size(80, 80)
                     .crossfade(true)
                     .build()
@@ -270,9 +282,10 @@ fun StoryViewerContent(
                         }
                     },
                     update = { videoView ->
-                        val currentUri = Uri.parse(currentStory.mediaUrl)
-                        if (videoView.tag != currentStory.mediaUrl) {
-                            videoView.tag = currentStory.mediaUrl
+                        val localFile = java.io.File(currentStory.localFilePath)
+                        val currentUri = Uri.fromFile(localFile)
+                        if (videoView.tag != currentStory.localFilePath) {
+                            videoView.tag = currentStory.localFilePath
                             videoView.setVideoURI(currentUri)
                         }
                         if (isPaused) {
@@ -284,8 +297,14 @@ fun StoryViewerContent(
                     modifier = Modifier.fillMaxWidth()
                 )
             } else {
+                val imageRequest = remember(currentStory.localFilePath) {
+                    ImageRequest.Builder(context)
+                        .data(java.io.File(currentStory.localFilePath))
+                        .crossfade(true)
+                        .build()
+                }
                 AsyncImage(
-                    model = currentStory.mediaUrl,
+                    model = imageRequest,
                     contentDescription = "Story Media",
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Fit
@@ -378,18 +397,33 @@ fun StoryViewerContent(
                 // Direct Download Floating Action Button
                 FloatingActionButton(
                     onClick = {
-                        if (app != null) {
-                            app.enqueueSingleDownload(
-                                context = context,
-                                mediaUrl = currentStory.mediaUrl,
-                                mediaType = if (currentStory.isVideo) "video" else "image",
-                                username = username,
-                                postIdOrKey = "story_${username}_${currentStory.id}",
-                                postCaption = "Instagram Story from $username"
-                            )
-                            Toast.makeText(context, "Download started!", Toast.LENGTH_SHORT).show()
-                        } else {
-                            Toast.makeText(context, "App context unavailable", Toast.LENGTH_SHORT).show()
+                        try {
+                            val srcFile = java.io.File(currentStory.localFilePath)
+                            if (srcFile.exists()) {
+                                val extension = if (currentStory.isVideo) "mp4" else "jpg"
+                                val fileName = "${username}_story_${System.currentTimeMillis()}.$extension"
+                                val targetDir = if (currentStory.isVideo) {
+                                    com.devson.vedinsta.database.PostMediaManager.getVideoDirectory()
+                                } else {
+                                    com.devson.vedinsta.database.PostMediaManager.getImageDirectory()
+                                }
+                                targetDir.mkdirs()
+                                val destFile = java.io.File(targetDir, fileName)
+                                srcFile.copyTo(destFile, overwrite = true)
+
+                                // Index it to MediaStore
+                                android.media.MediaScannerConnection.scanFile(
+                                    context,
+                                    arrayOf(destFile.absolutePath),
+                                    arrayOf(if (currentStory.isVideo) "video/mp4" else "image/jpeg"),
+                                    null
+                                )
+                                Toast.makeText(context, "Story saved to gallery!", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "Cached file not found", Toast.LENGTH_SHORT).show()
+                            }
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Failed to save story: ${e.message}", Toast.LENGTH_SHORT).show()
                         }
                     },
                     containerColor = Color(0xFFE1306C),

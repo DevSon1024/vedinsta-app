@@ -55,7 +55,6 @@ fun MainAppScreen(
     notificationViewModel: NotificationViewModel,
     settingsViewModel: SettingsViewModel,
     whatsAppViewModel: WhatsAppViewModel,
-    favoriteSearchViewModel: FavoriteSearchViewModel,
     favoriteStoriesViewModel: FavoriteStoriesViewModel,
     intent: Intent?,
     onThemeChanged: (Int) -> Unit
@@ -152,14 +151,18 @@ fun MainAppScreen(
 
     Scaffold(
         topBar = {
-            if (currentRoute != Screen.PostView.route &&
+            val isStoryView = currentRoute?.startsWith("instagram_story_view") == true
+            val isPostView = currentRoute?.startsWith("post_view") == true
+            val isWhatsAppStatusView = currentRoute?.startsWith("whatsapp_status_view") == true
+
+            if (currentRoute != null &&
+                !isPostView &&
                 currentRoute != Screen.Login.route &&
                 currentRoute != Screen.Appearance.route &&
                 currentRoute != Screen.DownloaderDetails.route &&
                 currentRoute != Screen.AdvancedSettings.route &&
-                currentRoute != Screen.WhatsAppStatusView.route &&
-                currentRoute != Screen.FavoriteSearch.route &&
-                currentRoute != Screen.InstagramStoryView.route) {
+                !isWhatsAppStatusView &&
+                !isStoryView) {
                 VedInstaTopAppBar(
                     title = if (currentRoute == Screen.MainPager.route) {
                         when (pagerState.currentPage) {
@@ -362,13 +365,17 @@ fun MainAppScreen(
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
-        val applyPadding = currentRoute != Screen.PostView.route &&
+        val isStoryView = currentRoute?.startsWith("instagram_story_view") == true
+        val isPostView = currentRoute?.startsWith("post_view") == true
+        val isWhatsAppStatusView = currentRoute?.startsWith("whatsapp_status_view") == true
+
+        val applyPadding = currentRoute != null &&
+            !isPostView &&
             currentRoute != Screen.Login.route &&
             currentRoute != Screen.Appearance.route &&
             currentRoute != Screen.DownloaderDetails.route &&
-            currentRoute != Screen.WhatsAppStatusView.route &&
-            currentRoute != Screen.FavoriteSearch.route &&
-            currentRoute != Screen.InstagramStoryView.route
+            !isWhatsAppStatusView &&
+            !isStoryView
         val screenPadding = if (isBlurEnabled && applyPadding) paddingValues else PaddingValues(0.dp)
         
         Box(
@@ -409,7 +416,7 @@ fun MainAppScreen(
                         mainViewModel = mainViewModel,
                         authViewModel = authViewModel,
                         whatsAppViewModel = whatsAppViewModel,
-                        favoriteSearchViewModel = favoriteSearchViewModel,
+                        favoriteStoriesViewModel = favoriteStoriesViewModel,
                         gridColumnCount = gridColumnCount,
                         onGridColumnsChanged = { cols ->
                             gridColumnCount = cols
@@ -433,9 +440,6 @@ fun MainAppScreen(
                         },
                         onNavigateToLogin = {
                             navController.navigate(Screen.Login.route)
-                        },
-                        onNavigateToFavoriteSearch = {
-                            navController.navigate(Screen.FavoriteSearch.route)
                         },
                         onNavigateToInstagramStory = { username, index ->
                             navController.navigate(Screen.InstagramStoryView.createRoute(username, index))
@@ -573,12 +577,7 @@ fun MainAppScreen(
                         onNavigateBack = { navController.popBackStack() }
                     )
                 }
-                composable(Screen.FavoriteSearch.route) {
-                    FavoriteSearchScreen(
-                        viewModel = favoriteSearchViewModel,
-                        onNavigateBack = { navController.popBackStack() }
-                    )
-                }
+
                 composable(
                     route = Screen.InstagramStoryView.route,
                     arguments = listOf(

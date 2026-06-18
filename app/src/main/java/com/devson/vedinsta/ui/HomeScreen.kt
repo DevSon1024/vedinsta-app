@@ -37,29 +37,48 @@ import coil.request.CachePolicy
 import com.devson.vedinsta.database.DownloadedPost
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.draw.drawBehind
+import com.devson.vedinsta.database.FavoriteAccountEntity
 import com.devson.vedinsta.viewmodel.MainViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.io.File
+import android.content.Context
+import android.widget.Toast
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun HomeScreen(
     mainViewModel: MainViewModel,
-    favoriteSearchViewModel: com.devson.vedinsta.viewmodel.FavoriteSearchViewModel,
+    favoriteStoriesViewModel: com.devson.vedinsta.viewmodel.FavoriteStoriesViewModel,
     onFabAction: () -> Unit,
     onNavigateToFavorites: () -> Unit,
     onNavigateToHistory: () -> Unit,
     onNavigateToSessions: () -> Unit,
     onNavigateToWhatsAppSaver: () -> Unit,
     onPostClick: (DownloadedPost) -> Unit,
-    onNavigateToFavoriteSearch: () -> Unit,
     onNavigateToInstagramStory: (String, Int) -> Unit,
     contentPadding: PaddingValues
 ) {
     val recentPosts by mainViewModel.recentPostsHome.observeAsState(emptyList())
-    val favorites by favoriteSearchViewModel.favoriteAccounts.collectAsStateWithLifecycle()
-    val unviewedUsernames by favoriteSearchViewModel.unviewedUsernames.collectAsStateWithLifecycle()
+    val favorites by favoriteStoriesViewModel.favoriteAccounts.collectAsStateWithLifecycle()
+    val unviewedUsernames by favoriteStoriesViewModel.unviewedUsernames.collectAsStateWithLifecycle()
     val scrollState = rememberScrollState()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var selectedAccountForMenu by remember { mutableStateOf<FavoriteAccountEntity?>(null) }
+    var showTutorialSheet by remember { mutableStateOf(false) }
+
+    LaunchedEffect(favorites) {
+        favoriteStoriesViewModel.triggerLazyStatusCheck(favorites)
+    }
 
     Column(
         modifier = Modifier
@@ -82,7 +101,7 @@ fun HomeScreen(
             item {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.clickable { onNavigateToFavoriteSearch() }
+                    modifier = Modifier.clickable { showTutorialSheet = true }
                 ) {
                     Box(
                         modifier = Modifier
@@ -117,53 +136,115 @@ fun HomeScreen(
 
             // Starred accounts
             items(favorites, key = { it.username }) { account ->
-                val hasUnviewed = unviewedUsernames.contains(account.username)
-                val borderBrush = if (hasUnviewed) {
-                    Brush.sweepGradient(
-                        colors = listOf(
-                            Color(0xFFFCAF45),
-                            Color(0xFFF77737),
-                            Color(0xFFE1306C),
-                            Color(0xFFC13584),
-                            Color(0xFF833AB4),
-                            Color(0xFFFCAF45)
+                val unviewedCount by favoriteStoriesViewModel.getUnviewedCountFlow(account.username).collectAsStateWithLifecycle(initialValue = 0)
+                val storiesCount by favoriteStoriesViewModel.getStoriesCountFlow(account.username).collectAsStateWithLifecycle(initialValue = 0)
+
+                val showGradientRing = unviewedCount > 0
+                val showSolidGreyRing = unviewedCount == 0 && storiesCount > 0
+                val showDashedRing = storiesCount == 0 && account.hasActiveStory == false
+
+                val borderModifier = when {
+                    showDashedRing -> {
+                        Modifier.drawBehind {
+                            val strokeWidth = 1.5.dp.toPx()
+                            drawCircle(
+                                color = Color(0xFFCCCCCC),
+                                style = Stroke(
+                                    width = strokeWidth,
+                                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 8f), 0f)
+                                ),
+                                radius = (size.minDimension - strokeWidth) / 2f
+                            )
+                        }
+                    }
+                    showGradientRing -> {
+                        Modifier.border(
+                            width = 2.5.dp,
+                            brush = Brush.sweepGradient(
+                                colors = listOf(
+                                    Color(0xFFFCAF45),
+                                    Color(0xFFF77737),
+                                    Color(0xFFE1306C),
+                                    Color(0xFFC13584),
+                                    Color(0xFF833AB4),
+                                    Color(0xFFFCAF45)
+                                )
+                            ),
+                            shape = CircleShape
                         )
-                    )
-                } else {
-                    SolidColor(Color.LightGray)
+                    }
+                    showSolidGreyRing -> {
+                        Modifier.border(
+                            width = 2.5.dp,
+                            color = Color.LightGray,
+                            shape = CircleShape
+                        )
+                    }
+                    else -> {
+                        Modifier.border(
+                            width = 2.5.dp,
+                            color = Color.LightGray,
+                            shape = CircleShape
+                        )
+                    }
                 }
 
+                val colorFilter = if (showDashedRing) {
+                    ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) })
+                } else null
+
                 Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.clickable {
-                        onNavigateToInstagramStory(account.username, 0)
-                    }
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .pointerInput(account.username) {
+                            detectTapGestures(
+                                onTap = {
+                                    if (showDashedRing) {
+                                        Toast.makeText(context, "User hasn't posted a story today.", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        onNavigateToInstagramStory(account.username, 0)
+                                    }
+                                },
+                                onLongPress = {
+                                    selectedAccountForMenu = account
+                                }
+                            )
+                        },
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Box(
                         modifier = Modifier
                             .size(68.dp)
-                            .border(
-                                width = 2.5.dp,
-                                brush = borderBrush,
-                                shape = CircleShape
-                            )
+                            .then(borderModifier)
                             .padding(4.dp)
                             .clip(CircleShape)
                             .background(MaterialTheme.colorScheme.surfaceVariant),
                         contentAlignment = Alignment.Center
                     ) {
                         if (account.profilePicUrl.isNotEmpty()) {
+                            val profilePicRequest = remember(account.profilePicUrl) {
+                                ImageRequest.Builder(context)
+                                    .data(account.profilePicUrl)
+                                    .addHeader("User-Agent", "Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36")
+                                    .crossfade(true)
+                                    .build()
+                            }
                             AsyncImage(
-                                model = account.profilePicUrl,
+                                model = profilePicRequest,
                                 contentDescription = "Favorite Profile",
                                 modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop
+                                contentScale = ContentScale.Crop,
+                                colorFilter = colorFilter
                             )
                         } else {
                             Icon(
                                 imageVector = Icons.Default.Person,
                                 contentDescription = "Profile",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                tint = if (showDashedRing) {
+                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                }
                             )
                         }
                     }
@@ -596,5 +677,259 @@ fun HomeScreen(
         }
 
         Spacer(modifier = Modifier.height(contentPadding.calculateBottomPadding() + 24.dp))
+    }
+
+    if (selectedAccountForMenu != null) {
+        val account = selectedAccountForMenu!!
+        ModalBottomSheet(
+            onDismissRequest = { selectedAccountForMenu = null },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = MaterialTheme.colorScheme.surface,
+            dragHandle = { BottomSheetDefaults.DragHandle() }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 24.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "@${account.username}",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                // Remove from Favorites
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            favoriteStoriesViewModel.toggleFavorite(account, false)
+                            selectedAccountForMenu = null
+                        }
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                    Text(
+                        text = "Remove from Favorites",
+                        fontSize = 16.sp,
+                        color = MaterialTheme.colorScheme.error,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                // Copy Profile Link
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                            val clip = android.content.ClipData.newPlainText("Instagram Profile", "https://instagram.com/${account.username}")
+                            clipboardManager.setPrimaryClip(clip)
+                            Toast.makeText(context, "Profile link copied", Toast.LENGTH_SHORT).show()
+                            selectedAccountForMenu = null
+                        }
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ContentCopy,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Copy Profile Link",
+                        fontSize = 16.sp,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                // Share Profile
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            val sendIntent = android.content.Intent().apply {
+                                action = android.content.Intent.ACTION_SEND
+                                putExtra(android.content.Intent.EXTRA_TEXT, "Check out @${account.username} on Instagram: https://instagram.com/${account.username}")
+                                type = "text/plain"
+                            }
+                            val shareIntent = android.content.Intent.createChooser(sendIntent, null)
+                            context.startActivity(shareIntent)
+                            selectedAccountForMenu = null
+                        }
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Share,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Share Profile",
+                        fontSize = 16.sp,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+        }
+    }
+
+    if (showTutorialSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showTutorialSheet = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = MaterialTheme.colorScheme.surface,
+            dragHandle = { BottomSheetDefaults.DragHandle() }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 24.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "How to Add Favorites",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                // Step 1
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "1",
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = "Open Instagram",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Go to the profile you want to add as a favorite.",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // Step 2
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "2",
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = "Tap Share Profile",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Tap the three dots on the profile screen and choose 'Share Profile'.",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // Step 3
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "3",
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = "Select VedInsta",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Choose VedInsta from the share sheet to silently add to favorites.",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Button(
+                    onClick = { showTutorialSheet = false },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Got it")
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+        }
     }
 }

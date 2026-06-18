@@ -48,30 +48,75 @@ class SharedLinkHandlerActivity : AppCompatActivity() {
     }
 
     private fun processInstagramLink(text: String) {
-        lifecycleScope.launch {
-            val instagramUrl = extractInstagramUrl(text)
+        val isDownloadable = text.contains("/p/", ignoreCase = true) ||
+                text.contains("/reel/", ignoreCase = true) ||
+                text.contains("/tv/", ignoreCase = true) ||
+                text.contains("/stories/", ignoreCase = true)
 
-            if (instagramUrl != null) {
-                // Start the background processing service
-                val serviceIntent = Intent(this@SharedLinkHandlerActivity, SharedLinkProcessingService::class.java).apply {
-                    putExtra(SharedLinkProcessingService.EXTRA_INSTAGRAM_URL, instagramUrl)
+        if (isDownloadable) {
+            lifecycleScope.launch {
+                val instagramUrl = extractInstagramUrl(text)
+
+                if (instagramUrl != null) {
+                    val serviceIntent = Intent(this@SharedLinkHandlerActivity, SharedLinkProcessingService::class.java).apply {
+                        putExtra(SharedLinkProcessingService.EXTRA_INSTAGRAM_URL, instagramUrl)
+                    }
+                    startService(serviceIntent)
+
+                    Toast.makeText(
+                        this@SharedLinkHandlerActivity,
+                        "Processing Instagram link...",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                } else {
+                    Toast.makeText(
+                        this@SharedLinkHandlerActivity,
+                        "Not a valid Instagram link",
+                        Toast.LENGTH_SHORT
+                    ).show()
                 }
-                startService(serviceIntent)
+                finish()
+            }
+        } else {
+            val profileRegex = Regex("(?:https?:\\/\\/)?(?:www\\.)?(?:instagram\\.com|instagr\\.am)\\/([a-zA-Z0-9_\\.]+)")
+            val matchResult = profileRegex.find(text)
+            val username = matchResult?.groupValues?.get(1)
 
-                Toast.makeText(
-                    this@SharedLinkHandlerActivity,
-                    "Processing Instagram link...",
-                    Toast.LENGTH_SHORT
-                ).show()
+            val reservedWords = setOf(
+                "p", "reel", "reels", "stories", "tv", "direct", "explore", "accounts",
+                "developer", "about", "blog", "jobs", "help", "api", "press", "privacy", "terms", "locations"
+            )
+
+            if (username != null && username.lowercase() !in reservedWords) {
+                val cleanUsername = username.trim()
+                @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
+                kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                    try {
+                        val db = com.devson.vedinsta.database.AppDatabase.getDatabase(applicationContext)
+                        val dao = db.favoriteStoriesDao()
+                        val favorite = com.devson.vedinsta.database.FavoriteAccountEntity(
+                            username = cleanUsername,
+                            profilePicUrl = "",
+                            displayName = "",
+                            addedAt = System.currentTimeMillis(),
+                            hasActiveStory = null,
+                            lastStatusCheck = null
+                        )
+                        dao.insertFavorite(favorite)
+                        runOnUiThread {
+                            Toast.makeText(applicationContext, "@$cleanUsername added to favorites", Toast.LENGTH_SHORT).show()
+                        }
+                    } catch (e: Exception) {
+                        // DB insertion error ignored
+                    }
+                }
             } else {
                 Toast.makeText(
-                    this@SharedLinkHandlerActivity,
+                    this,
                     "Not a valid Instagram link",
                     Toast.LENGTH_SHORT
                 ).show()
             }
-
-            // Close the activity immediately
             finish()
         }
     }

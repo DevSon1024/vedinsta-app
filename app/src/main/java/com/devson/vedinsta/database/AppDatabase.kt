@@ -10,7 +10,7 @@ import android.content.Context
 
 @Database(
     entities = [DownloadedPost::class, NotificationEntity::class, FavoriteAccountEntity::class, CachedStoryEntity::class],
-    version = 3, // Increment version for schema change
+    version = 5, // Increment version to 5 for schema change
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -38,6 +38,22 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // Migration from version 3 to 4 to add status check columns
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE favorite_accounts ADD COLUMN hasActiveStory INTEGER")
+                database.execSQL("ALTER TABLE favorite_accounts ADD COLUMN lastStatusCheck INTEGER")
+            }
+        }
+
+        // Migration from version 4 to 5 to update cached stories columns to snake_case and local file path
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("DROP TABLE IF EXISTS `cached_stories`")
+                database.execSQL("CREATE TABLE IF NOT EXISTS `cached_stories` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `username_fk` TEXT NOT NULL, `local_file_path` TEXT NOT NULL, `isVideo` INTEGER NOT NULL, `expiresAt` INTEGER NOT NULL, `is_viewed` INTEGER NOT NULL DEFAULT 0)")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -45,7 +61,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "vedInsta_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .build()
                 INSTANCE = instance
                 instance

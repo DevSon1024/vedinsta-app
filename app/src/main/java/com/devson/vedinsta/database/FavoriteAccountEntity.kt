@@ -9,16 +9,21 @@ data class FavoriteAccountEntity(
     val username: String,
     val profilePicUrl: String,
     val displayName: String,
-    val addedAt: Long
+    val addedAt: Long,
+    val hasActiveStory: Boolean? = null,
+    val lastStatusCheck: Long? = null
 )
 
 @Entity(tableName = "cached_stories")
 data class CachedStoryEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
+    @androidx.room.ColumnInfo(name = "username_fk")
     val usernameFk: String,
-    val mediaUrl: String,
+    @androidx.room.ColumnInfo(name = "local_file_path")
+    val localFilePath: String,
     val isVideo: Boolean,
     val expiresAt: Long,
+    @androidx.room.ColumnInfo(name = "is_viewed")
     val isViewed: Boolean = false
 )

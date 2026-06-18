@@ -24,8 +24,6 @@ sealed class Screen(val route: String) {
         fun createRoute(initialIndex: Int) = "whatsapp_status_view/$initialIndex"
     }
     
-    object FavoriteSearch : Screen("favorite_search")
-    
     object InstagramStoryView : Screen("instagram_story_view/{username}/{initialIndex}") {
         fun createRoute(username: String, initialIndex: Int) = "instagram_story_view/$username/$initialIndex"
     }
@@ -49,7 +47,6 @@ internal fun getScreenOrderValue(screen: Screen): Int {
         is Screen.PrivacyPolicy -> 11
         is Screen.WhatsAppSaver -> 13
         is Screen.WhatsAppStatusView -> 14
-        is Screen.FavoriteSearch -> 15
         is Screen.InstagramStoryView -> 16
     }
 }

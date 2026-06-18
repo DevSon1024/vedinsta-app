@@ -88,6 +88,22 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         settingsViewModel = SettingsViewModel(this)
+        enqueueStoryCleanupWorker()
+    }
+
+    private fun enqueueStoryCleanupWorker() {
+        try {
+            val request = PeriodicWorkRequestBuilder<com.devson.vedinsta.service.StoryCleanupWorker>(
+                12, java.util.concurrent.TimeUnit.HOURS
+            ).build()
+            WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+                "FavoriteStoriesCleanup",
+                ExistingPeriodicWorkPolicy.KEEP,
+                request
+            )
+        } catch (e: Exception) {
+            Log.e("VedInstaApp", "Failed to enqueue StoryCleanupWorker", e)
+        }
     }
 
     override fun newImageLoader(): ImageLoader {
