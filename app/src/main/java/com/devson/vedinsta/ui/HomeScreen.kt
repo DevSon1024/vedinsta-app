@@ -221,11 +221,13 @@ fun HomeScreen(
                             .background(MaterialTheme.colorScheme.surfaceVariant),
                         contentAlignment = Alignment.Center
                     ) {
-                        if (account.profilePicUrl.isNotEmpty()) {
+                        var isError by remember(account.profilePicUrl) { mutableStateOf(false) }
+                        if (account.profilePicUrl.isNotEmpty() && !isError) {
                             val profilePicRequest = remember(account.profilePicUrl) {
                                 ImageRequest.Builder(context)
                                     .data(account.profilePicUrl)
                                     .addHeader("User-Agent", "Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36")
+                                    .addHeader("Referer", "https://www.instagram.com/")
                                     .crossfade(true)
                                     .build()
                             }
@@ -234,7 +236,8 @@ fun HomeScreen(
                                 contentDescription = "Favorite Profile",
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop,
-                                colorFilter = colorFilter
+                                colorFilter = colorFilter,
+                                onError = { isError = true }
                             )
                         } else {
                             Icon(

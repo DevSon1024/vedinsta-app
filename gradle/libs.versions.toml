@@ -37,6 +37,9 @@ gson                = "2.11.0"
 # Coroutines
 coroutines          = "1.8.0"
 
+# Media3 (ExoPlayer)
+media3              = "1.4.1"
+
 # Testing
 junit               = "4.13.2"
 junitVersion        = "1.3.0"
@@ -101,6 +104,10 @@ gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
 
 # Coroutines
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+
+# Media3 (ExoPlayer)
+androidx-media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
+androidx-media3-ui        = { group = "androidx.media3", name = "media3-ui",        version.ref = "media3" }
 
 # Testing
 junit                = { group = "junit",                name = "junit",         version.ref = "junit" }

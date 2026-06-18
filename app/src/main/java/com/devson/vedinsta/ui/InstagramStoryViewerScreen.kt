@@ -2,7 +2,6 @@ package com.devson.vedinsta.ui
 
 import android.os.Build
 import android.net.Uri
-import android.widget.VideoView
 import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
@@ -12,6 +11,8 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
@@ -34,6 +35,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.devson.vedinsta.VedInstaApplication
@@ -41,6 +46,7 @@ import com.devson.vedinsta.database.CachedStoryEntity
 import com.devson.vedinsta.viewmodel.FavoriteStoriesViewModel
 import com.devson.vedinsta.viewmodel.StoryState
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun InstagramStoryViewerScreen(
@@ -116,9 +122,12 @@ fun StoryViewerContent(
     onStoryViewed: (Long) -> Unit
 ) {
     val context = LocalContext.current
-    val app = context.applicationContext as? VedInstaApplication
-    
-    var currentIndex by remember { mutableIntStateOf(initialIndex.coerceIn(0, stories.lastIndex)) }
+
+    val pagerState = rememberPagerState(
+        initialPage = initialIndex.coerceIn(0, stories.lastIndex),
+        pageCount = { stories.size }
+    )
+    val currentIndex = pagerState.currentPage
     val currentStory = stories.getOrNull(currentIndex)
 
     if (currentStory == null) {
@@ -128,75 +137,36 @@ fun StoryViewerContent(
         return
     }
 
-    var transitionCompleted by remember { mutableStateOf(false) }
-    LaunchedEffect(currentIndex) {
-        transitionCompleted = false
-        delay(350)
-        transitionCompleted = true
-    }
-
+    val scope = rememberCoroutineScope()
     var progress by remember { mutableFloatStateOf(0f) }
     var isPaused by remember { mutableStateOf(false) }
-    var videoDuration by remember { mutableLongStateOf(5000L) }
-    var videoPosition by remember { mutableLongStateOf(0L) }
-    var videoViewRef by remember { mutableStateOf<VideoView?>(null) }
 
     fun goToNext() {
-        if (currentIndex < stories.lastIndex) {
-            currentIndex++
+        if (pagerState.currentPage < stories.lastIndex) {
+            scope.launch {
+                pagerState.animateScrollToPage(pagerState.currentPage + 1)
+            }
         } else {
             onNavigateBack()
         }
     }
 
     fun goToPrevious() {
-        if (currentIndex > 0) {
-            currentIndex--
+        if (pagerState.currentPage > 0) {
+            scope.launch {
+                pagerState.animateScrollToPage(pagerState.currentPage - 1)
+            }
         } else {
             onNavigateBack()
         }
     }
 
-    // Reset progress on story change and mark as viewed
+    // Reset progress and mark story as viewed when current page changes
     LaunchedEffect(currentIndex) {
         progress = 0f
-        videoDuration = 5000L
-        videoPosition = 0L
-        videoViewRef = null
-
         val story = stories.getOrNull(currentIndex)
         if (story != null && !story.isViewed) {
             onStoryViewed(story.id)
-        }
-    }
-
-    // Progress timer controller
-    LaunchedEffect(currentIndex, isPaused) {
-        if (!isPaused) {
-            val story = stories.getOrNull(currentIndex) ?: return@LaunchedEffect
-            if (story.isVideo) {
-                while (true) {
-                    videoViewRef?.let { view ->
-                        val pos = view.currentPosition
-                        val dur = view.duration
-                        if (dur > 0) {
-                            videoPosition = pos.toLong()
-                            videoDuration = dur.toLong()
-                            progress = pos.toFloat() / dur.toFloat()
-                        }
-                    }
-                    delay(50)
-                }
-            } else {
-                val interval = 16L
-                val totalSteps = 5000L / interval
-                val step = 1f / totalSteps
-                while (progress < 1.0f) {
-                    delay(interval)
-                    progress = (progress + step).coerceAtMost(1.0f)
-                }
-                goToNext()
-            }
         }
     }
 
@@ -213,7 +183,7 @@ fun StoryViewerContent(
         ) { targetStory ->
             val bgImageRequest = remember(targetStory.localFilePath) {
                 ImageRequest.Builder(context)
-                    .data(java.io.File(targetStory.localFilePath))
+                    .data(Uri.fromFile(java.io.File(targetStory.localFilePath)))
                     .size(80, 80)
                     .crossfade(true)
                     .build()
@@ -242,72 +212,62 @@ fun StoryViewerContent(
             }
         }
 
-        // Foreground Content
+        // Foreground Content inside Pager
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .pointerInput(currentIndex) {
-                    detectTapGestures(
-                        onPress = {
-                            isPaused = true
-                            tryAwaitRelease()
-                            isPaused = false
-                        },
-                        onTap = { offset ->
-                            val width = size.width
-                            if (offset.x < width * 0.3f) {
-                                goToPrevious()
-                            } else {
-                                goToNext()
-                            }
-                        }
-                    )
-                },
+            modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
-            if (currentStory.isVideo && transitionCompleted) {
-                AndroidView(
-                    factory = { ctx ->
-                        VideoView(ctx).apply {
-                            setOnPreparedListener { mp ->
-                                videoDuration = mp.duration.toLong().coerceAtLeast(1000L)
-                                if (!isPaused) {
-                                    start()
-                                }
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+                userScrollEnabled = true
+            ) { page ->
+                val story = stories.getOrNull(page)
+                if (story != null) {
+                    StoryPageContent(
+                        story = story,
+                        isCurrentPage = page == currentIndex,
+                        isPaused = isPaused,
+                        onProgressChanged = { newProgress ->
+                            if (page == currentIndex) {
+                                progress = newProgress
                             }
-                            setOnCompletionListener {
-                                goToNext()
-                            }
-                            videoViewRef = this
+                        },
+                        onStoryCompleted = {
+                            goToNext()
                         }
-                    },
-                    update = { videoView ->
-                        val localFile = java.io.File(currentStory.localFilePath)
-                        val currentUri = Uri.fromFile(localFile)
-                        if (videoView.tag != currentStory.localFilePath) {
-                            videoView.tag = currentStory.localFilePath
-                            videoView.setVideoURI(currentUri)
-                        }
-                        if (isPaused) {
-                            videoView.pause()
-                        } else {
-                            videoView.start()
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                )
-            } else {
-                val imageRequest = remember(currentStory.localFilePath) {
-                    ImageRequest.Builder(context)
-                        .data(java.io.File(currentStory.localFilePath))
-                        .crossfade(true)
-                        .build()
+                    )
                 }
-                AsyncImage(
-                    model = imageRequest,
-                    contentDescription = "Story Media",
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Fit
+            }
+
+            // Foreground click/press overlay targets
+            Row(modifier = Modifier.fillMaxSize()) {
+                // Left 30% to go back
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .weight(3f)
+                        .pointerInput(Unit) {
+                            detectTapGestures(
+                                onTap = { goToPrevious() }
+                            )
+                        }
+                )
+                // Right 70% to go forward / press to pause
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .weight(7f)
+                        .pointerInput(Unit) {
+                            detectTapGestures(
+                                onPress = {
+                                    isPaused = true
+                                    tryAwaitRelease()
+                                    isPaused = false
+                                },
+                                onTap = { goToNext() }
+                            )
+                        }
                 )
             }
         }
@@ -441,6 +401,130 @@ fun StoryViewerContent(
                 }
             }
         }
+    }
+}
+
+@Composable
+fun StoryPageContent(
+    story: CachedStoryEntity,
+    isCurrentPage: Boolean,
+    isPaused: Boolean,
+    onProgressChanged: (Float) -> Unit,
+    onStoryCompleted: () -> Unit
+) {
+    val context = LocalContext.current
+
+    if (story.isVideo) {
+        val player = remember {
+            ExoPlayer.Builder(context).build().apply {
+                repeatMode = Player.REPEAT_MODE_OFF
+            }
+        }
+
+        // Manage player resource release
+        DisposableEffect(player) {
+            onDispose {
+                player.release()
+            }
+        }
+
+        // Bind media items and handle prepare/play/pause state keyed to page focus and local file
+        LaunchedEffect(isCurrentPage, story.localFilePath) {
+            if (isCurrentPage) {
+                val mediaItem = MediaItem.fromUri(Uri.fromFile(java.io.File(story.localFilePath)))
+                player.setMediaItem(mediaItem)
+                player.prepare()
+                player.playWhenReady = !isPaused
+            } else {
+                player.pause()
+            }
+        }
+
+        LaunchedEffect(isPaused) {
+            if (isCurrentPage) {
+                player.playWhenReady = !isPaused
+            }
+        }
+
+        // Timer/Progress updates
+        LaunchedEffect(isCurrentPage, isPaused) {
+            if (isCurrentPage && !isPaused) {
+                while (true) {
+                    val pos = player.currentPosition
+                    val dur = player.duration
+                    if (dur > 0) {
+                        onProgressChanged(pos.toFloat() / dur.toFloat())
+                    }
+                    delay(50)
+                }
+            }
+        }
+
+        // Autoadvance when player state reaches ENDED
+        DisposableEffect(player) {
+            val listener = object : Player.Listener {
+                override fun onPlaybackStateChanged(playbackState: Int) {
+                    if (playbackState == Player.STATE_ENDED && isCurrentPage) {
+                        onStoryCompleted()
+                    }
+                }
+            }
+            player.addListener(listener)
+            onDispose {
+                player.removeListener(listener)
+            }
+        }
+
+        AndroidView(
+            factory = { ctx ->
+                PlayerView(ctx).apply {
+                    useController = false
+                    this.player = player
+                    layoutParams = android.view.ViewGroup.LayoutParams(
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                }
+            },
+            update = { playerView ->
+                if (playerView.player != player) {
+                    playerView.player = player
+                }
+            },
+            modifier = Modifier.fillMaxSize()
+        )
+    } else {
+        var progress by remember { mutableFloatStateOf(0f) }
+
+        LaunchedEffect(isCurrentPage, isPaused) {
+            if (isCurrentPage && !isPaused) {
+                val interval = 16L
+                val totalSteps = 5000L / interval
+                val step = 1f / totalSteps
+                while (progress < 1.0f) {
+                    delay(interval)
+                    progress = (progress + step).coerceAtMost(1.0f)
+                    onProgressChanged(progress)
+                }
+                onStoryCompleted()
+            } else if (!isCurrentPage) {
+                progress = 0f
+            }
+        }
+
+        val imageRequest = remember(story.localFilePath) {
+            ImageRequest.Builder(context)
+                .data(Uri.fromFile(java.io.File(story.localFilePath)))
+                .crossfade(true)
+                .build()
+        }
+
+        AsyncImage(
+            model = imageRequest,
+            contentDescription = "Story Media",
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Fit
+        )
     }
 }
 
