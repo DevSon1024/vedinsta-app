@@ -1,9 +1,13 @@
 package com.devson.vedinsta.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -21,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -33,21 +38,27 @@ import com.devson.vedinsta.database.DownloadedPost
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.getValue
 import com.devson.vedinsta.viewmodel.MainViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun HomeScreen(
     mainViewModel: MainViewModel,
+    favoriteSearchViewModel: com.devson.vedinsta.viewmodel.FavoriteSearchViewModel,
     onFabAction: () -> Unit,
     onNavigateToFavorites: () -> Unit,
     onNavigateToHistory: () -> Unit,
     onNavigateToSessions: () -> Unit,
     onNavigateToWhatsAppSaver: () -> Unit,
     onPostClick: (DownloadedPost) -> Unit,
+    onNavigateToFavoriteSearch: () -> Unit,
+    onNavigateToInstagramStory: (String, Int) -> Unit,
     contentPadding: PaddingValues
 ) {
     val recentPosts by mainViewModel.recentPostsHome.observeAsState(emptyList())
+    val favorites by favoriteSearchViewModel.favoriteAccounts.collectAsStateWithLifecycle()
+    val unviewedUsernames by favoriteSearchViewModel.unviewedUsernames.collectAsStateWithLifecycle()
     val scrollState = rememberScrollState()
 
     Column(
@@ -56,7 +67,125 @@ fun HomeScreen(
             .background(MaterialTheme.colorScheme.background)
             .verticalScroll(scrollState)
     ) {
-        Spacer(modifier = Modifier.height(contentPadding.calculateTopPadding() + 16.dp))
+        Spacer(modifier = Modifier.height(contentPadding.calculateTopPadding() + 8.dp))
+
+        // Stories Carousel Section
+        LazyRow(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // First item: Add favorites placeholder
+            item {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.clickable { onNavigateToFavoriteSearch() }
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(68.dp)
+                            .border(
+                                width = 1.dp,
+                                color = MaterialTheme.colorScheme.outlineVariant,
+                                shape = CircleShape
+                            )
+                            .padding(4.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Add Favorite",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Add Favorite",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            // Starred accounts
+            items(favorites, key = { it.username }) { account ->
+                val hasUnviewed = unviewedUsernames.contains(account.username)
+                val borderBrush = if (hasUnviewed) {
+                    Brush.sweepGradient(
+                        colors = listOf(
+                            Color(0xFFFCAF45),
+                            Color(0xFFF77737),
+                            Color(0xFFE1306C),
+                            Color(0xFFC13584),
+                            Color(0xFF833AB4),
+                            Color(0xFFFCAF45)
+                        )
+                    )
+                } else {
+                    SolidColor(Color.LightGray)
+                }
+
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.clickable {
+                        onNavigateToInstagramStory(account.username, 0)
+                    }
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(68.dp)
+                            .border(
+                                width = 2.5.dp,
+                                brush = borderBrush,
+                                shape = CircleShape
+                            )
+                            .padding(4.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (account.profilePicUrl.isNotEmpty()) {
+                            AsyncImage(
+                                model = account.profilePicUrl,
+                                contentDescription = "Favorite Profile",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Person,
+                                contentDescription = "Profile",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = account.username,
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.width(68.dp),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+            }
+        }
+
+        HorizontalDivider(
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+            thickness = 1.dp,
+            modifier = Modifier.padding(vertical = 4.dp)
+        )
 
         // Quick Actions Section Title
         Text(

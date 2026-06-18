@@ -55,6 +55,8 @@ fun MainAppScreen(
     notificationViewModel: NotificationViewModel,
     settingsViewModel: SettingsViewModel,
     whatsAppViewModel: WhatsAppViewModel,
+    favoriteSearchViewModel: FavoriteSearchViewModel,
+    favoriteStoriesViewModel: FavoriteStoriesViewModel,
     intent: Intent?,
     onThemeChanged: (Int) -> Unit
 ) {
@@ -155,7 +157,9 @@ fun MainAppScreen(
                 currentRoute != Screen.Appearance.route &&
                 currentRoute != Screen.DownloaderDetails.route &&
                 currentRoute != Screen.AdvancedSettings.route &&
-                currentRoute != Screen.WhatsAppStatusView.route) {
+                currentRoute != Screen.WhatsAppStatusView.route &&
+                currentRoute != Screen.FavoriteSearch.route &&
+                currentRoute != Screen.InstagramStoryView.route) {
                 VedInstaTopAppBar(
                     title = if (currentRoute == Screen.MainPager.route) {
                         when (pagerState.currentPage) {
@@ -362,7 +366,9 @@ fun MainAppScreen(
             currentRoute != Screen.Login.route &&
             currentRoute != Screen.Appearance.route &&
             currentRoute != Screen.DownloaderDetails.route &&
-            currentRoute != Screen.WhatsAppStatusView.route
+            currentRoute != Screen.WhatsAppStatusView.route &&
+            currentRoute != Screen.FavoriteSearch.route &&
+            currentRoute != Screen.InstagramStoryView.route
         val screenPadding = if (isBlurEnabled && applyPadding) paddingValues else PaddingValues(0.dp)
         
         Box(
@@ -403,6 +409,7 @@ fun MainAppScreen(
                         mainViewModel = mainViewModel,
                         authViewModel = authViewModel,
                         whatsAppViewModel = whatsAppViewModel,
+                        favoriteSearchViewModel = favoriteSearchViewModel,
                         gridColumnCount = gridColumnCount,
                         onGridColumnsChanged = { cols ->
                             gridColumnCount = cols
@@ -426,6 +433,12 @@ fun MainAppScreen(
                         },
                         onNavigateToLogin = {
                             navController.navigate(Screen.Login.route)
+                        },
+                        onNavigateToFavoriteSearch = {
+                            navController.navigate(Screen.FavoriteSearch.route)
+                        },
+                        onNavigateToInstagramStory = { username, index ->
+                            navController.navigate(Screen.InstagramStoryView.createRoute(username, index))
                         },
                         contentPadding = screenPadding
                     )
@@ -556,6 +569,32 @@ fun MainAppScreen(
                     val initialIndex = backStackEntry.arguments?.getInt("initialIndex") ?: 0
                     WhatsAppStatusViewScreen(
                         viewModel = whatsAppViewModel,
+                        initialIndex = initialIndex,
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
+                composable(Screen.FavoriteSearch.route) {
+                    FavoriteSearchScreen(
+                        viewModel = favoriteSearchViewModel,
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
+                composable(
+                    route = Screen.InstagramStoryView.route,
+                    arguments = listOf(
+                        navArgument("username") { type = NavType.StringType },
+                        navArgument("initialIndex") { type = NavType.IntType }
+                    ),
+                    enterTransition = { fadeIn(tween(250)) },
+                    exitTransition = { fadeOut(tween(250)) },
+                    popEnterTransition = { fadeIn(tween(250)) },
+                    popExitTransition = { fadeOut(tween(250)) }
+                ) { backStackEntry ->
+                    val username = backStackEntry.arguments?.getString("username").orEmpty()
+                    val initialIndex = backStackEntry.arguments?.getInt("initialIndex") ?: 0
+                    InstagramStoryViewerScreen(
+                        viewModel = favoriteStoriesViewModel,
+                        username = username,
                         initialIndex = initialIndex,
                         onNavigateBack = { navController.popBackStack() }
                     )

@@ -26,6 +26,8 @@ class MainActivity : ComponentActivity() {
     private val notificationViewModel: NotificationViewModel by viewModels()
     private val settingsViewModel: SettingsViewModel by viewModels()
     private val whatsAppViewModel: com.devson.vedinsta.viewmodel.WhatsAppViewModel by viewModels()
+    private val favoriteSearchViewModel: com.devson.vedinsta.viewmodel.FavoriteSearchViewModel by viewModels()
+    private val favoriteStoriesViewModel: com.devson.vedinsta.viewmodel.FavoriteStoriesViewModel by viewModels()
 
     private val currentIntent = mutableStateOf<Intent?>(null)
 
@@ -61,6 +63,8 @@ class MainActivity : ComponentActivity() {
                     notificationViewModel = notificationViewModel,
                     settingsViewModel = settingsViewModel,
                     whatsAppViewModel = whatsAppViewModel,
+                    favoriteSearchViewModel = favoriteSearchViewModel,
+                    favoriteStoriesViewModel = favoriteStoriesViewModel,
                     intent = currentIntent.value,
                     onThemeChanged = {
                         // Managed reactively by settingsViewModel!

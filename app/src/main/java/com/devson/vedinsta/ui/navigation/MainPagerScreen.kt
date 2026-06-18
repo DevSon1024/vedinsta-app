@@ -18,6 +18,7 @@ import com.devson.vedinsta.ui.WhatsAppSaverScreen
 import com.devson.vedinsta.viewmodel.InstagramAuthViewModel
 import com.devson.vedinsta.viewmodel.MainViewModel
 import com.devson.vedinsta.viewmodel.WhatsAppViewModel
+import com.devson.vedinsta.viewmodel.FavoriteSearchViewModel
 import kotlinx.coroutines.launch
 import kotlin.math.absoluteValue
 
@@ -27,6 +28,7 @@ fun MainPagerScreen(
     mainViewModel: MainViewModel,
     authViewModel: InstagramAuthViewModel,
     whatsAppViewModel: WhatsAppViewModel,
+    favoriteSearchViewModel: FavoriteSearchViewModel,
     gridColumnCount: Int,
     onGridColumnsChanged: (Int) -> Unit,
     isListView: Boolean,
@@ -37,6 +39,8 @@ fun MainPagerScreen(
     onPostClick: (DownloadedPost) -> Unit,
     onNavigateToWhatsAppStatus: (Int) -> Unit,
     onNavigateToLogin: () -> Unit,
+    onNavigateToFavoriteSearch: () -> Unit,
+    onNavigateToInstagramStory: (String, Int) -> Unit,
     contentPadding: PaddingValues
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -56,6 +60,7 @@ fun MainPagerScreen(
         when (page) {
             0 -> HomeScreen(
                 mainViewModel = mainViewModel,
+                favoriteSearchViewModel = favoriteSearchViewModel,
                 onFabAction = onFabAction,
                 onNavigateToFavorites = {
                     coroutineScope.launch { pagerState.animateScrollToPage(2) }
@@ -70,6 +75,8 @@ fun MainPagerScreen(
                     coroutineScope.launch { pagerState.animateScrollToPage(3) }
                 },
                 onPostClick = onPostClick,
+                onNavigateToFavoriteSearch = onNavigateToFavoriteSearch,
+                onNavigateToInstagramStory = onNavigateToInstagramStory,
                 contentPadding = contentPadding
             )
             1 -> HistoryScreen(
