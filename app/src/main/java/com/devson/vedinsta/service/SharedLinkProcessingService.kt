@@ -12,6 +12,7 @@ import com.devson.vedinsta.notification.VedInstaNotificationManager
 import kotlinx.coroutines.*
 import java.io.File
 import org.json.JSONObject
+import com.devson.vedinsta.repository.DownloadQuotaManager
 
 class SharedLinkProcessingService : Service() {
 
@@ -68,6 +69,29 @@ class SharedLinkProcessingService : Service() {
                     }
                 } else {
                     url
+                }
+
+                val quotaManager = DownloadQuotaManager(applicationContext)
+                val quotaStatus = quotaManager.checkQuota()
+                if (quotaStatus is DownloadQuotaManager.QuotaStatus.Exceeded) {
+                    val limitWord = when (quotaStatus.limitType) {
+                        DownloadQuotaManager.LimitType.HOURLY -> "Hourly"
+                        DownloadQuotaManager.LimitType.DAILY -> "Daily"
+                        DownloadQuotaManager.LimitType.WEEKLY -> "Weekly"
+                    }
+                    val msg = "$limitWord quota exceeded cannot download post/reel/story"
+                    notificationManager.showLinkError(msg)
+                    try {
+                        notificationManager.addCustomNotification(
+                            title = "Quota Exceeded",
+                            message = msg,
+                            type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_FAILED,
+                            priority = com.devson.vedinsta.database.NotificationPriority.HIGH
+                        )
+                    } catch (ex: Exception) {
+                        Log.e(TAG, "Error adding quota fail notification to DB", ex)
+                    }
+                    return@launch
                 }
 
                 val postDataJson = fetchPostData(processedUrl)
@@ -200,6 +224,19 @@ class SharedLinkProcessingService : Service() {
                     }
                 } else {
                     url
+                }
+
+                val quotaManager = DownloadQuotaManager(applicationContext)
+                val quotaStatus = quotaManager.checkQuota()
+                if (quotaStatus is DownloadQuotaManager.QuotaStatus.Exceeded) {
+                    val limitWord = when (quotaStatus.limitType) {
+                        DownloadQuotaManager.LimitType.HOURLY -> "Hourly"
+                        DownloadQuotaManager.LimitType.DAILY -> "Daily"
+                        DownloadQuotaManager.LimitType.WEEKLY -> "Weekly"
+                    }
+                    val msg = "$limitWord quota exceeded cannot download post/reel/story"
+                    notificationManager.showLinkError(msg)
+                    return@launch
                 }
 
                 val postDataJson = fetchPostData(processedUrl)

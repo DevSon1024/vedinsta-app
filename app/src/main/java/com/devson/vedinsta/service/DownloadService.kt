@@ -20,6 +20,8 @@ import java.io.IOException
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
+import com.devson.vedinsta.repository.SecurePreferences
+import com.devson.vedinsta.repository.DownloadQuotaManager
 
 class DownloadService : Service() {
 
@@ -375,9 +377,11 @@ class DownloadService : Service() {
         var downloadSuccess = false
         var fileToClean: File? = null
         try {
+            val securePrefs = SecurePreferences(applicationContext)
+            val userAgent = securePrefs.getUserAgent() ?: USER_AGENT
             val request = Request.Builder()
                 .url(url)
-                .header("User-Agent", USER_AGENT)
+                .header("User-Agent", userAgent)
                 .build()
 
             httpClient.newCall(request).execute().use { response ->
@@ -475,6 +479,8 @@ class DownloadService : Service() {
         notificationId: Int,
         filePath: String
     ) {
+        val quotaManager = DownloadQuotaManager(applicationContext)
+        quotaManager.recordDownload()
         val displayUsername = username ?: "unknown"
         if (postId != null && totalImages > 1) {
             val progress = batchProgressMap[postId]

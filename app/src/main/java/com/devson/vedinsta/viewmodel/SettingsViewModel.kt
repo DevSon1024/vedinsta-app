@@ -81,6 +81,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         get() = prefs.getInt(KEY_MAX_RETRIES, 3)
         set(value) = prefs.edit().putInt(KEY_MAX_RETRIES, value).apply()
 
+    var overshadowQuota: Boolean
+        get() = prefs.getBoolean("overshadow_quota", false)
+        set(value) = prefs.edit().putBoolean("overshadow_quota", value).apply()
+
     suspend fun getImagePathLabel(): String = withContext(kotlinx.coroutines.Dispatchers.IO) {
         imageDirectoryUri?.let { uriString ->
             DocumentFile.fromTreeUri(getApplication(), Uri.parse(uriString))?.name

@@ -20,6 +20,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -253,6 +254,82 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
+        SettingsCategoryHeader("Security & Limits")
+        var overshadowQuota by remember { mutableStateOf(settingsViewModel.overshadowQuota) }
+        SettingsSwitchItem(
+            title = "Overshadow Quota Limitation",
+            subtitle = "Bypass download limits (Warning: increases risk of Instagram account flags)",
+            icon = Icons.Default.Warning,
+            iconContainerColor = MaterialTheme.colorScheme.errorContainer,
+            iconColor = MaterialTheme.colorScheme.error,
+            checked = overshadowQuota,
+            onCheckedChange = {
+                settingsViewModel.overshadowQuota = it
+                overshadowQuota = it
+            },
+            subtitleColor = MaterialTheme.colorScheme.error
+        )
+
+        val quotaManager = remember { com.devson.vedinsta.repository.DownloadQuotaManager(context) }
+        var quotaStats by remember { mutableStateOf(quotaManager.getQuotaStats()) }
+
+        LaunchedEffect(overshadowQuota) {
+            quotaStats = quotaManager.getQuotaStats()
+            while (true) {
+                kotlinx.coroutines.delay(10000L)
+                quotaStats = quotaManager.getQuotaStats()
+            }
+        }
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f))
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                Text(
+                    text = "Download Quota Usage",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+
+                QuotaProgressRow(
+                    label = "Hourly Quota",
+                    count = quotaStats.hourlyCount,
+                    limit = quotaStats.hourlyLimit,
+                    resetMs = quotaStats.hourlyResetMs
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                QuotaProgressRow(
+                    label = "Daily Quota",
+                    count = quotaStats.dailyCount,
+                    limit = quotaStats.dailyLimit,
+                    resetMs = quotaStats.dailyResetMs
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                QuotaProgressRow(
+                    label = "Weekly Quota",
+                    count = quotaStats.weeklyCount,
+                    limit = quotaStats.weeklyLimit,
+                    resetMs = quotaStats.weeklyResetMs
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
         // 4. Cache Management Category
         SettingsCategoryHeader("Cache & History")
 
@@ -434,7 +511,8 @@ fun SettingsSwitchItem(
     iconContainerColor: Color,
     iconColor: Color,
     checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
+    onCheckedChange: (Boolean) -> Unit,
+    subtitleColor: Color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
 ) {
     Card(
         modifier = Modifier
@@ -473,7 +551,7 @@ fun SettingsSwitchItem(
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = subtitle,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    color = subtitleColor,
                     fontSize = 12.sp
                 )
             }
@@ -528,4 +606,71 @@ private fun deleteDir(dir: File?): Boolean {
         }
     }
     return dir?.delete() ?: false
+}
+
+@Composable
+fun QuotaProgressRow(
+    label: String,
+    count: Int,
+    limit: Int,
+    resetMs: Long
+) {
+    val progress = (count.toFloat() / limit.toFloat()).coerceIn(0f, 1f)
+    val progressColor = when {
+        progress >= 0.9f -> MaterialTheme.colorScheme.error
+        progress >= 0.7f -> MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
+        else -> MaterialTheme.colorScheme.primary
+    }
+
+    val resetText = if (resetMs <= 0L) {
+        "No active limit"
+    } else {
+        val remainingMs = resetMs - System.currentTimeMillis()
+        if (remainingMs <= 0L) {
+            "Resetting..."
+        } else {
+            val totalMinutes = remainingMs / (60 * 1000L)
+            if (totalMinutes >= 24 * 60) {
+                val days = totalMinutes / (24 * 60)
+                "Reset in ${days}d"
+            } else if (totalMinutes >= 60) {
+                val hours = totalMinutes / 60
+                "Reset in ${hours}h"
+            } else {
+                val mins = totalMinutes.coerceAtLeast(1)
+                "Reset in ${mins}m"
+            }
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = label,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = "$count / $limit ($resetText)",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = progressColor
+            )
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        LinearProgressIndicator(
+            progress = { progress },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp)),
+            color = progressColor,
+            trackColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    }
 }

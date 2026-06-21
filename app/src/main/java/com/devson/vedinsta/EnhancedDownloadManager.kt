@@ -19,6 +19,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import com.devson.vedinsta.repository.SecurePreferences
 
 class EnhancedDownloadManager(
     appContext: Context,
@@ -49,9 +50,12 @@ class EnhancedDownloadManager(
                 .writeTimeout(60, TimeUnit.SECONDS)
                 .retryOnConnectionFailure(true)
                 .addInterceptor { chain ->
+                    val context = VedInstaApplication.instance
+                    val securePrefs = SecurePreferences(context)
+                    val userAgent = securePrefs.getUserAgent() ?: "Mozilla/5.0 (Linux; Android 12; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36 Instagram 308.0.0.34.113 Android"
                     val originalRequest = chain.request()
                     val newRequest = originalRequest.newBuilder()
-                        .header("User-Agent", "Mozilla/5.0 (Linux; Android 12; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36 Instagram 308.0.0.34.113 Android")
+                        .header("User-Agent", userAgent)
                         .header("Accept", "*/*")
                         .header("Accept-Language", "en-US,en;q=0.9")
                         .header("Accept-Encoding", "gzip, deflate, br")

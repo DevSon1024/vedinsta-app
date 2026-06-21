@@ -16,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import com.devson.vedinsta.viewmodel.InstagramAuthViewModel
+import com.devson.vedinsta.repository.SecurePreferences
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,6 +50,10 @@ fun InstagramLoginScreen(
                         
                         // Configure WebView settings for Instagram Web
                         settings.apply {
+                            val systemUserAgent = userAgentString
+                            SecurePreferences(context).saveUserAgent(systemUserAgent)
+                            Log.d("InstagramLoginWebView", "Captured System User-Agent: $systemUserAgent")
+                            
                             javaScriptEnabled = true
                             domStorageEnabled = true
                             @Suppress("DEPRECATION")

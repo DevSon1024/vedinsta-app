@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import com.devson.vedinsta.repository.DownloadQuotaManager
 
 sealed class ExtractionState {
     object Idle : ExtractionState()
@@ -25,6 +26,14 @@ class MediaExtractionViewModel(application: Application) : AndroidViewModel(appl
 
     private val repository = MediaFetcherRepository(application.applicationContext)
     private val app = application as VedInstaApplication
+
+    private val quotaManager = DownloadQuotaManager(application.applicationContext)
+    private val _quotaState = MutableStateFlow<DownloadQuotaManager.QuotaStatus>(quotaManager.checkQuota())
+    val quotaState: StateFlow<DownloadQuotaManager.QuotaStatus> = _quotaState.asStateFlow()
+
+    fun refreshQuota() {
+        _quotaState.value = quotaManager.checkQuota()
+    }
 
     private val _extractionState = MutableStateFlow<ExtractionState>(ExtractionState.Idle)
     val extractionState: StateFlow<ExtractionState> = _extractionState.asStateFlow()
@@ -50,6 +59,18 @@ class MediaExtractionViewModel(application: Application) : AndroidViewModel(appl
             return
         }
         lastExtractedUrl = urlOrShortcode
+
+        refreshQuota()
+        val currentQuota = _quotaState.value
+        if (currentQuota is DownloadQuotaManager.QuotaStatus.Exceeded) {
+            val limitWord = when (currentQuota.limitType) {
+                DownloadQuotaManager.LimitType.HOURLY -> "Hourly"
+                DownloadQuotaManager.LimitType.DAILY -> "Daily"
+                DownloadQuotaManager.LimitType.WEEKLY -> "Weekly"
+            }
+            _extractionState.value = ExtractionState.Error("$limitWord quota limit reached. Please wait for reset.")
+            return
+        }
 
         viewModelScope.launch {
             _extractionState.value = ExtractionState.Loading
@@ -121,6 +142,18 @@ class MediaExtractionViewModel(application: Application) : AndroidViewModel(appl
      * Map selected results to MediaSelectionAdapter.MediaItem and download them.
      */
     fun downloadSelected(extractedPost: ExtractedPost, postUrl: String) {
+        refreshQuota()
+        val currentQuota = _quotaState.value
+        if (currentQuota is DownloadQuotaManager.QuotaStatus.Exceeded) {
+            val limitWord = when (currentQuota.limitType) {
+                DownloadQuotaManager.LimitType.HOURLY -> "Hourly"
+                DownloadQuotaManager.LimitType.DAILY -> "Daily"
+                DownloadQuotaManager.LimitType.WEEKLY -> "Weekly"
+            }
+            _extractionState.value = ExtractionState.Error("$limitWord quota limit reached. Please wait for reset.")
+            return
+        }
+
         val selectedIdxs = _selectedIndexes.value
         val chosenUrls = _chosenQualities.value
         

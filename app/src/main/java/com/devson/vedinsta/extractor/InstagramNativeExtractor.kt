@@ -8,94 +8,110 @@ import java.math.BigInteger
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.text.iterator
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.random.Random
 
 object InstagramNativeExtractor {
 
     private const val TAG = "InstagramNativeExtr"
+    private val extractionMutex = Mutex()
 
-    fun getMediaUrls(
+    suspend fun getMediaUrls(
         url: String, 
         cookieFilePath: String,
         userAgent: String? = null,
         appId: String? = null,
         timeoutSeconds: Int = 15
-    ): String {
-        if (isStoryUrl(url)) {
-            val storyRegex = Regex("instagram\\.com/stories/([A-Za-z0-9_.-]+)")
-            val matchResult = storyRegex.find(url)
-            val cleanedUrl = if (matchResult != null) {
-                "https://www.instagram.com/stories/${matchResult.groupValues[1]}/"
+    ): String = extractionMutex.withLock {
+        delay(Random.nextLong(3000L, 8000L))
+
+        val result = withTimeoutOrNull(15000L) {
+            if (isStoryUrl(url)) {
+                val storyRegex = Regex("instagram\\.com/stories/([A-Za-z0-9_.-]+)")
+                val matchResult = storyRegex.find(url)
+                val cleanedUrl = if (matchResult != null) {
+                    "https://www.instagram.com/stories/${matchResult.groupValues[1]}/"
+                } else {
+                    url
+                }
+                getStoryMediaUrls(cleanedUrl, cookieFilePath, userAgent, appId, timeoutSeconds)
             } else {
-                url
+                val sc = extractShortcode(url)
+                val cookieFile = File(cookieFilePath)
+                if (!cookieFile.exists()) {
+                    JSONObject().apply {
+                        put("status", "error")
+                        put("message", "Cookie file not found: $cookieFilePath")
+                    }.toString()
+                } else {
+                    try {
+                        val cookies = parseCookies(cookieFile)
+                        if (!cookies.containsKey("sessionid")) {
+                            JSONObject().apply {
+                                put("status", "login_required")
+                                put("message", "sessionid missing - re-export cookies")
+                            }.toString()
+                        } else {
+                            val mediaId = shortcodeToId(sc)
+                            val apiUrl = "https://i.instagram.com/api/v1/media/$mediaId/info/"
+                            val jsonResponseStr = performGetRequest(apiUrl, cookies, userAgent, appId, timeoutSeconds)
+                            val data = JSONObject(jsonResponseStr)
+
+                            val items = data.optJSONArray("items")
+                            if (items == null || items.length() == 0) {
+                                JSONObject().apply {
+                                    put("status", "not_found")
+                                    put("message", "Post not found or deleted.")
+                                }.toString()
+                            } else {
+                                val item = items.getJSONObject(0)
+                                val username = item.optJSONObject("user")?.optString("username", "unknown") ?: "unknown"
+                                val caption = item.optJSONObject("caption")?.optString("text", "") ?: ""
+
+                                val mediaList = parseItems(data)
+
+                                JSONObject().apply {
+                                    put("status", "success")
+                                    put("username", username)
+                                    put("caption", caption)
+                                    put("media", mediaList)
+                                    put("media_count", mediaList.length())
+                                    put("shortcode", sc)
+                                }.toString()
+                            }
+                        }
+                    } catch (e: HTTPException) {
+                        if (e.statusCode == 401 || e.statusCode == 403) {
+                            JSONObject().apply {
+                                put("status", "login_required")
+                                put("message", "API returned ${e.statusCode}. Login required.")
+                            }.toString()
+                        } else {
+                            JSONObject().apply {
+                                put("status", "error")
+                                put("message", "API returned ${e.statusCode}")
+                            }.toString()
+                        }
+                    } catch (e: Exception) {
+                        JSONObject().apply {
+                            put("status", "error")
+                            put("message", "Extraction failed: ${e.message}")
+                        }.toString()
+                    }
+                }
             }
-            return getStoryMediaUrls(cleanedUrl, cookieFilePath, userAgent, appId, timeoutSeconds)
         }
-        val sc = extractShortcode(url)
-        val cookieFile = File(cookieFilePath)
-        if (!cookieFile.exists()) {
-            return JSONObject().apply {
-                put("status", "error")
-                put("message", "Cookie file not found: $cookieFilePath")
-            }.toString()
-        }
 
-        return try {
-            val cookies = parseCookies(cookieFile)
-            if (!cookies.containsKey("sessionid")) {
-                return JSONObject().apply {
-                    put("status", "login_required")
-                    put("message", "sessionid missing - re-export cookies")
-                }.toString()
-            }
-
-            val mediaId = shortcodeToId(sc)
-            val apiUrl = "https://i.instagram.com/api/v1/media/$mediaId/info/"
-            val jsonResponseStr = performGetRequest(apiUrl, cookies, userAgent, appId, timeoutSeconds)
-            val data = JSONObject(jsonResponseStr)
-
-            val items = data.optJSONArray("items")
-            if (items == null || items.length() == 0) {
-                return JSONObject().apply {
-                    put("status", "not_found")
-                    put("message", "Post not found or deleted.")
-                }.toString()
-            }
-
-            val item = items.getJSONObject(0)
-            val username = item.optJSONObject("user")?.optString("username", "unknown") ?: "unknown"
-            val caption = item.optJSONObject("caption")?.optString("text", "") ?: ""
-
-            val mediaList = parseItems(data)
-
-            JSONObject().apply {
-                put("status", "success")
-                put("username", username)
-                put("caption", caption)
-                put("media", mediaList)
-                put("media_count", mediaList.length())
-                put("shortcode", sc)
-            }.toString()
-        } catch (e: HTTPException) {
-            if (e.statusCode == 401 || e.statusCode == 403) {
-                JSONObject().apply {
-                    put("status", "login_required")
-                    put("message", "API returned ${e.statusCode}. Login required.")
-                }.toString()
-            } else {
-                JSONObject().apply {
-                    put("status", "error")
-                    put("message", "API returned ${e.statusCode}")
-                }.toString()
-            }
-        } catch (e: Exception) {
-            JSONObject().apply {
-                put("status", "error")
-                put("message", "Extraction failed: ${e.message}")
-            }.toString()
-        }
+        result ?: JSONObject().apply {
+            put("status", "error")
+            put("message", "Request timed out after 15 seconds")
+        }.toString()
     }
 
-    fun getLoggedInUsername(cookieFilePath: String): String {
+    suspend fun getLoggedInUsername(cookieFilePath: String): String {
         val cookieFile = File(cookieFilePath)
         if (!cookieFile.exists()) return ""
         return try {
@@ -178,7 +194,22 @@ object InstagramNativeExtractor {
         conn.readTimeout = timeoutSeconds * 1000
         conn.instanceFollowRedirects = true
 
-        val finalUserAgent = if (!userAgent.isNullOrBlank()) userAgent else "Instagram 319.0.0.28.119 Android"
+        val context = try { com.devson.vedinsta.VedInstaApplication.instance } catch (e: Exception) { null }
+        val securePrefs = context?.let { com.devson.vedinsta.repository.SecurePreferences(it) }
+        val savedUA = securePrefs?.getUserAgent()
+
+        val baseUA = if (!savedUA.isNullOrBlank()) {
+            savedUA
+        } else if (!userAgent.isNullOrBlank()) {
+            userAgent
+        } else {
+            "Instagram 319.0.0.28.119 Android"
+        }
+        val finalUserAgent = if (baseUA.contains("Instagram")) {
+            baseUA
+        } else {
+            "$baseUA Instagram 319.0.0.28.119 Android"
+        }
         val finalAppId = if (!appId.isNullOrBlank()) appId else "567067343352427"
 
         conn.setRequestProperty("User-Agent", finalUserAgent)
@@ -320,7 +351,7 @@ object InstagramNativeExtractor {
         return Pair("", "")
     }
 
-    private fun getUserIdFromUsername(
+    private suspend fun getUserIdFromUsername(
         username: String,
         cookies: Map<String, String>,
         userAgent: String? = null,
@@ -339,7 +370,7 @@ object InstagramNativeExtractor {
         }
     }
 
-    private fun getStoryMediaUrls(
+    private suspend fun getStoryMediaUrls(
         url: String,
         cookieFilePath: String,
         userAgent: String? = null,
@@ -451,7 +482,7 @@ object InstagramNativeExtractor {
         }
     }
 
-    fun extractUserStories(
+    suspend fun extractUserStories(
         username: String,
         cookieFilePath: String,
         userAgent: String? = null,

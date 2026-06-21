@@ -35,6 +35,7 @@ import coil.request.ImageRequest
 import com.devson.vedinsta.viewmodel.ExtractionState
 import com.devson.vedinsta.viewmodel.InstagramAuthViewModel
 import com.devson.vedinsta.viewmodel.MediaExtractionViewModel
+import com.devson.vedinsta.repository.DownloadQuotaManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -53,6 +54,8 @@ fun MediaSelectionCarouselScreen(
     val extractionState by extractionViewModel.extractionState.collectAsStateWithLifecycle()
     val selectedIndexes by extractionViewModel.selectedIndexes.collectAsStateWithLifecycle()
     val chosenQualities by extractionViewModel.chosenQualities.collectAsStateWithLifecycle()
+    val quotaState by extractionViewModel.quotaState.collectAsStateWithLifecycle()
+    val isQuotaExceeded = quotaState is DownloadQuotaManager.QuotaStatus.Exceeded
 
     val localPaths by produceState<List<String>>(initialValue = emptyList(), extractionState) {
         value = if (extractionState is ExtractionState.Success) {
@@ -74,6 +77,7 @@ fun MediaSelectionCarouselScreen(
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
+        extractionViewModel.refreshQuota()
         com.devson.vedinsta.notification.VedInstaNotificationManager.getInstance(context).cancelMultipleContentNotification()
     }
 
@@ -163,6 +167,48 @@ fun MediaSelectionCarouselScreen(
             if (extractionState is ExtractionState.Success && (extractionState as ExtractionState.Success).extractedPost.mediaList.isNotEmpty()) {
                 val successState = extractionState as ExtractionState.Success
                 val pagerState = rememberPagerState(pageCount = { successState.extractedPost.mediaList.size })
+
+                if (isQuotaExceeded) {
+                    val exceeded = quotaState as DownloadQuotaManager.QuotaStatus.Exceeded
+                    val limitName = when (exceeded.limitType) {
+                        DownloadQuotaManager.LimitType.HOURLY -> "Hourly"
+                        DownloadQuotaManager.LimitType.DAILY -> "Daily"
+                        DownloadQuotaManager.LimitType.WEEKLY -> "Weekly"
+                    }
+                    val resetTimeText = remember(exceeded.resetTimeMs) {
+                        val durationMs = exceeded.resetTimeMs - System.currentTimeMillis()
+                        val durationMinutes = (durationMs / (60 * 1000L)).coerceAtLeast(1)
+                        if (durationMinutes >= 60) {
+                            val hours = durationMinutes / 60
+                            "$hours hour(s) and ${durationMinutes % 60} minute(s)"
+                        } else {
+                            "$durationMinutes minute(s)"
+                        }
+                    }
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                text = "Download Limit Reached",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Your $limitName download quota has been exceeded. Please wait $resetTimeText for the quota to reset.",
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
+                }
 
                 HorizontalPager(
                     state = pagerState,
@@ -434,15 +480,17 @@ fun MediaSelectionCarouselScreen(
                         .fillMaxWidth()
                         .height(56.dp)
                         .padding(horizontal = 16.dp),
-                    enabled = true,
+                    enabled = !isQuotaExceeded,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary
+                        containerColor = if (isQuotaExceeded) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primary,
+                        contentColor = if (isQuotaExceeded) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onPrimary,
+                        disabledContainerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f),
+                        disabledContentColor = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.5f)
                     ),
                     shape = RoundedCornerShape(28.dp)
                 ) {
                     Text(
-                        "DOWNLOAD (${selectedIndexes.size}/${successState.extractedPost.mediaList.size})",
+                        if (isQuotaExceeded) "LIMIT EXCEEDED" else "DOWNLOAD (${selectedIndexes.size}/${successState.extractedPost.mediaList.size})",
                         fontWeight = FontWeight.Bold,
                         fontSize = 16.sp
                     )

@@ -53,6 +53,9 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
         private const val TAG = "VedInstaApplication"
         const val UNIQUE_DOWNLOAD_WORK_NAME = "vedInstaDownloadWork" // Can be used for specific single tasks if needed
 
+        lateinit var instance: VedInstaApplication
+            private set
+
         fun clearAppCache(context: Context) {
             CoroutineScope(Dispatchers.IO).launch {
                 try {
@@ -87,6 +90,7 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         settingsViewModel = SettingsViewModel(this)
     }
 
@@ -772,6 +776,12 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
                         withContext(Dispatchers.IO) {
                             saveDownloadedPostToDb(context, groupTag, postUrl, completedFilePaths, hasVideo, finalUsername, cachedCaption)
                             scanFiles(context, completedFilePaths) // Scan files after saving
+                            
+                            val quotaManager = com.devson.vedinsta.repository.DownloadQuotaManager(context)
+                            repeat(completedFilePaths.size) {
+                                quotaManager.recordDownload()
+                            }
+                            
                             // Clear temporary cache
                             clearAppCache(context)
                             notificationManager.removeProgressFromDb(groupTag)
@@ -881,6 +891,9 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
                 caption = cachedCaption
             )
             scanFiles(context, listOf(filePath))
+            
+            com.devson.vedinsta.repository.DownloadQuotaManager(context).recordDownload()
+            
             // Clear temporary cache
             clearAppCache(context)
             val notificationManager = VedInstaNotificationManager.getInstance(context)
