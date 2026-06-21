@@ -21,8 +21,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.graphics.shapes.CornerRounding
@@ -31,7 +29,6 @@ import androidx.graphics.shapes.star
 import com.devson.vedinsta.database.DownloadedPost
 import com.devson.vedinsta.ui.*
 import com.devson.vedinsta.viewmodel.*
-import java.io.File
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import dev.chrisbanes.haze.HazeState
@@ -45,6 +42,17 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
 import androidx.compose.foundation.pager.rememberPagerState
+import com.devson.vedinsta.database.NotificationType
+import com.devson.vedinsta.ui.screen.InstagramLoginScreen
+import com.devson.vedinsta.ui.screen.MediaSelectionCarouselScreen
+import com.devson.vedinsta.ui.screen.NotificationsScreen
+import com.devson.vedinsta.ui.screen.PostViewScreen
+import com.devson.vedinsta.ui.screen.WhatsAppStatusViewScreen
+import com.devson.vedinsta.ui.screen.setting.AboutScreen
+import com.devson.vedinsta.ui.screen.setting.AdvancedSettingsScreen
+import com.devson.vedinsta.ui.screen.setting.AppearanceSettingsScreen
+import com.devson.vedinsta.ui.screen.setting.PrivacyPolicyScreen
+import com.devson.vedinsta.ui.screen.setting.SettingsScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -497,13 +505,21 @@ fun MainAppScreen(
                         notifications = notifications,
                         onNotificationClick = { notification ->
                             notificationViewModel.markAsRead(notification.id)
-                            if (notification.type == com.devson.vedinsta.database.NotificationType.DOWNLOAD_COMPLETED && notification.postId != null) {
+                            if (notification.type == NotificationType.DOWNLOAD_COMPLETED && notification.postId != null) {
                                 scope.launch {
                                     val post = mainViewModel.getPostById(notification.postId)
                                     if (post != null) {
-                                        navController.navigate(Screen.PostView.createRoute(notification.postId))
+                                        navController.navigate(
+                                            Screen.PostView.createRoute(
+                                                notification.postId
+                                            )
+                                        )
                                     } else {
-                                        Toast.makeText(context, "Post files were deleted or moved", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(
+                                            context,
+                                            "Post files were deleted or moved",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
                                     }
                                 }
                             }

@@ -1,4 +1,4 @@
-package com.devson.vedinsta.ui
+package com.devson.vedinsta.ui.screen.setting
 
 import android.os.Build
 import androidx.compose.animation.animateColorAsState
@@ -7,17 +7,11 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.expandHorizontally
-import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -33,12 +27,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 import com.devson.vedinsta.ui.theme.AppThemePalette
-import com.devson.vedinsta.ui.theme.*
 import androidx.compose.foundation.isSystemInDarkTheme
 import com.devson.vedinsta.viewmodel.SettingsViewModel
 
@@ -53,6 +45,9 @@ fun AppearanceSettingsScreen(
     val selectedPalette by settingsViewModel.selectedPalette.collectAsStateWithLifecycle()
     val navBarTransparent by settingsViewModel.isNavBarTransparent.collectAsStateWithLifecycle()
     val isAmoledTheme by settingsViewModel.isAmoledTheme.collectAsStateWithLifecycle()
+    val isBlurEnabled by settingsViewModel.isBlurEnabled.collectAsStateWithLifecycle()
+    val blurOpacity   by settingsViewModel.blurOpacity.collectAsStateWithLifecycle()
+    val blurRadius    by settingsViewModel.blurRadius.collectAsStateWithLifecycle()
     val isEffectivelyDark = isDark ?: isSystemInDarkTheme()
 
     Scaffold(
@@ -193,6 +188,81 @@ fun AppearanceSettingsScreen(
                     checked   = navBarTransparent,
                     onCheckedChange = { settingsViewModel.setNavBarTransparent(it) }
                 )
+
+                AppearanceDivider()
+                AppearanceToggleRow(
+                    icon      = Icons.Default.Opacity,
+                    title     = "Blur Effect",
+                    subtitle  = "Blurred Top & Bottom Navbars (glassmorphism)",
+                    checked   = isBlurEnabled,
+                    onCheckedChange = { settingsViewModel.setBlurEnabled(it) }
+                )
+
+                if (isBlurEnabled) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 72.dp, end = 16.dp, top = 4.dp, bottom = 12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Blur Tint Opacity",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "${(blurOpacity * 100).toInt()}%",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Slider(
+                            value = blurOpacity,
+                            onValueChange = { settingsViewModel.setBlurOpacity(it) },
+                            valueRange = 0.1f..0.9f,
+                            colors = SliderDefaults.colors(
+                                activeTrackColor = MaterialTheme.colorScheme.primary,
+                                thumbColor = MaterialTheme.colorScheme.primary
+                            )
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Blur Intensity (Radius)",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "${blurRadius.toInt()} dp",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Slider(
+                            value = blurRadius,
+                            onValueChange = { settingsViewModel.setBlurRadius(it) },
+                            valueRange = 5f..50f,
+                            colors = SliderDefaults.colors(
+                                activeTrackColor = MaterialTheme.colorScheme.primary,
+                                thumbColor = MaterialTheme.colorScheme.primary
+                            )
+                        )
+                    }
+                }
             }
 
             Spacer(Modifier.height(16.dp))

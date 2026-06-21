@@ -1,4 +1,4 @@
-package com.devson.vedinsta.ui
+package com.devson.vedinsta.ui.screen
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*

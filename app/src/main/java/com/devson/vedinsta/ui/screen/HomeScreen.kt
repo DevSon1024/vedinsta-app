@@ -1,5 +1,6 @@
-package com.devson.vedinsta.ui
+package com.devson.vedinsta.ui.screen
 
+import android.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -32,6 +33,7 @@ import coil.request.CachePolicy
 import com.devson.vedinsta.database.DownloadedPost
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
 import com.devson.vedinsta.viewmodel.MainViewModel
 import java.io.File
 
@@ -324,7 +326,7 @@ fun HomeScreen(
             }
 
             val carouselState = rememberCarouselState { carouselCount }
-            val context = androidx.compose.ui.platform.LocalContext.current
+            val context = LocalContext.current
 
             HorizontalMultiBrowseCarousel(
                 state = carouselState,
@@ -394,7 +396,7 @@ fun HomeScreen(
                             .memoryCachePolicy(CachePolicy.ENABLED)
                             .memoryCacheKey(post.thumbnailPath)
                             .diskCacheKey(post.thumbnailPath)
-                            .error(android.R.drawable.ic_menu_report_image)
+                            .error(R.drawable.ic_menu_report_image)
                             .build()
                     }
 

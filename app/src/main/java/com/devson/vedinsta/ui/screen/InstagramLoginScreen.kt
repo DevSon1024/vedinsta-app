@@ -1,4 +1,4 @@
-package com.devson.vedinsta.ui
+package com.devson.vedinsta.ui.screen
 
 import android.graphics.Bitmap
 import android.util.Log
@@ -9,14 +9,13 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import com.devson.vedinsta.viewmodel.InstagramAuthViewModel
 import com.devson.vedinsta.repository.SecurePreferences
+import com.devson.vedinsta.ui.VedInstaTopAppBar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

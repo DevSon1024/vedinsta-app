@@ -1,4 +1,4 @@
-package com.devson.vedinsta.ui
+package com.devson.vedinsta.ui.screen
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -22,7 +22,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.devson.vedinsta.R
 import com.devson.vedinsta.database.NotificationEntity
+import com.devson.vedinsta.database.NotificationType
 import com.devson.vedinsta.viewmodel.NotificationViewModel
 import com.devson.vedinsta.viewmodel.SettingsViewModel
 
@@ -108,7 +110,7 @@ fun NotificationsScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(notifications, key = { it.id }) { item ->
-                    val isProgress = item.type == com.devson.vedinsta.database.NotificationType.DOWNLOAD_PROGRESS
+                    val isProgress = item.type == NotificationType.DOWNLOAD_PROGRESS
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -132,8 +134,8 @@ fun NotificationsScreen(
                                         .crossfade(true)
                                         .memoryCacheKey(item.thumbnailPath)
                                         .diskCacheKey(item.thumbnailPath)
-                                        .error(com.devson.vedinsta.R.drawable.ic_error)
-                                        .fallback(com.devson.vedinsta.R.drawable.ic_error)
+                                        .error(R.drawable.ic_error)
+                                        .fallback(R.drawable.ic_error)
                                         .build()
                                 }
                                 AsyncImage(
@@ -208,7 +210,7 @@ fun NotificationsScreen(
                                 }
                             } else {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    if (item.type == com.devson.vedinsta.database.NotificationType.DOWNLOAD_FAILED && item.postUrl != null) {
+                                    if (item.type == NotificationType.DOWNLOAD_FAILED && item.postUrl != null) {
                                         TextButton(onClick = { onRetryClick(item) }) {
                                             Text("Retry", color = MaterialTheme.colorScheme.primary)
                                         }

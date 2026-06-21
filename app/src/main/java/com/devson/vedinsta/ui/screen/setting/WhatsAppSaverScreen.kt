@@ -1,5 +1,6 @@
-package com.devson.vedinsta.ui
+package com.devson.vedinsta.ui.screen.setting
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Environment
@@ -35,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
 import coil.compose.AsyncImage
 import androidx.compose.ui.draw.clip
+import androidx.core.content.FileProvider
 import coil.request.CachePolicy
 import coil.request.ImageRequest
 import com.devson.vedinsta.viewmodel.WhatsAppState
@@ -842,9 +844,9 @@ fun WAPreserverSettingsBottomSheet(
     }
 }
 
-private fun viewPreservedStatus(context: android.content.Context, file: File) {
+private fun viewPreservedStatus(context: Context, file: File) {
     try {
-        val uri = androidx.core.content.FileProvider.getUriForFile(
+        val uri = FileProvider.getUriForFile(
             context,
             "${context.packageName}.fileprovider",
             file

@@ -1,4 +1,4 @@
-package com.devson.vedinsta.ui
+package com.devson.vedinsta.ui.screen.setting
 
 import android.app.Activity
 import android.content.Context
@@ -25,12 +25,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.Coil
+import com.devson.vedinsta.repository.DownloadQuotaManager
 import com.devson.vedinsta.viewmodel.SettingsViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -113,89 +116,6 @@ fun SettingsScreen(
             onClick = onNavigateToAppearance
         )
 
-        val isBlurEnabled by settingsViewModel.isBlurEnabled.collectAsState()
-
-        SettingsSwitchItem(
-            title = "Blur Effect",
-            subtitle = "Blurred Top & Bottom Navbars (glassmorphism)",
-            icon = Icons.Default.Opacity,
-            iconContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-            iconColor = MaterialTheme.colorScheme.secondary,
-            checked = isBlurEnabled,
-            onCheckedChange = { settingsViewModel.setBlurEnabled(it) }
-        )
-
-        if (isBlurEnabled) {
-            val blurOpacity by settingsViewModel.blurOpacity.collectAsState()
-            val blurRadius by settingsViewModel.blurRadius.collectAsState()
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Blur Tint Opacity",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = "${(blurOpacity * 100).toInt()}%",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-                Slider(
-                    value = blurOpacity,
-                    onValueChange = { settingsViewModel.setBlurOpacity(it) },
-                    valueRange = 0.1f..0.9f,
-                    colors = SliderDefaults.colors(
-                        activeTrackColor = MaterialTheme.colorScheme.primary,
-                        thumbColor = MaterialTheme.colorScheme.primary
-                    )
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Blur Intensity (Radius)",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = "${blurRadius.toInt()} dp",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-                Slider(
-                    value = blurRadius,
-                    onValueChange = { settingsViewModel.setBlurRadius(it) },
-                    valueRange = 5f..50f,
-                    colors = SliderDefaults.colors(
-                        activeTrackColor = MaterialTheme.colorScheme.primary,
-                        thumbColor = MaterialTheme.colorScheme.primary
-                    )
-                )
-            }
-        }
-
         Spacer(modifier = Modifier.height(16.dp))
 
         // 2. Storage Location Category
@@ -270,13 +190,13 @@ fun SettingsScreen(
             subtitleColor = MaterialTheme.colorScheme.error
         )
 
-        val quotaManager = remember { com.devson.vedinsta.repository.DownloadQuotaManager(context) }
+        val quotaManager = remember { DownloadQuotaManager(context) }
         var quotaStats by remember { mutableStateOf(quotaManager.getQuotaStats()) }
 
         LaunchedEffect(overshadowQuota) {
             quotaStats = quotaManager.getQuotaStats()
             while (true) {
-                kotlinx.coroutines.delay(10000L)
+                delay(10000L)
                 quotaStats = quotaManager.getQuotaStats()
             }
         }
@@ -490,7 +410,7 @@ fun SettingsClickableItem(
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                     fontSize = 12.sp,
                     maxLines = 1,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis
                 )
             }
             Icon(

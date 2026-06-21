@@ -1,4 +1,4 @@
-package com.devson.vedinsta.ui
+package com.devson.vedinsta.ui.screen.setting
 
 import android.content.Intent
 import android.net.Uri

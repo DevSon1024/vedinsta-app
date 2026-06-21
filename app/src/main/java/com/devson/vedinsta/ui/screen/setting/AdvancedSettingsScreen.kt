@@ -1,24 +1,21 @@
-package com.devson.vedinsta.ui
+package com.devson.vedinsta.ui.screen.setting
 
 import android.widget.Toast
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.devson.vedinsta.ui.VedInstaTopAppBar
 import com.devson.vedinsta.viewmodel.SettingsViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -56,7 +53,11 @@ fun AdvancedSettingsScreen(
                         settingsViewModel.networkTimeoutSeconds = 15
                         settingsViewModel.maxRetries = 3
 
-                        Toast.makeText(context, "Network settings reset to default", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(
+                            context,
+                            "Network settings reset to default",
+                            Toast.LENGTH_SHORT
+                        ).show()
                     }) {
                         Text("Reset Defaults", fontWeight = FontWeight.Bold)
                     }

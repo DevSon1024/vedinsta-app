@@ -1,4 +1,4 @@
-package com.devson.vedinsta.ui
+package com.devson.vedinsta.ui.screen
 
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -20,7 +20,6 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -74,9 +73,11 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.request.CachePolicy
+import com.devson.vedinsta.R
 import com.devson.vedinsta.database.DownloadedPost
 import java.io.File
 import java.text.SimpleDateFormat
@@ -312,7 +313,7 @@ fun PostViewScreen(
                                         .memoryCacheKey(mediaPath)
                                         .diskCacheKey(mediaPath)
                                         .crossfade(true)
-                                        .error(com.devson.vedinsta.R.drawable.ic_error)
+                                        .error(R.drawable.ic_error)
                                         .build()
                                 }
                                 AsyncImage(
@@ -481,7 +482,7 @@ fun PostViewScreen(
                                 onClick = {
                                     showShareMenu = false
                                     val currentFile = mediaFiles[pagerState.currentPage]
-                                    val fileUri = androidx.core.content.FileProvider.getUriForFile(
+                                    val fileUri = FileProvider.getUriForFile(
                                         context,
                                         "${context.packageName}.fileprovider",
                                         currentFile
@@ -502,7 +503,7 @@ fun PostViewScreen(
                                         showShareMenu = false
                                         val fileUris = ArrayList<Uri>()
                                         mediaFiles.forEach { file ->
-                                            val fileUri = androidx.core.content.FileProvider.getUriForFile(
+                                            val fileUri = FileProvider.getUriForFile(
                                                 context,
                                                 "${context.packageName}.fileprovider",
                                                 file

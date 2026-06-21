@@ -1,4 +1,4 @@
-package com.devson.vedinsta.ui
+package com.devson.vedinsta.ui.screen
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -32,12 +32,13 @@ import coil.compose.AsyncImage
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.request.CachePolicy
 import coil.request.ImageRequest
+import com.devson.vedinsta.database.AppDatabase
+import com.devson.vedinsta.notification.VedInstaNotificationManager
 import com.devson.vedinsta.viewmodel.ExtractionState
 import com.devson.vedinsta.viewmodel.InstagramAuthViewModel
 import com.devson.vedinsta.viewmodel.MediaExtractionViewModel
 import com.devson.vedinsta.repository.DownloadQuotaManager
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.math.absoluteValue
@@ -62,7 +63,7 @@ fun MediaSelectionCarouselScreen(
             val postId = (extractionState as ExtractionState.Success).extractedPost.postId
             withContext(Dispatchers.IO) {
                 try {
-                    val db = com.devson.vedinsta.database.AppDatabase.getDatabase(context.applicationContext)
+                    val db = AppDatabase.getDatabase(context.applicationContext)
                     db.downloadedPostDao().getPostById(postId)?.mediaPaths ?: emptyList()
                 } catch (e: Exception) {
                     emptyList()
@@ -78,7 +79,7 @@ fun MediaSelectionCarouselScreen(
 
     LaunchedEffect(Unit) {
         extractionViewModel.refreshQuota()
-        com.devson.vedinsta.notification.VedInstaNotificationManager.getInstance(context).cancelMultipleContentNotification()
+        VedInstaNotificationManager.getInstance(context).cancelMultipleContentNotification()
     }
 
     Scaffold(

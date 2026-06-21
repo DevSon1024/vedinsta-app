@@ -1,8 +1,6 @@
-package com.devson.vedinsta.ui
+package com.devson.vedinsta.ui.screen
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearOutSlowInEasing
+import android.R
 import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -33,7 +31,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -42,15 +39,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
-import coil.request.videoFrameMillis
-import coil.size.Size
 import coil.request.CachePolicy
 import com.devson.vedinsta.database.DownloadedPost
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
+import com.devson.vedinsta.ui.showPostOptions
 import com.devson.vedinsta.viewmodel.MainViewModel
-import kotlinx.coroutines.launch
-import java.io.File
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -134,7 +129,7 @@ fun HistoryScreen(
                     contentType = { "HistoryListCard" }
                 ) { post ->
                     val fav = isFavorite(post.postId)
-                    val context = androidx.compose.ui.platform.LocalContext.current
+                    val context = LocalContext.current
                     HistoryListCard(
                         post = post,
                         isFavorite = fav,
@@ -229,7 +224,7 @@ fun HistoryScreen(
                     contentType = { "HistoryGridCard" }
                 ) { post ->
                     val fav = isFavorite(post.postId)
-                    val context = androidx.compose.ui.platform.LocalContext.current
+                    val context = LocalContext.current
                     HistoryGridCard(
                         post = post,
                         isFavorite = fav,
@@ -408,7 +403,7 @@ fun HistoryListCard(
                     .size(76.dp)
                     .clip(RoundedCornerShape(8.dp))
             ) {
-                val context = androidx.compose.ui.platform.LocalContext.current
+                val context = LocalContext.current
                 val imageRequest = remember(post.thumbnailPath) {
                     ImageRequest.Builder(context)
                         .data(if (post.thumbnailPath.isNotEmpty()) post.thumbnailPath else null)
@@ -419,8 +414,8 @@ fun HistoryListCard(
                         .memoryCachePolicy(CachePolicy.ENABLED)
                         .memoryCacheKey(post.thumbnailPath)
                         .diskCacheKey(post.thumbnailPath)
-                        .error(android.R.drawable.ic_menu_report_image)
-                        .fallback(android.R.drawable.ic_menu_report_image)
+                        .error(R.drawable.ic_menu_report_image)
+                        .fallback(R.drawable.ic_menu_report_image)
                         .build()
                 }
                 AsyncImage(
@@ -534,7 +529,7 @@ fun HistoryGridCard(
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             // Thumbnail
-            val context = androidx.compose.ui.platform.LocalContext.current
+            val context = LocalContext.current
             val imageRequest = remember(post.thumbnailPath) {
                 ImageRequest.Builder(context)
                     .data(if (post.thumbnailPath.isNotEmpty()) post.thumbnailPath else null)
@@ -545,8 +540,8 @@ fun HistoryGridCard(
                     .memoryCachePolicy(CachePolicy.ENABLED)
                     .memoryCacheKey(post.thumbnailPath)
                     .diskCacheKey(post.thumbnailPath)
-                    .error(android.R.drawable.ic_menu_report_image)
-                    .fallback(android.R.drawable.ic_menu_report_image)
+                    .error(R.drawable.ic_menu_report_image)
+                    .fallback(R.drawable.ic_menu_report_image)
                     .build()
             }
             AsyncImage(
