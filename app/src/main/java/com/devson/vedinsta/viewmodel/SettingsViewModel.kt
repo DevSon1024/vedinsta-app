@@ -30,6 +30,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         const val KEY_CUSTOM_IG_APP_ID = "custom_ig_app_id"
         const val KEY_NETWORK_TIMEOUT_SECONDS = "network_timeout_seconds"
         const val KEY_MAX_RETRIES = "max_retries"
+        const val KEY_ACCEPT_LANGUAGE = "accept_language"
+        const val KEY_X_ASBD_ID = "x_asbd_id"
+        const val KEY_VIEWPORT_WIDTH = "viewport_width"
+        const val KEY_MIN_JITTER_DELAY = "min_jitter_delay"
+        const val KEY_MAX_JITTER_DELAY = "max_jitter_delay"
 
         // Actions
         const val ACTION_ASK_EVERY_TIME = 0
@@ -65,13 +70,89 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         get() = prefs.getInt("max_notifications_limit", 0)
         set(value) = prefs.edit().putInt("max_notifications_limit", value).apply()
 
+    private val _customUserAgent = MutableStateFlow(
+        prefs.getString(KEY_CUSTOM_USER_AGENT, "") ?: ""
+    )
+    val customUserAgentFlow: StateFlow<String> = _customUserAgent.asStateFlow()
+
     var customUserAgent: String
         get() = prefs.getString(KEY_CUSTOM_USER_AGENT, "") ?: ""
-        set(value) = prefs.edit().putString(KEY_CUSTOM_USER_AGENT, value).apply()
+        set(value) {
+            prefs.edit().putString(KEY_CUSTOM_USER_AGENT, value).apply()
+            _customUserAgent.value = value
+        }
+
+    private val _customIgAppId = MutableStateFlow(
+        prefs.getString(KEY_CUSTOM_IG_APP_ID, "") ?: ""
+    )
+    val customIgAppIdFlow: StateFlow<String> = _customIgAppId.asStateFlow()
 
     var customIgAppId: String
         get() = prefs.getString(KEY_CUSTOM_IG_APP_ID, "") ?: ""
-        set(value) = prefs.edit().putString(KEY_CUSTOM_IG_APP_ID, value).apply()
+        set(value) {
+            prefs.edit().putString(KEY_CUSTOM_IG_APP_ID, value).apply()
+            _customIgAppId.value = value
+        }
+
+    private val _acceptLanguage = MutableStateFlow(
+        prefs.getString(KEY_ACCEPT_LANGUAGE, "") ?: ""
+    )
+    val acceptLanguageFlow: StateFlow<String> = _acceptLanguage.asStateFlow()
+
+    var acceptLanguage: String
+        get() = prefs.getString(KEY_ACCEPT_LANGUAGE, "") ?: ""
+        set(value) {
+            prefs.edit().putString(KEY_ACCEPT_LANGUAGE, value).apply()
+            _acceptLanguage.value = value
+        }
+
+    private val _xAsbdId = MutableStateFlow(
+        prefs.getString(KEY_X_ASBD_ID, "") ?: ""
+    )
+    val xAsbdIdFlow: StateFlow<String> = _xAsbdId.asStateFlow()
+
+    var xAsbdId: String
+        get() = prefs.getString(KEY_X_ASBD_ID, "") ?: ""
+        set(value) {
+            prefs.edit().putString(KEY_X_ASBD_ID, value).apply()
+            _xAsbdId.value = value
+        }
+
+    private val _viewportWidth = MutableStateFlow(
+        prefs.getString(KEY_VIEWPORT_WIDTH, "") ?: ""
+    )
+    val viewportWidthFlow: StateFlow<String> = _viewportWidth.asStateFlow()
+
+    var viewportWidth: String
+        get() = prefs.getString(KEY_VIEWPORT_WIDTH, "") ?: ""
+        set(value) {
+            prefs.edit().putString(KEY_VIEWPORT_WIDTH, value).apply()
+            _viewportWidth.value = value
+        }
+
+    private val _minJitterDelay = MutableStateFlow(
+        prefs.getLong(KEY_MIN_JITTER_DELAY, 3000L)
+    )
+    val minJitterDelayFlow: StateFlow<Long> = _minJitterDelay.asStateFlow()
+
+    var minJitterDelay: Long
+        get() = prefs.getLong(KEY_MIN_JITTER_DELAY, 3000L)
+        set(value) {
+            prefs.edit().putLong(KEY_MIN_JITTER_DELAY, value).apply()
+            _minJitterDelay.value = value
+        }
+
+    private val _maxJitterDelay = MutableStateFlow(
+        prefs.getLong(KEY_MAX_JITTER_DELAY, 8000L)
+    )
+    val maxJitterDelayFlow: StateFlow<Long> = _maxJitterDelay.asStateFlow()
+
+    var maxJitterDelay: Long
+        get() = prefs.getLong(KEY_MAX_JITTER_DELAY, 8000L)
+        set(value) {
+            prefs.edit().putLong(KEY_MAX_JITTER_DELAY, value).apply()
+            _maxJitterDelay.value = value
+        }
 
     var networkTimeoutSeconds: Int
         get() = prefs.getInt(KEY_NETWORK_TIMEOUT_SECONDS, 15)

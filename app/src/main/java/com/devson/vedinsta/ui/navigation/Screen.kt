@@ -23,6 +23,8 @@ sealed class Screen(val route: String) {
     object WhatsAppStatusView : Screen("whatsapp_status_view/{initialIndex}") {
         fun createRoute(initialIndex: Int) = "whatsapp_status_view/$initialIndex"
     }
+    
+    object SecurityLimits : Screen("security_limits")
 }
 
 internal fun getScreenOrderValue(screen: Screen): Int {
@@ -43,5 +45,6 @@ internal fun getScreenOrderValue(screen: Screen): Int {
         is Screen.PrivacyPolicy -> 11
         is Screen.WhatsAppSaver -> 13
         is Screen.WhatsAppStatusView -> 14
+        is Screen.SecurityLimits -> 15
     }
 }

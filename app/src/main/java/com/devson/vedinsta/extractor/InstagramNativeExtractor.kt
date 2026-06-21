@@ -1,5 +1,6 @@
 package com.devson.vedinsta.extractor
 
+import android.content.Context
 import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
@@ -26,7 +27,12 @@ object InstagramNativeExtractor {
         appId: String? = null,
         timeoutSeconds: Int = 15
     ): String = extractionMutex.withLock {
-        delay(Random.nextLong(3000L, 8000L))
+        val context = try { com.devson.vedinsta.VedInstaApplication.instance } catch (e: Exception) { null }
+        val prefs = context?.getSharedPreferences("VedInstaPrefs", Context.MODE_PRIVATE)
+        val minDelay = prefs?.getLong("min_jitter_delay", 3000L) ?: 3000L
+        val maxDelay = prefs?.getLong("max_jitter_delay", 8000L) ?: 8000L
+        val delayTime = if (maxDelay > minDelay) Random.nextLong(minDelay, maxDelay) else minDelay
+        delay(delayTime)
 
         val result = withTimeoutOrNull(15000L) {
             if (isStoryUrl(url)) {
@@ -198,6 +204,12 @@ object InstagramNativeExtractor {
         val securePrefs = context?.let { com.devson.vedinsta.repository.SecurePreferences(it) }
         val savedUA = securePrefs?.getUserAgent()
 
+        val prefs = context?.getSharedPreferences("VedInstaPrefs", Context.MODE_PRIVATE)
+        val customAcceptLanguage = prefs?.getString("accept_language", "") ?: ""
+        val customXAsbdId = prefs?.getString("x_asbd_id", "") ?: ""
+        val customViewportWidth = prefs?.getString("viewport_width", "") ?: ""
+        val customAppId = prefs?.getString("custom_ig_app_id", "") ?: ""
+
         val baseUA = if (!savedUA.isNullOrBlank()) {
             savedUA
         } else if (!userAgent.isNullOrBlank()) {
@@ -210,13 +222,28 @@ object InstagramNativeExtractor {
         } else {
             "$baseUA Instagram 319.0.0.28.119 Android"
         }
-        val finalAppId = if (!appId.isNullOrBlank()) appId else "567067343352427"
+        val finalAppId = if (!appId.isNullOrBlank()) {
+            appId
+        } else if (customAppId.isNotEmpty()) {
+            customAppId
+        } else {
+            "936619743392459"
+        }
 
         conn.setRequestProperty("User-Agent", finalUserAgent)
         conn.setRequestProperty("X-IG-App-ID", finalAppId)
         conn.setRequestProperty("X-CSRFToken", cookies["csrftoken"] ?: "")
         conn.setRequestProperty("Referer", "https://www.instagram.com/")
-        conn.setRequestProperty("Accept-Language", "en-US,en;q=0.9")
+
+        val finalAcceptLanguage = if (customAcceptLanguage.isNotEmpty()) customAcceptLanguage else "en-US,en;q=0.9"
+        conn.setRequestProperty("Accept-Language", finalAcceptLanguage)
+
+        val finalAsbdId = if (customXAsbdId.isNotEmpty()) customXAsbdId else "198387"
+        conn.setRequestProperty("X-ASBD-ID", finalAsbdId)
+
+        val finalViewportWidth = if (customViewportWidth.isNotEmpty()) customViewportWidth else "1080"
+        conn.setRequestProperty("Viewport-Width", finalViewportWidth)
+
         conn.setRequestProperty("Accept", "*/*")
 
         val cookieString = cookies.entries.joinToString("; ") { "${it.key}=${it.value}" }

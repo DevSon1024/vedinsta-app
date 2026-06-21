@@ -15,6 +15,12 @@ class SecurePreferences(private val context: Context) {
         private const val KEY_DS_USER_ID = "ig_ds_user_id"
         private const val KEY_USERNAME = "ig_username"
         private const val KEY_USER_AGENT = "ig_user_agent"
+        private const val KEY_ACCEPT_LANGUAGE = "accept_language"
+        private const val KEY_X_ASBD_ID = "x_asbd_id"
+        private const val KEY_VIEWPORT_WIDTH = "viewport_width"
+        private const val KEY_MIN_JITTER_DELAY = "min_jitter_delay"
+        private const val KEY_MAX_JITTER_DELAY = "max_jitter_delay"
+        private const val KEY_X_IG_APP_ID = "x_ig_app_id"
         private const val TAG = "SecurePreferences"
     }
 
@@ -83,6 +89,42 @@ class SecurePreferences(private val context: Context) {
     
     fun getUserAgent(): String? = sharedPrefs?.getString(KEY_USER_AGENT, null)
 
+    fun saveAcceptLanguage(acceptLanguage: String) {
+        sharedPrefs?.edit()?.putString(KEY_ACCEPT_LANGUAGE, acceptLanguage)?.apply()
+    }
+
+    fun getAcceptLanguage(): String? = sharedPrefs?.getString(KEY_ACCEPT_LANGUAGE, null)
+
+    fun saveXAsbdId(xAsbdId: String) {
+        sharedPrefs?.edit()?.putString(KEY_X_ASBD_ID, xAsbdId)?.apply()
+    }
+
+    fun getXAsbdId(): String? = sharedPrefs?.getString(KEY_X_ASBD_ID, null)
+
+    fun saveViewportWidth(viewportWidth: String) {
+        sharedPrefs?.edit()?.putString(KEY_VIEWPORT_WIDTH, viewportWidth)?.apply()
+    }
+
+    fun getViewportWidth(): String? = sharedPrefs?.getString(KEY_VIEWPORT_WIDTH, null)
+
+    fun saveMinJitterDelay(minJitter: Long) {
+        sharedPrefs?.edit()?.putLong(KEY_MIN_JITTER_DELAY, minJitter)?.apply()
+    }
+
+    fun getMinJitterDelay(): Long = sharedPrefs?.getLong(KEY_MIN_JITTER_DELAY, 3000L) ?: 3000L
+
+    fun saveMaxJitterDelay(maxJitter: Long) {
+        sharedPrefs?.edit()?.putLong(KEY_MAX_JITTER_DELAY, maxJitter)?.apply()
+    }
+
+    fun getMaxJitterDelay(): Long = sharedPrefs?.getLong(KEY_MAX_JITTER_DELAY, 8000L) ?: 8000L
+
+    fun saveXIgAppId(xIgAppId: String) {
+        sharedPrefs?.edit()?.putString(KEY_X_IG_APP_ID, xIgAppId)?.apply()
+    }
+
+    fun getXIgAppId(): String? = sharedPrefs?.getString(KEY_X_IG_APP_ID, null)
+
     fun clearAuth() {
         sharedPrefs?.edit()?.apply {
             remove(KEY_SESSION_ID)
@@ -90,6 +132,12 @@ class SecurePreferences(private val context: Context) {
             remove(KEY_DS_USER_ID)
             remove(KEY_USERNAME)
             remove(KEY_USER_AGENT)
+            remove(KEY_ACCEPT_LANGUAGE)
+            remove(KEY_X_ASBD_ID)
+            remove(KEY_VIEWPORT_WIDTH)
+            remove(KEY_MIN_JITTER_DELAY)
+            remove(KEY_MAX_JITTER_DELAY)
+            remove(KEY_X_IG_APP_ID)
             apply()
         }
     }

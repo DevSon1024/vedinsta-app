@@ -52,6 +52,7 @@ import com.devson.vedinsta.ui.screen.setting.AboutScreen
 import com.devson.vedinsta.ui.screen.setting.AdvancedSettingsScreen
 import com.devson.vedinsta.ui.screen.setting.AppearanceSettingsScreen
 import com.devson.vedinsta.ui.screen.setting.PrivacyPolicyScreen
+import com.devson.vedinsta.ui.screen.setting.SecurityLimitsScreen
 import com.devson.vedinsta.ui.screen.setting.SettingsScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -474,6 +475,7 @@ fun MainAppScreen(
                         onNavigateToAppearance = { navController.navigate(Screen.Appearance.route) },
                         onNavigateToPrivacyPolicy = { navController.navigate(Screen.PrivacyPolicy.route) },
                         onNavigateToAdvancedSettings = { navController.navigate(Screen.AdvancedSettings.route) },
+                        onNavigateToSecurityLimits = { navController.navigate(Screen.SecurityLimits.route) },
                         onThemeChanged = onThemeChanged,
                         contentPadding = screenPadding
                     )
@@ -486,6 +488,12 @@ fun MainAppScreen(
                 }
                 composable(Screen.Appearance.route) {
                     AppearanceSettingsScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                        settingsViewModel = settingsViewModel
+                    )
+                }
+                composable(Screen.SecurityLimits.route) {
+                    SecurityLimitsScreen(
                         onNavigateBack = { navController.popBackStack() },
                         settingsViewModel = settingsViewModel
                     )

@@ -4,6 +4,7 @@ import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
@@ -13,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.devson.vedinsta.ui.VedInstaTopAppBar
@@ -29,11 +31,45 @@ fun AdvancedSettingsScreen(
 
     var userAgent by remember { mutableStateOf(settingsViewModel.customUserAgent) }
     var igAppId by remember { mutableStateOf(settingsViewModel.customIgAppId) }
+    var acceptLanguage by remember { mutableStateOf(settingsViewModel.acceptLanguage) }
+    var xAsbdId by remember { mutableStateOf(settingsViewModel.xAsbdId) }
+    var viewportWidth by remember { mutableStateOf(settingsViewModel.viewportWidth) }
+    var minJitterDelay by remember { mutableStateOf(settingsViewModel.minJitterDelay.toString()) }
+    var maxJitterDelay by remember { mutableStateOf(settingsViewModel.maxJitterDelay.toString()) }
+
     var timeoutSeconds by remember { mutableFloatStateOf(settingsViewModel.networkTimeoutSeconds.toFloat()) }
     var maxRetries by remember { mutableFloatStateOf(settingsViewModel.maxRetries.toFloat()) }
 
     var showHelpSheet by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    val onResetAction = {
+        userAgent = ""
+        igAppId = ""
+        acceptLanguage = ""
+        xAsbdId = ""
+        viewportWidth = ""
+        minJitterDelay = "3000"
+        maxJitterDelay = "8000"
+        timeoutSeconds = 15f
+        maxRetries = 3f
+
+        settingsViewModel.customUserAgent = ""
+        settingsViewModel.customIgAppId = ""
+        settingsViewModel.acceptLanguage = ""
+        settingsViewModel.xAsbdId = ""
+        settingsViewModel.viewportWidth = ""
+        settingsViewModel.minJitterDelay = 3000L
+        settingsViewModel.maxJitterDelay = 8000L
+        settingsViewModel.networkTimeoutSeconds = 15
+        settingsViewModel.maxRetries = 3
+
+        Toast.makeText(
+            context,
+            "Network settings reset to default",
+            Toast.LENGTH_SHORT
+        ).show()
+    }
 
     Scaffold(
         topBar = {
@@ -42,23 +78,7 @@ fun AdvancedSettingsScreen(
                 showBackButton = true,
                 onBackClick = onNavigateBack,
                 actions = {
-                    TextButton(onClick = {
-                        userAgent = ""
-                        igAppId = ""
-                        timeoutSeconds = 15f
-                        maxRetries = 3f
-
-                        settingsViewModel.customUserAgent = ""
-                        settingsViewModel.customIgAppId = ""
-                        settingsViewModel.networkTimeoutSeconds = 15
-                        settingsViewModel.maxRetries = 3
-
-                        Toast.makeText(
-                            context,
-                            "Network settings reset to default",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }) {
+                    TextButton(onClick = onResetAction) {
                         Text("Reset Defaults", fontWeight = FontWeight.Bold)
                     }
                 }
@@ -73,7 +93,7 @@ fun AdvancedSettingsScreen(
                 .verticalScroll(scrollState)
                 .padding(16.dp)
         ) {
-            // Category: Header Fields
+            // Section 1: Network Headers
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -81,16 +101,16 @@ fun AdvancedSettingsScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "HTTP Headers Override",
+                    text = "Network Headers Override",
                     color = MaterialTheme.colorScheme.primary,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f)
                 )
-                
+
                 IconButton(onClick = { showHelpSheet = true }) {
                     Icon(
-                    imageVector = Icons.AutoMirrored.Filled.HelpOutline,
+                        imageVector = Icons.AutoMirrored.Filled.HelpOutline,
                         contentDescription = "How to get headers",
                         tint = MaterialTheme.colorScheme.primary
                     )
@@ -112,43 +132,125 @@ fun AdvancedSettingsScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    OutlinedTextField(
+                    AdvancedSettingsTextField(
+                        label = "Custom User-Agent",
+                        placeholder = "Instagram 319.0.0.28.119 Android",
                         value = userAgent,
                         onValueChange = {
                             userAgent = it
                             settingsViewModel.customUserAgent = it
-                        },
-                        label = { Text("Custom User-Agent") },
-                        placeholder = { Text("Instagram 319.0.0.28.119 Android") },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = MaterialTheme.colorScheme.primary,
-                            unfocusedBorderColor = MaterialTheme.colorScheme.outline
-                        )
+                        }
                     )
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    OutlinedTextField(
+                    AdvancedSettingsTextField(
+                        label = "Custom X-IG-App-ID",
+                        placeholder = "936619743392459",
                         value = igAppId,
                         onValueChange = {
                             igAppId = it
                             settingsViewModel.customIgAppId = it
-                        },
-                        label = { Text("Custom X-IG-App-ID") },
-                        placeholder = { Text("567067343352427") },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = MaterialTheme.colorScheme.primary,
-                            unfocusedBorderColor = MaterialTheme.colorScheme.outline
-                        )
+                        }
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    AdvancedSettingsTextField(
+                        label = "Custom X-ASBD-ID",
+                        placeholder = "198387",
+                        value = xAsbdId,
+                        onValueChange = {
+                            xAsbdId = it
+                            settingsViewModel.xAsbdId = it
+                        }
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    AdvancedSettingsTextField(
+                        label = "Custom Accept-Language",
+                        placeholder = "en-US,en;q=0.9",
+                        value = acceptLanguage,
+                        onValueChange = {
+                            acceptLanguage = it
+                            settingsViewModel.acceptLanguage = it
+                        }
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    AdvancedSettingsTextField(
+                        label = "Custom Viewport-Width",
+                        placeholder = "1080",
+                        value = viewportWidth,
+                        onValueChange = {
+                            viewportWidth = it
+                            settingsViewModel.viewportWidth = it
+                        }
                     )
                 }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Category: Network Timeouts
+            // Section 2: Extraction Behavior
+            Text(
+                text = "Extraction Behavior",
+                color = MaterialTheme.colorScheme.primary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Set random delay bounds (in milliseconds) between extraction queries to prevent rate limits.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    AdvancedSettingsTextField(
+                        label = "Minimum Jitter Delay (ms)",
+                        placeholder = "3000",
+                        value = minJitterDelay,
+                        onValueChange = { newValue ->
+                            val clean = newValue.filter { it.isDigit() }
+                            minJitterDelay = clean
+                            val delayVal = clean.toLongOrNull() ?: 3000L
+                            settingsViewModel.minJitterDelay = delayVal
+                        },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    AdvancedSettingsTextField(
+                        label = "Maximum Jitter Delay (ms)",
+                        placeholder = "8000",
+                        value = maxJitterDelay,
+                        onValueChange = { newValue ->
+                            val clean = newValue.filter { it.isDigit() }
+                            maxJitterDelay = clean
+                            val delayVal = clean.toLongOrNull() ?: 8000L
+                            settingsViewModel.maxJitterDelay = delayVal
+                        },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Category: Network Tolerances
             Text(
                 text = "Network Tolerances",
                 color = MaterialTheme.colorScheme.primary,
@@ -207,6 +309,16 @@ fun AdvancedSettingsScreen(
                         fontSize = 11.sp
                     )
                 }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            OutlinedButton(
+                onClick = onResetAction,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Reset to Defaults", fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -283,4 +395,31 @@ fun AdvancedSettingsScreen(
             }
         }
     }
+}
+
+@Composable
+fun AdvancedSettingsTextField(
+    label: String,
+    placeholder: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        placeholder = {
+            Text(
+                text = placeholder,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+            )
+        },
+        keyboardOptions = keyboardOptions,
+        modifier = Modifier.fillMaxWidth(),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = MaterialTheme.colorScheme.primary,
+            unfocusedBorderColor = MaterialTheme.colorScheme.outline
+        )
+    )
 }
