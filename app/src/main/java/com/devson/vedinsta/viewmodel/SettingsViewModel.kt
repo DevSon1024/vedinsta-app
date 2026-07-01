@@ -4,6 +4,8 @@ import android.app.Application
 import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.AndroidViewModel
 import com.devson.vedinsta.ui.theme.AppThemePalette
@@ -195,6 +197,64 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             .replace("{date}", SAMPLE_DATE)
             .replace("{short_id}", SAMPLE_SHORT_ID)
             .plus(".$ext")
+    }
+
+    // Custom Filename Builder dialog state
+
+    // Allowed characters: letters, digits, space, underscore, hyphen, and tag braces
+    private val filenameAllowedRegex = Regex("^[a-zA-Z0-9 _\\-{}]+$")
+
+    /** The TextFieldValue driving the custom builder dialog's OutlinedTextField. */
+    private val _customFilenameInput = MutableStateFlow(TextFieldValue(""))
+    val customFilenameInput: StateFlow<TextFieldValue> = _customFilenameInput.asStateFlow()
+
+    /** True when the current input contains an invalid character. */
+    private val _customFilenameIsError = MutableStateFlow(false)
+    val customFilenameIsError: StateFlow<Boolean> = _customFilenameIsError.asStateFlow()
+
+    /** True when the input is non-empty and passes validation - used to gate the Save button. */
+    val isCustomFilenameValid: Boolean
+        get() = _customFilenameInput.value.text.isNotBlank() && !_customFilenameIsError.value
+
+    /**
+     * Called on every keystroke in the custom builder dialog.
+     * Validates against [filenameAllowedRegex] and updates the error state.
+     */
+    fun updateCustomFilenameInput(newValue: TextFieldValue) {
+        _customFilenameInput.value = newValue
+        _customFilenameIsError.value =
+            newValue.text.isNotEmpty() && !filenameAllowedRegex.matches(newValue.text)
+    }
+
+    /**
+     * Inserts [tag] at the current cursor position inside [customFilenameInput].
+     * After insertion, the cursor is moved to the end of the injected tag text.
+     */
+    fun insertTagAtCursor(tag: String) {
+        val current = _customFilenameInput.value
+        val insertAt = current.selection.end.coerceIn(0, current.text.length)
+        val newText = current.text.substring(0, insertAt) + tag + current.text.substring(insertAt)
+        val newCursorPos = insertAt + tag.length
+        val newValue = TextFieldValue(
+            text = newText,
+            selection = TextRange(newCursorPos)
+        )
+        _customFilenameInput.value = newValue
+        _customFilenameIsError.value =
+            newText.isNotEmpty() && !filenameAllowedRegex.matches(newText)
+    }
+
+    /**
+     * Pre-fills the dialog input with an existing template (e.g. the currently saved one)
+     * so the user can edit rather than start from scratch.
+     */
+    fun initCustomFilenameDialog(existingTemplate: String) {
+        val text = existingTemplate.ifBlank { DEFAULT_FILENAME_TEMPLATE }
+        _customFilenameInput.value = TextFieldValue(
+            text = text,
+            selection = TextRange(text.length) // cursor at end
+        )
+        _customFilenameIsError.value = false
     }
 
     var overshadowQuota: Boolean

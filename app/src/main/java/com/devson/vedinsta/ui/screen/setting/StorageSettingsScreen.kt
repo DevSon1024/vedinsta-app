@@ -7,43 +7,34 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DriveFileRenameOutline
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.devson.vedinsta.ui.VedInstaTopAppBar
 import com.devson.vedinsta.viewmodel.SettingsViewModel
 import kotlinx.coroutines.launch
+
 
 // Predefined filename templates exposed to the user
 private data class FilenameTemplate(
@@ -69,7 +60,6 @@ fun StorageSettingsScreen(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    val keyboardController = LocalSoftwareKeyboardController.current
 
     // - Directory labels loaded from DocumentFile on IO thread
     var imagePath by remember { mutableStateOf("Loading...") }
@@ -80,8 +70,17 @@ fun StorageSettingsScreen(
         videoPath = settingsViewModel.getVideoPathLabel()
     }
 
-    // - Filename template state hoisted here
+    // - Filename template state
     val savedTemplate by settingsViewModel.filenameTemplate.collectAsStateWithLifecycle()
+
+    // - Custom builder dialog state (driven by ViewModel)
+    val customFilenameInput by settingsViewModel.customFilenameInput.collectAsStateWithLifecycle()
+    val customFilenameIsError by settingsViewModel.customFilenameIsError.collectAsStateWithLifecycle()
+
+    // Dialog / sheet visibility flags
+    var showCustomDialog by remember { mutableStateOf(false) }
+    var showTagsSheet by remember { mutableStateOf(false) }
+    val tagsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     // Determine which radio item is selected
     val selectedIndex by remember(savedTemplate) {
@@ -93,16 +92,12 @@ fun StorageSettingsScreen(
         }
     }
 
-    // Custom template text field value - pre-fill with saved value when "Custom" is active
-    var customTemplateText by remember(selectedIndex, savedTemplate) {
-        mutableStateOf(if (selectedIndex == PREDEFINED_TEMPLATES.lastIndex) savedTemplate else "")
-    }
-
     // Live preview derived from current effective template
-    val effectiveTemplate by remember(selectedIndex, customTemplateText, savedTemplate) {
+    val effectiveTemplate by remember(selectedIndex, savedTemplate, customFilenameInput) {
         derivedStateOf {
             when {
-                selectedIndex == PREDEFINED_TEMPLATES.lastIndex -> customTemplateText
+                selectedIndex == PREDEFINED_TEMPLATES.lastIndex -> customFilenameInput.text
+                    .ifBlank { savedTemplate }
                 else -> PREDEFINED_TEMPLATES[selectedIndex].template
             }
         }
@@ -144,24 +139,10 @@ fun StorageSettingsScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = "Storage & Filenames",
-                        fontWeight = FontWeight.SemiBold
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back"
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
+            VedInstaTopAppBar(
+                title = "Storage & Filenames",
+                showBackButton = true,
+                onBackClick = onNavigateBack
             )
         },
         containerColor = MaterialTheme.colorScheme.background
@@ -204,9 +185,6 @@ fun StorageSettingsScreen(
             // Section 2 - Filename Template
             SettingsCategoryHeader("Filename Template")
 
-            // Info chip about available tags
-            TagHintRow()
-
             Spacer(modifier = Modifier.height(8.dp))
 
             // Radio card list
@@ -214,74 +192,52 @@ fun StorageSettingsScreen(
                 val isCustom = index == PREDEFINED_TEMPLATES.lastIndex
                 val isSelected = index == selectedIndex
 
-                TemplateRadioCard(
-                    label = template.label,
-                    templatePreview = if (isCustom) "Enter your own pattern below" else template.template,
-                    isSelected = isSelected,
-                    onClick = {
-                        if (isCustom) {
-                            // Switching to custom - keep whatever custom text the user typed,
-                            // but don't persist until they type/confirm
-                            if (customTemplateText.isEmpty()) customTemplateText = savedTemplate
-                        } else {
-                            settingsViewModel.setFilenameTemplate(template.template)
+                if (isCustom) {
+                    // Custom row: radio card + Info icon button side by side
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(modifier = Modifier.weight(1f)) {
+                            TemplateRadioCard(
+                                label = "Custom",
+                                templatePreview = if (isSelected && savedTemplate.isNotBlank())
+                                    savedTemplate
+                                else
+                                    "Tap to build your own pattern",
+                                isSelected = isSelected,
+                                onClick = {
+                                    // Open the builder dialog - pre-fill with current saved template
+                                    settingsViewModel.initCustomFilenameDialog(
+                                        if (isSelected) savedTemplate else ""
+                                    )
+                                    showCustomDialog = true
+                                }
+                            )
+                        }
+                        // Info icon - opens the Tags Guide sheet
+                        IconButton(
+                            onClick = { showTagsSheet = true },
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = "Tags guide",
+                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                                modifier = Modifier.size(22.dp)
+                            )
                         }
                     }
-                )
-            }
-
-            // Custom text field - only visible when Custom option is selected
-            AnimatedVisibility(
-                visible = selectedIndex == PREDEFINED_TEMPLATES.lastIndex,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically()
-            ) {
-                Column(modifier = Modifier.padding(top = 8.dp)) {
-                    OutlinedTextField(
-                        value = customTemplateText,
-                        onValueChange = { customTemplateText = it },
-                        label = { Text("Custom template") },
-                        placeholder = { Text("{username}_{milliseconds}") },
-                        supportingText = {
-                            Text(
-                                "Tags: {username}  {milliseconds}  {date}  {short_id}",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                            )
-                        },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(
-                            onDone = {
-                                keyboardController?.hide()
-                                val finalTemplate = customTemplateText.ifBlank {
-                                    SettingsViewModel.DEFAULT_FILENAME_TEMPLATE
-                                }
-                                settingsViewModel.setFilenameTemplate(finalTemplate)
-                                Toast.makeText(context, "Custom template saved", Toast.LENGTH_SHORT).show()
-                            }
-                        ),
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = MaterialTheme.colorScheme.primary,
-                            unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
-                        )
+                } else {
+                    TemplateRadioCard(
+                        label = template.label,
+                        templatePreview = template.template,
+                        isSelected = isSelected,
+                        onClick = { settingsViewModel.setFilenameTemplate(template.template) }
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(
-                        onClick = {
-                            keyboardController?.hide()
-                            val finalTemplate = customTemplateText.ifBlank {
-                                SettingsViewModel.DEFAULT_FILENAME_TEMPLATE
-                            }
-                            settingsViewModel.setFilenameTemplate(finalTemplate)
-                            Toast.makeText(context, "Custom template saved", Toast.LENGTH_SHORT).show()
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text("Save Custom Template", fontWeight = FontWeight.Bold)
-                    }
                 }
             }
 
@@ -292,6 +248,36 @@ fun StorageSettingsScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
         }
+    }
+
+    // Custom Filename Builder Dialog
+    if (showCustomDialog) {
+        CustomFilenameDialog(
+            inputValue = customFilenameInput,
+            isError = customFilenameIsError,
+            isValid = settingsViewModel.isCustomFilenameValid,
+            previewText = settingsViewModel.buildFilenamePreview(customFilenameInput.text),
+            onValueChange = { settingsViewModel.updateCustomFilenameInput(it) },
+            onInsertTag = { tag -> settingsViewModel.insertTagAtCursor(tag) },
+            onSave = { finalTemplate ->
+                settingsViewModel.setFilenameTemplate(finalTemplate)
+                showCustomDialog = false
+                Toast.makeText(context, "Custom template saved", Toast.LENGTH_SHORT).show()
+            },
+            onDismiss = { showCustomDialog = false }
+        )
+    }
+
+    // Tags Guide Bottom Sheet
+    if (showTagsSheet) {
+        TagsBottomSheet(
+            sheetState = tagsSheetState,
+            onDismiss = {
+                coroutineScope.launch { tagsSheetState.hide() }.invokeOnCompletion {
+                    showTagsSheet = false
+                }
+            }
+        )
     }
 }
 
@@ -419,43 +405,6 @@ private fun LivePreviewCard(previewText: String) {
         }
     }
 }
-
-@Composable
-private fun TagHintRow() {
-    val tags = listOf("{username}", "{milliseconds}", "{date}", "{short_id}")
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = "Tags:",
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-            fontSize = 11.5.sp
-        )
-        tags.forEach { tag ->
-            Box(
-                modifier = Modifier
-                    .background(
-                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
-                        RoundedCornerShape(6.dp)
-                    )
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
-            ) {
-                Text(
-                    text = tag,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontSize = 10.5.sp,
-                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-        }
-    }
-}
-
 // Private helpers
 
 private fun takePersistableUriPermission(context: Context, uri: Uri) {

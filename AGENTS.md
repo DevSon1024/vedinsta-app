@@ -38,6 +38,7 @@ You must actively maintain the project's changelog. After every completed task, 
 - **Type:** (Specify the category: e.g., Error, Bug, UI, Performance, Architecture, Feature)
 - **Solution:** (Explain how the issue was solved. Maximum 10 lines.)
 - After the details of the latest update, you must append exactly `---` on a new line to close out that specific session.
+- **Pronmpt:** add that given prompt as it is with proper notation like '`---full prompt---`' in the file
 - Do not include any conversational filler in the file.
 
 ## 5. Version Control (Git) Protocol

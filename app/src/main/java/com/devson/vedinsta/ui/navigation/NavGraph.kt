@@ -170,7 +170,9 @@ fun MainAppScreen(
                 currentRoute != Screen.Appearance.route &&
                 currentRoute != Screen.DownloaderDetails.route &&
                 currentRoute != Screen.AdvancedSettings.route &&
+                currentRoute != Screen.StorageSettings.route &&
                 currentRoute != Screen.WhatsAppStatusView.route) {
+
                 VedInstaTopAppBar(
                     title = if (currentRoute == Screen.MainPager.route) {
                         when (pagerState.currentPage) {
