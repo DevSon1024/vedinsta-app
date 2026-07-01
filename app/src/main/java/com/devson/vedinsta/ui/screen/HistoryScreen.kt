@@ -1,6 +1,8 @@
 package com.devson.vedinsta.ui.screen
 
 import android.R
+import java.io.File
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -402,28 +404,46 @@ fun HistoryListCard(
                 modifier = Modifier
                     .size(76.dp)
                     .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center
             ) {
                 val context = LocalContext.current
-                val imageRequest = remember(post.thumbnailPath) {
-                    ImageRequest.Builder(context)
-                        .data(if (post.thumbnailPath.isNotEmpty()) post.thumbnailPath else null)
-                        .size(250, 250)
-                        .crossfade(false)
-                        .allowHardware(true)
-                        .diskCachePolicy(CachePolicy.ENABLED)
-                        .memoryCachePolicy(CachePolicy.ENABLED)
-                        .memoryCacheKey(post.thumbnailPath)
-                        .diskCacheKey(post.thumbnailPath)
-                        .error(R.drawable.ic_menu_report_image)
-                        .fallback(R.drawable.ic_menu_report_image)
-                        .build()
+                val thumbnailExists = remember(post.thumbnailPath) {
+                    if (post.thumbnailPath.isEmpty()) false
+                    else {
+                        val file = File(post.thumbnailPath)
+                        file.exists() && file.canRead() && file.length() > 0
+                    }
                 }
-                AsyncImage(
-                    model = imageRequest,
-                    contentDescription = "Post Thumbnail",
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
+                if (thumbnailExists) {
+                    val imageRequest = remember(post.thumbnailPath) {
+                        ImageRequest.Builder(context)
+                            .data(post.thumbnailPath)
+                            .size(250, 250)
+                            .crossfade(false)
+                            .allowHardware(true)
+                            .diskCachePolicy(CachePolicy.ENABLED)
+                            .memoryCachePolicy(CachePolicy.ENABLED)
+                            .memoryCacheKey(post.thumbnailPath)
+                            .diskCacheKey(post.thumbnailPath)
+                            .error(R.drawable.ic_menu_report_image)
+                            .fallback(R.drawable.ic_menu_report_image)
+                            .build()
+                    }
+                    AsyncImage(
+                        model = imageRequest,
+                        contentDescription = "Post Thumbnail",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.Warning,
+                        contentDescription = "Media not found",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
 
                 // Badge Overlay - Type at top-left corner
                 if (post.hasVideo) {
@@ -530,26 +550,49 @@ fun HistoryGridCard(
         Box(modifier = Modifier.fillMaxSize()) {
             // Thumbnail
             val context = LocalContext.current
-            val imageRequest = remember(post.thumbnailPath) {
-                ImageRequest.Builder(context)
-                    .data(if (post.thumbnailPath.isNotEmpty()) post.thumbnailPath else null)
-                    .size(250, 250)
-                    .crossfade(false)
-                    .allowHardware(true)
-                    .diskCachePolicy(CachePolicy.ENABLED)
-                    .memoryCachePolicy(CachePolicy.ENABLED)
-                    .memoryCacheKey(post.thumbnailPath)
-                    .diskCacheKey(post.thumbnailPath)
-                    .error(R.drawable.ic_menu_report_image)
-                    .fallback(R.drawable.ic_menu_report_image)
-                    .build()
+            val thumbnailExists = remember(post.thumbnailPath) {
+                if (post.thumbnailPath.isEmpty()) false
+                else {
+                    val file = File(post.thumbnailPath)
+                    file.exists() && file.canRead() && file.length() > 0
+                }
             }
-            AsyncImage(
-                model = imageRequest,
-                contentDescription = "Post Thumbnail",
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
+            if (thumbnailExists) {
+                val imageRequest = remember(post.thumbnailPath) {
+                    ImageRequest.Builder(context)
+                        .data(post.thumbnailPath)
+                        .size(250, 250)
+                        .crossfade(false)
+                        .allowHardware(true)
+                        .diskCachePolicy(CachePolicy.ENABLED)
+                        .memoryCachePolicy(CachePolicy.ENABLED)
+                        .memoryCacheKey(post.thumbnailPath)
+                        .diskCacheKey(post.thumbnailPath)
+                        .error(R.drawable.ic_menu_report_image)
+                        .fallback(R.drawable.ic_menu_report_image)
+                        .build()
+                }
+                AsyncImage(
+                    model = imageRequest,
+                    contentDescription = "Post Thumbnail",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Warning,
+                        contentDescription = "Media not found",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+            }
 
             // Hide all overlays & favorite heart when grid column count is 4
             if (gridColumnCount < 4) {

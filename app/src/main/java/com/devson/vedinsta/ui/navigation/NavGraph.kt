@@ -507,10 +507,10 @@ fun MainAppScreen(
                     )
                 }
                 composable(Screen.About.route) {
-                    AboutScreen()
+                    AboutScreen(onNavigateBack = { navController.popBackStack() })
                 }
                 composable(Screen.PrivacyPolicy.route) {
-                    PrivacyPolicyScreen()
+                    PrivacyPolicyScreen(onNavigateBack = { navController.popBackStack() })
                 }
                 composable(Screen.Notifications.route) {
                     val notifications by notificationViewModel.allNotifications.observeAsState(emptyList())
