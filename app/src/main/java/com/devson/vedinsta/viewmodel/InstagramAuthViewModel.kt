@@ -32,6 +32,11 @@ class InstagramAuthViewModel(application: Application) : AndroidViewModel(applic
     private val _authState = MutableStateFlow<InstagramAuthState>(InstagramAuthState.Idle)
     val authState: StateFlow<InstagramAuthState> = _authState.asStateFlow()
 
+    // Emits true when Instagram returns a raw numeric user ID instead of a real username.
+    // The UI should show a one-time dialog prompting the user to set a display name.
+    private val _showRawIdDialog = MutableStateFlow(false)
+    val showRawIdDialog: StateFlow<Boolean> = _showRawIdDialog.asStateFlow()
+
     init {
         checkLoginState()
     }
@@ -96,19 +101,48 @@ class InstagramAuthViewModel(application: Application) : AndroidViewModel(applic
             try {
                 val cookieFile = java.io.File(context.filesDir, "instagram_cookies.txt")
                 val realUsername = InstagramNativeExtractor.getLoggedInUsername(cookieFile.absolutePath).trim()
-                
+
                 if (realUsername.isNotEmpty()) {
                     securePrefs.saveUsername(realUsername)
-                    
+
                     // Update state to use new username if currently LoggedIn
                     val currentState = _authState.value
                     if (currentState is InstagramAuthState.LoggedIn && currentState.dsUserId == dsUserId) {
                         _authState.value = InstagramAuthState.LoggedIn(dsUserId, realUsername)
                     }
+
+                    // If Instagram returned a raw numeric ID, prompt the user to set a display name.
+                    // This check fires only once per login - the dialog is dismissed after user interaction.
+                    if (realUsername.all { it.isDigit() }) {
+                        _showRawIdDialog.value = true
+                    }
                 }
             } catch (e: Exception) {
                 Log.e("InstagramAuthViewModel", "Failed to fetch username in background", e)
             }
+        }
+    }
+
+    /**
+     * Dismisses the raw-ID dialog without changing the stored username.
+     */
+    fun dismissRawIdDialog() {
+        _showRawIdDialog.value = false
+    }
+
+    /**
+     * Saves a user-provided display name for the current session, overriding any
+     * raw numeric ID returned by Instagram. Persists to EncryptedSharedPreferences
+     * so it survives app restarts.
+     */
+    fun overrideSessionUsername(newName: String) {
+        val trimmed = newName.trim()
+        if (trimmed.isEmpty()) return
+        securePrefs.saveUsername(trimmed)
+        _showRawIdDialog.value = false
+        val currentState = _authState.value
+        if (currentState is InstagramAuthState.LoggedIn) {
+            _authState.value = InstagramAuthState.LoggedIn(currentState.dsUserId, trimmed)
         }
     }
 

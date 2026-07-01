@@ -25,6 +25,7 @@ sealed class Screen(val route: String) {
     }
     
     object SecurityLimits : Screen("security_limits")
+    object StorageSettings : Screen("storage_settings")
 }
 
 internal fun getScreenOrderValue(screen: Screen): Int {
@@ -46,5 +47,6 @@ internal fun getScreenOrderValue(screen: Screen): Int {
         is Screen.WhatsAppSaver -> 13
         is Screen.WhatsAppStatusView -> 14
         is Screen.SecurityLimits -> 15
+        is Screen.StorageSettings -> 16
     }
 }

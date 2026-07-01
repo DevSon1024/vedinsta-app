@@ -1,12 +1,7 @@
 package com.devson.vedinsta.ui.screen.setting
 
-import android.app.Activity
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -46,6 +41,7 @@ fun SettingsScreen(
     onNavigateToPrivacyPolicy: () -> Unit,
     onNavigateToAdvancedSettings: () -> Unit,
     onNavigateToSecurityLimits: () -> Unit,
+    onNavigateToStorageSettings: () -> Unit,
     onThemeChanged: (Int) -> Unit,
     contentPadding: PaddingValues = PaddingValues(0.dp)
 ) {
@@ -53,48 +49,8 @@ fun SettingsScreen(
     val coroutineScope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
 
-    var imagePath by remember { mutableStateOf("Loading...") }
-    var videoPath by remember { mutableStateOf("Loading...") }
     var linkActionLabel by remember { mutableStateOf(settingsViewModel.getDefaultActionLabel()) }
     var showLinkActionDialog by remember { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) {
-        imagePath = settingsViewModel.getImagePathLabel()
-        videoPath = settingsViewModel.getVideoPathLabel()
-    }
-
-    // Folder Pickers
-
-    // Folder Pickers
-    val imagePicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            result.data?.data?.also { uri ->
-                takePersistablePermissions(context, uri)
-                settingsViewModel.imageDirectoryUri = uri.toString()
-                coroutineScope.launch {
-                    imagePath = settingsViewModel.getImagePathLabel()
-                }
-                Toast.makeText(context, "Image location set", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    val videoPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            result.data?.data?.also { uri ->
-                takePersistablePermissions(context, uri)
-                settingsViewModel.videoDirectoryUri = uri.toString()
-                coroutineScope.launch {
-                    videoPath = settingsViewModel.getVideoPathLabel()
-                }
-                Toast.makeText(context, "Video location set", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
 
     Column(
         modifier = Modifier
@@ -121,29 +77,14 @@ fun SettingsScreen(
 
         // 2. Storage Location Category
         SettingsCategoryHeader("Storage Settings")
-        
-        SettingsClickableItem(
-            title = "Images Save Location",
-            subtitle = imagePath,
-            icon = Icons.Default.Image,
-            iconContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
-            iconColor = MaterialTheme.colorScheme.tertiary,
-            onClick = {
-                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
-                imagePicker.launch(intent)
-            }
-        )
 
         SettingsClickableItem(
-            title = "Videos Save Location",
-            subtitle = videoPath,
-            icon = Icons.Default.Movie,
+            title = "Storage & Filenames",
+            subtitle = "Save locations, filename templates & tags",
+            icon = Icons.Default.FolderOpen,
             iconContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
             iconColor = MaterialTheme.colorScheme.tertiary,
-            onClick = {
-                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
-                videoPicker.launch(intent)
-            }
+            onClick = onNavigateToStorageSettings
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -421,16 +362,6 @@ fun SettingsSwitchItem(
                 )
             )
         }
-    }
-}
-
-private fun takePersistablePermissions(context: Context, uri: Uri) {
-    try {
-        val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-        context.contentResolver.takePersistableUriPermission(uri, takeFlags)
-    } catch (e: SecurityException) {
-        // Log error
     }
 }
 

@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Speed
@@ -38,7 +39,9 @@ fun SessionsScreen(
     contentPadding: PaddingValues = PaddingValues(0.dp)
 ) {
     val authState by authViewModel.authState.collectAsStateWithLifecycle()
+    val showRawIdDialog by authViewModel.showRawIdDialog.collectAsStateWithLifecycle()
     var showLogoutDialog by remember { mutableStateOf(false) }
+    var showEditUsernameDialog by remember { mutableStateOf(false) }
 
     val isDark = MaterialTheme.colorScheme.background.let { it.red + it.green + it.blue } < 1.5f
 
@@ -142,13 +145,33 @@ fun SessionsScreen(
 
                     when (val state = authState) {
                         is InstagramAuthState.LoggedIn -> {
-                            Text(
-                                text = "@${state.username.ifEmpty { state.dsUserId }}",
-                                color = textColor,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 26.sp,
-                                textAlign = TextAlign.Center
-                            )
+                            // Username row with inline edit button
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = "@${state.username.ifEmpty { state.dsUserId }}",
+                                    color = textColor,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 26.sp,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.weight(1f, fill = false)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                IconButton(
+                                    onClick = { showEditUsernameDialog = true },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = "Edit username",
+                                        tint = textColor.copy(alpha = 0.7f),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
                                 text = "Session is verified. You can download high-quality posts, reels, and stories.",
@@ -345,7 +368,32 @@ fun SessionsScreen(
             }
         )
     }
+
+    // Edit username dialog - shown when the user taps the Edit icon on the session card
+    if (showEditUsernameDialog) {
+        val currentUsername = (authState as? InstagramAuthState.LoggedIn)
+            ?.username?.ifEmpty { (authState as? InstagramAuthState.LoggedIn)?.dsUserId ?: "" } ?: ""
+        UsernameEditDialog(
+            currentUsername = currentUsername,
+            onConfirm = { newName ->
+                authViewModel.overrideSessionUsername(newName)
+                showEditUsernameDialog = false
+            },
+            onDismiss = { showEditUsernameDialog = false }
+        )
+    }
+
+    // Raw-ID fallback dialog - shown once when Instagram returns only a numeric user ID
+    if (showRawIdDialog) {
+        val rawId = (authState as? InstagramAuthState.LoggedIn)?.username ?: ""
+        UsernameRawIdDialog(
+            rawId = rawId,
+            onSet = { chosenName -> authViewModel.overrideSessionUsername(chosenName) },
+            onCancel = { authViewModel.dismissRawIdDialog() }
+        )
+    }
 }
+
 
 @Composable
 fun InfoSectionCard(
@@ -442,3 +490,123 @@ data class InfoItem(
     val boldText: String,
     val descText: String
 )
+
+// Username Edit Dialog - shown when user taps the Edit icon on the session card
+@Composable
+fun UsernameEditDialog(
+    currentUsername: String,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var inputText by remember(currentUsername) { mutableStateOf(currentUsername) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "Edit Display Name",
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column {
+                Text(
+                    text = "Set a recognizable display name for this session. This is stored locally and does not affect your Instagram account.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                OutlinedTextField(
+                    value = inputText,
+                    onValueChange = { inputText = it },
+                    label = { Text("Display name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+                    )
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(inputText) },
+                enabled = inputText.isNotBlank()
+            ) {
+                Text(
+                    text = "Set",
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = "Cancel")
+            }
+        }
+    )
+}
+
+// Raw-ID Fallback Dialog - shown once when Instagram returns a numeric user ID
+@Composable
+fun UsernameRawIdDialog(
+    rawId: String,
+    onSet: (String) -> Unit,
+    onCancel: () -> Unit
+) {
+    var inputText by remember(rawId) { mutableStateOf(rawId) }
+
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = {
+            Text(
+                text = "Username Not Fetched",
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.error
+            )
+        },
+        text = {
+            Column {
+                Text(
+                    text = "Instagram returned a raw ID instead of your username. Please set a recognizable display name for this session.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                OutlinedTextField(
+                    value = inputText,
+                    onValueChange = { inputText = it },
+                    label = { Text("Display name") },
+                    placeholder = { Text("e.g. myinstagram") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+                    )
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSet(inputText) },
+                enabled = inputText.isNotBlank()
+            ) {
+                Text(
+                    text = "Set",
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onCancel) {
+                Text(text = "Cancel")
+            }
+        }
+    )
+}

@@ -25,6 +25,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         const val KEY_DEFAULT_LINK_ACTION = "default_link_action"
         const val KEY_IS_LIST_VIEW = "is_list_view"
 
+        // Filename template
+        const val KEY_FILENAME_TEMPLATE = "filename_template"
+        const val DEFAULT_FILENAME_TEMPLATE = "{username}_{milliseconds}"
+
         // Advanced Network Customization
         const val KEY_CUSTOM_USER_AGENT = "custom_user_agent"
         const val KEY_CUSTOM_IG_APP_ID = "custom_ig_app_id"
@@ -40,6 +44,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         const val ACTION_ASK_EVERY_TIME = 0
         const val ACTION_DOWNLOAD_ALL = 1
         const val ACTION_OPEN_SELECTION = 2
+
+        // Sample values used to render the filename live preview
+        private const val SAMPLE_USERNAME = "devson"
+        private const val SAMPLE_MILLIS = "1698765432100"
+        private const val SAMPLE_DATE = "2024-01-15"
+        private const val SAMPLE_SHORT_ID = "B4xK9mN"
     }
 
     var gridColumnCount: Int
@@ -161,6 +171,31 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     var maxRetries: Int
         get() = prefs.getInt(KEY_MAX_RETRIES, 3)
         set(value) = prefs.edit().putInt(KEY_MAX_RETRIES, value).apply()
+
+    // Filename template
+    private val _filenameTemplate = MutableStateFlow(
+        prefs.getString(KEY_FILENAME_TEMPLATE, DEFAULT_FILENAME_TEMPLATE) ?: DEFAULT_FILENAME_TEMPLATE
+    )
+    val filenameTemplate: StateFlow<String> = _filenameTemplate.asStateFlow()
+
+    fun setFilenameTemplate(template: String) {
+        prefs.edit().putString(KEY_FILENAME_TEMPLATE, template).apply()
+        _filenameTemplate.value = template
+    }
+
+    /**
+     * Substitutes sample values for every supported tag and returns a preview
+     * filename string with the given extension appended.
+     * Supported tags: {username}, {milliseconds}, {date}, {short_id}
+     */
+    fun buildFilenamePreview(template: String, ext: String = "mp4"): String {
+        return template
+            .replace("{username}", SAMPLE_USERNAME)
+            .replace("{milliseconds}", SAMPLE_MILLIS)
+            .replace("{date}", SAMPLE_DATE)
+            .replace("{short_id}", SAMPLE_SHORT_ID)
+            .plus(".$ext")
+    }
 
     var overshadowQuota: Boolean
         get() = prefs.getBoolean("overshadow_quota", false)

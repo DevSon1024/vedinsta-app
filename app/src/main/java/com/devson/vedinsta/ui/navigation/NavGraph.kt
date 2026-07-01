@@ -54,6 +54,7 @@ import com.devson.vedinsta.ui.screen.setting.AppearanceSettingsScreen
 import com.devson.vedinsta.ui.screen.setting.PrivacyPolicyScreen
 import com.devson.vedinsta.ui.screen.setting.SecurityLimitsScreen
 import com.devson.vedinsta.ui.screen.setting.SettingsScreen
+import com.devson.vedinsta.ui.screen.setting.StorageSettingsScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -484,8 +485,15 @@ fun MainAppScreen(
                         onNavigateToPrivacyPolicy = { navController.navigate(Screen.PrivacyPolicy.route) },
                         onNavigateToAdvancedSettings = { navController.navigate(Screen.AdvancedSettings.route) },
                         onNavigateToSecurityLimits = { navController.navigate(Screen.SecurityLimits.route) },
+                        onNavigateToStorageSettings = { navController.navigate(Screen.StorageSettings.route) },
                         onThemeChanged = onThemeChanged,
                         contentPadding = screenPadding
+                    )
+                }
+                composable(Screen.StorageSettings.route) {
+                    StorageSettingsScreen(
+                        settingsViewModel = settingsViewModel,
+                        onNavigateBack = { navController.popBackStack() }
                     )
                 }
                 composable(Screen.AdvancedSettings.route) {
