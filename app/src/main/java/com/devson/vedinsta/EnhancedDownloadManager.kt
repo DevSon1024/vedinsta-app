@@ -215,7 +215,7 @@ class EnhancedDownloadManager(
 
     private fun createProgressNotification(fileName: String, progress: Int): Notification {
         val title = "Downloading Media"
-        val contentText = if (progress >= 100) "Downloading... (1/1 files)" else "Downloading... (0/1 files)"
+        val contentText = if (progress >= 100) "Downloading safely (Anti-Ban active)... (1/1 files)" else "Downloading safely (Anti-Ban active)... (0/1 files)"
         val indeterminate = progress < 100
 
         val mainActivityIntent = Intent(applicationContext, MainActivity::class.java).apply {

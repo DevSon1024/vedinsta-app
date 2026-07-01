@@ -81,6 +81,11 @@ fun MainAppScreen(
     val viewSettingsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val extractionState by extractionViewModel.extractionState.collectAsStateWithLifecycle()
+    val showRateLimitDialog by extractionViewModel.showRateLimitDialog.collectAsStateWithLifecycle()
+    val isVpnActive by mainViewModel.isVpnActive.collectAsStateWithLifecycle()
+    val isNetworkChanged by mainViewModel.isNetworkChanged.collectAsStateWithLifecycle()
+    val authState by authViewModel.authState.collectAsStateWithLifecycle()
+    val isSessionActive = authState is InstagramAuthState.LoggedIn
 
     val isBlurEnabled by settingsViewModel.isBlurEnabled.collectAsStateWithLifecycle()
     val blurOpacity by settingsViewModel.blurOpacity.collectAsStateWithLifecycle()
@@ -584,6 +589,105 @@ fun MainAppScreen(
                         onNavigateBack = { navController.popBackStack() }
                     )
                 }
+            }
+
+            // 429 Too Many Requests Rate Limit Dialog
+            if (showRateLimitDialog) {
+                AlertDialog(
+                    onDismissRequest = { extractionViewModel.dismissRateLimitDialog() },
+                    title = {
+                        Text(
+                            text = "Too Many Downloads At Once",
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    },
+                    text = {
+                        Text(text = "Instagram has asked us to slow down. To keep your account completely safe from flags, Vedinsta will pause downloads for 15 minutes. Please take a short break!")
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { extractionViewModel.dismissRateLimitDialog() }) {
+                            Text("OK")
+                        }
+                    }
+                )
+            }
+
+            var showVpnWarningDialog by remember { mutableStateOf(false) }
+            var showNetworkChangeWarningDialog by remember { mutableStateOf(false) }
+
+            LaunchedEffect(isVpnActive, isSessionActive) {
+                if (isSessionActive && isVpnActive) {
+                    showVpnWarningDialog = true
+                } else {
+                    showVpnWarningDialog = false
+                }
+            }
+
+            LaunchedEffect(isNetworkChanged, isSessionActive) {
+                if (isSessionActive && isNetworkChanged) {
+                    showNetworkChangeWarningDialog = true
+                }
+            }
+
+            if (showVpnWarningDialog) {
+                AlertDialog(
+                    onDismissRequest = { showVpnWarningDialog = false },
+                    icon = {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = "VPN Warning",
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    },
+                    title = {
+                        Text(
+                            text = "VPN Active",
+                            fontWeight = FontWeight.Bold
+                        )
+                    },
+                    text = {
+                        Text(text = "Using a VPN while downloading can sometimes cause Instagram to flag your account. We recommend turning it off for the best safety.")
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { showVpnWarningDialog = false }) {
+                            Text("Understand")
+                        }
+                    }
+                )
+            }
+
+            if (showNetworkChangeWarningDialog) {
+                AlertDialog(
+                    onDismissRequest = { 
+                        showNetworkChangeWarningDialog = false
+                        mainViewModel.resetNetworkChangeWarning()
+                    },
+                    icon = {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = "Network Change Warning",
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    },
+                    title = {
+                        Text(
+                            text = "Network Switched",
+                            fontWeight = FontWeight.Bold
+                        )
+                    },
+                    text = {
+                        Text(text = "We detected a switch in your network connection. Switching networks or VPNs while downloading can look suspicious to Instagram. Please try to stay on a stable connection.")
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { 
+                            showNetworkChangeWarningDialog = false
+                            mainViewModel.resetNetworkChangeWarning()
+                        }) {
+                            Text("OK")
+                        }
+                    }
+                )
             }
         }
     }

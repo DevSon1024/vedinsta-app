@@ -24,6 +24,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _favoritePostIds = MutableStateFlow<Set<String>>(emptySet())
     val favoritePostIds: StateFlow<Set<String>> = _favoritePostIds.asStateFlow()
 
+    private val vpnMonitor = com.devson.vedinsta.repository.VpnAndNetworkMonitor(application)
+    val isVpnActive: StateFlow<Boolean> = vpnMonitor.isVpnActive
+    val isNetworkChanged: StateFlow<Boolean> = vpnMonitor.isNetworkChanged
+
+    fun resetNetworkChangeWarning() {
+        vpnMonitor.resetNetworkChangeWarning()
+    }
+
     init {
         val dao = AppDatabase.getDatabase(application).downloadedPostDao()
         repository = DownloadRepository(dao)
@@ -83,5 +91,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 android.util.Log.e("MainViewModel", "Error in cleanUpGhostRecords", e)
             }
         }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        vpnMonitor.unregister()
     }
 }

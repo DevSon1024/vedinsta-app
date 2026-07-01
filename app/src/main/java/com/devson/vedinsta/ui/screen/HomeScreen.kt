@@ -33,9 +33,15 @@ import coil.request.CachePolicy
 import com.devson.vedinsta.database.DownloadedPost
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
 import com.devson.vedinsta.viewmodel.MainViewModel
 import java.io.File
+import kotlinx.coroutines.delay
+import com.devson.vedinsta.repository.DownloadQuotaManager
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -49,8 +55,19 @@ fun HomeScreen(
     onPostClick: (DownloadedPost) -> Unit,
     contentPadding: PaddingValues
 ) {
+    val context = LocalContext.current
     val recentPosts by mainViewModel.recentPostsHome.observeAsState(emptyList())
     val scrollState = rememberScrollState()
+
+    val quotaManager = remember { DownloadQuotaManager(context) }
+    var quotaStats by remember { mutableStateOf(quotaManager.getQuotaStats()) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            quotaStats = quotaManager.getQuotaStats()
+            delay(10000L)
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -233,7 +250,79 @@ fun HomeScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Quota Usage Card
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            )
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Speed,
+                            contentDescription = "Quota",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = "Download Quota Usage",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    if (quotaManager.isOvershadowEnabled) {
+                        Text(
+                            text = "Bypassed",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier
+                                .background(MaterialTheme.colorScheme.errorContainer, RoundedCornerShape(4.dp))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                HomeQuotaProgressRow(
+                    label = "Hourly Limit",
+                    count = quotaStats.hourlyCount,
+                    limit = quotaStats.hourlyLimit,
+                    resetMs = quotaStats.hourlyResetMs
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                HomeQuotaProgressRow(
+                    label = "Daily Limit",
+                    count = quotaStats.dailyCount,
+                    limit = quotaStats.dailyLimit,
+                    resetMs = quotaStats.dailyResetMs
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
 
         // Recent Downloads Header
         Row(
@@ -471,3 +560,71 @@ fun HomeScreen(
         Spacer(modifier = Modifier.height(contentPadding.calculateBottomPadding() + 24.dp))
     }
 }
+
+@Composable
+private fun HomeQuotaProgressRow(
+    label: String,
+    count: Int,
+    limit: Int,
+    resetMs: Long
+) {
+    val progress = (count.toFloat() / limit.toFloat()).coerceIn(0f, 1f)
+    val progressColor = when {
+        progress >= 0.9f -> MaterialTheme.colorScheme.error
+        progress >= 0.7f -> MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
+        else -> MaterialTheme.colorScheme.primary
+    }
+
+    val resetText = if (resetMs <= 0L) {
+        "No limit"
+    } else {
+        val remainingMs = resetMs - System.currentTimeMillis()
+        if (remainingMs <= 0L) {
+            "Resetting..."
+        } else {
+            val totalMinutes = remainingMs / (60 * 1000L)
+            if (totalMinutes >= 24 * 60) {
+                val days = totalMinutes / (24 * 60)
+                "Reset in ${days}d"
+            } else if (totalMinutes >= 60) {
+                val hours = totalMinutes / 60
+                "Reset in ${hours}h"
+            } else {
+                val mins = totalMinutes.coerceAtLeast(1)
+                "Reset in ${mins}m"
+            }
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = label,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = "$count / $limit ($resetText)",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = progressColor
+            )
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        LinearProgressIndicator(
+            progress = { progress },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(4.dp)
+                .clip(RoundedCornerShape(2.dp)),
+            color = progressColor,
+            trackColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    }
+}
+

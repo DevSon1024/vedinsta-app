@@ -38,6 +38,13 @@ class MediaExtractionViewModel(application: Application) : AndroidViewModel(appl
     private val _extractionState = MutableStateFlow<ExtractionState>(ExtractionState.Idle)
     val extractionState: StateFlow<ExtractionState> = _extractionState.asStateFlow()
 
+    private val _showRateLimitDialog = MutableStateFlow(false)
+    val showRateLimitDialog: StateFlow<Boolean> = _showRateLimitDialog.asStateFlow()
+
+    fun dismissRateLimitDialog() {
+        _showRateLimitDialog.value = false
+    }
+
     // Holds set of selected media item indexes
     private val _selectedIndexes = MutableStateFlow<Set<Int>>(emptySet())
     val selectedIndexes: StateFlow<Set<Int>> = _selectedIndexes.asStateFlow()
@@ -93,6 +100,12 @@ class MediaExtractionViewModel(application: Application) : AndroidViewModel(appl
             } catch (e: Exception) {
                 val errorMessage = e.message ?: "Extraction failed"
                 _extractionState.value = ExtractionState.Error(errorMessage)
+                
+                if (errorMessage.contains("Too Many Requests", ignoreCase = true) ||
+                    errorMessage.contains("rate_limit_429", ignoreCase = true) ||
+                    errorMessage.contains("wait 15 minutes", ignoreCase = true)) {
+                    _showRateLimitDialog.value = true
+                }
                 
                 // If a cookie-related authorization error occurs, alert AuthViewModel to refresh states
                 if (errorMessage.contains("sessionid missing", ignoreCase = true) ||

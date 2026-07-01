@@ -20,6 +20,25 @@ object InstagramNativeExtractor {
     private const val TAG = "InstagramNativeExtr"
     private val extractionMutex = Mutex()
 
+    private val requestTimestamps = mutableListOf<Long>()
+    private const val ROLLING_WINDOW_MS = 10 * 60 * 1000L // 10 minutes
+    private const val MAX_REQUESTS_IN_WINDOW = 15 // safe limit
+
+    private fun checkRollingLimit(): Boolean {
+        val now = System.currentTimeMillis()
+        requestTimestamps.removeAll { now - it > ROLLING_WINDOW_MS }
+        if (requestTimestamps.size >= MAX_REQUESTS_IN_WINDOW) {
+            return false
+        }
+        requestTimestamps.add(now)
+        return true
+    }
+
+    private suspend fun applyAntiBanJitter() {
+        val delayTime = Random.nextLong(1500L, 4500L)
+        delay(delayTime)
+    }
+
     suspend fun getMediaUrls(
         url: String, 
         cookieFilePath: String,
@@ -28,11 +47,28 @@ object InstagramNativeExtractor {
         timeoutSeconds: Int = 15
     ): String = extractionMutex.withLock {
         val context = try { com.devson.vedinsta.VedInstaApplication.instance } catch (e: Exception) { null }
-        val prefs = context?.getSharedPreferences("VedInstaPrefs", Context.MODE_PRIVATE)
-        val minDelay = prefs?.getLong("min_jitter_delay", 3000L) ?: 3000L
-        val maxDelay = prefs?.getLong("max_jitter_delay", 8000L) ?: 8000L
-        val delayTime = if (maxDelay > minDelay) Random.nextLong(minDelay, maxDelay) else minDelay
-        delay(delayTime)
+        val securePrefs = context?.let { com.devson.vedinsta.repository.SecurePreferences(it) }
+
+        // 1. Check Suspension Expiry
+        if (securePrefs?.isSuspended() == true) {
+            val expiry = securePrefs.getSuspensionExpiry()
+            val remainingMin = java.util.concurrent.TimeUnit.MILLISECONDS.toMinutes(expiry - System.currentTimeMillis()) + 1
+            return JSONObject().apply {
+                put("status", "rate_limit_429")
+                put("message", "Instagram has asked us to slow down. To keep your account completely safe, Vedinsta will pause downloads for $remainingMin minutes. Please take a short break!")
+            }.toString()
+        }
+
+        // 2. Check Rolling Window Limit
+        if (!checkRollingLimit()) {
+            return JSONObject().apply {
+                put("status", "rate_limit")
+                put("message", "Too many downloads at once! Please slow down the pace and wait a few minutes before trying again to keep your account safe.")
+            }.toString()
+        }
+
+        // 3. Enforce Jitter
+        applyAntiBanJitter()
 
         val result = withTimeoutOrNull(15000L) {
             if (isStoryUrl(url)) {
@@ -210,18 +246,14 @@ object InstagramNativeExtractor {
         val customViewportWidth = prefs?.getString("viewport_width", "") ?: ""
         val customAppId = prefs?.getString("custom_ig_app_id", "") ?: ""
 
-        val baseUA = if (!savedUA.isNullOrBlank()) {
+        val finalUserAgent = if (!savedUA.isNullOrBlank()) {
             savedUA
         } else if (!userAgent.isNullOrBlank()) {
             userAgent
         } else {
-            "Instagram 319.0.0.28.119 Android"
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
-        val finalUserAgent = if (baseUA.contains("Instagram")) {
-            baseUA
-        } else {
-            "$baseUA Instagram 319.0.0.28.119 Android"
-        }
+        
         val finalAppId = if (!appId.isNullOrBlank()) {
             appId
         } else if (customAppId.isNotEmpty()) {
@@ -244,6 +276,29 @@ object InstagramNativeExtractor {
         val finalViewportWidth = if (customViewportWidth.isNotEmpty()) customViewportWidth else "1080"
         conn.setRequestProperty("Viewport-Width", finalViewportWidth)
 
+        // Meta-Headers (Sec-Ch-Ua, Sec-Ch-Ua-Mobile, Sec-Ch-Ua-Platform)
+        val isMobile = finalUserAgent.contains("Mobile", ignoreCase = true) || finalUserAgent.contains("Android", ignoreCase = true)
+        val platform = when {
+            finalUserAgent.contains("Windows", ignoreCase = true) -> "\"Windows\""
+            finalUserAgent.contains("Macintosh", ignoreCase = true) || finalUserAgent.contains("OS X", ignoreCase = true) -> "\"macOS\""
+            finalUserAgent.contains("Android", ignoreCase = true) -> "\"Android\""
+            finalUserAgent.contains("iPhone", ignoreCase = true) || finalUserAgent.contains("iPad", ignoreCase = true) -> "\"iOS\""
+            else -> "\"Android\""
+        }
+        conn.setRequestProperty("Sec-Ch-Ua-Mobile", if (isMobile) "?1" else "?0")
+        conn.setRequestProperty("Sec-Ch-Ua-Platform", platform)
+
+        var chromeVersion = "120"
+        val chromeRegex = Regex("Chrome/(\\d+)")
+        chromeRegex.find(finalUserAgent)?.let {
+            chromeVersion = it.groupValues[1]
+        }
+        conn.setRequestProperty("Sec-Ch-Ua", "\"Not_A Brand\";v=\"8\", \"Chromium\";v=\"$chromeVersion\", \"Google Chrome\";v=\"$chromeVersion\"")
+
+        // App Fingerprinting claim header
+        val savedClaim = securePrefs?.getXIgWwwClaim() ?: "0"
+        conn.setRequestProperty("X-IG-WWW-Claim", savedClaim)
+
         conn.setRequestProperty("Accept", "*/*")
 
         val cookieString = cookies.entries.joinToString("; ") { "${it.key}=${it.value}" }
@@ -252,6 +307,19 @@ object InstagramNativeExtractor {
         }
 
         val responseCode = conn.responseCode
+        
+        // 429 Too Many Requests Backoff
+        if (responseCode == 429) {
+            securePrefs?.saveSuspensionExpiry(System.currentTimeMillis() + 15 * 60 * 1000L)
+            throw HTTPException(429, "Too many downloads at once! Instagram has asked us to slow down. Vedinsta will pause downloads for 15 minutes to keep your account safe.")
+        }
+
+        // Cache incoming claim header
+        val responseClaim = conn.getHeaderField("x-ig-www-claim") ?: conn.getHeaderField("X-IG-WWW-Claim")
+        if (!responseClaim.isNullOrEmpty()) {
+            securePrefs?.saveXIgWwwClaim(responseClaim)
+        }
+
         if (responseCode >= 400) {
             val errorResponse = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
             throw HTTPException(responseCode, errorResponse)

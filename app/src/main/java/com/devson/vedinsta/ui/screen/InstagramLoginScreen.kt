@@ -49,10 +49,6 @@ fun InstagramLoginScreen(
                         
                         // Configure WebView settings for Instagram Web
                         settings.apply {
-                            val systemUserAgent = userAgentString
-                            SecurePreferences(context).saveUserAgent(systemUserAgent)
-                            Log.d("InstagramLoginWebView", "Captured System User-Agent: $systemUserAgent")
-                            
                             javaScriptEnabled = true
                             domStorageEnabled = true
                             @Suppress("DEPRECATION")
@@ -61,6 +57,10 @@ fun InstagramLoginScreen(
                             loadWithOverviewMode = true
                             cacheMode = WebSettings.LOAD_NO_CACHE
                             userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                            
+                            val exactUA = userAgentString
+                            SecurePreferences(context).saveUserAgent(exactUA)
+                            Log.d("InstagramLoginWebView", "Captured WebView User-Agent: $exactUA")
                         }
                         
                         // Configure CookieManager to accept cookies and third-party cookies

@@ -98,7 +98,7 @@ class VedInstaNotificationManager private constructor(private val context: Conte
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_SILENT)
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setContentTitle("VedInsta")
-            .setContentText("Processing link...")
+            .setContentText("Downloading safely (Anti-Ban active)...")
             .setProgress(0, 0, true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
@@ -110,7 +110,7 @@ class VedInstaNotificationManager private constructor(private val context: Conte
 
     fun showDownloadProgress(notificationId: Int, completedFiles: Int, totalFiles: Int) {
         val remaining = totalFiles - completedFiles
-        val contentText = "Downloading... ($completedFiles/$totalFiles files)"
+        val contentText = "Downloading safely (Anti-Ban active)... ($completedFiles/$totalFiles files)"
         val subText = when {
             remaining <= 0 -> "All files downloaded"
             remaining == 1 -> "$remaining file remaining"

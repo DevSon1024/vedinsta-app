@@ -21,6 +21,8 @@ class SecurePreferences(private val context: Context) {
         private const val KEY_MIN_JITTER_DELAY = "min_jitter_delay"
         private const val KEY_MAX_JITTER_DELAY = "max_jitter_delay"
         private const val KEY_X_IG_APP_ID = "x_ig_app_id"
+        private const val KEY_SUSPENSION_EXPIRY = "suspension_expiry"
+        private const val KEY_X_IG_WWW_CLAIM = "x_ig_www_claim"
         private const val TAG = "SecurePreferences"
     }
 
@@ -140,6 +142,26 @@ class SecurePreferences(private val context: Context) {
             remove(KEY_X_IG_APP_ID)
             apply()
         }
+    }
+
+    fun saveSuspensionExpiry(expiryMs: Long) {
+        sharedPrefs?.edit()?.putLong(KEY_SUSPENSION_EXPIRY, expiryMs)?.apply()
+    }
+
+    fun getSuspensionExpiry(): Long {
+        return sharedPrefs?.getLong(KEY_SUSPENSION_EXPIRY, 0L) ?: 0L
+    }
+
+    fun isSuspended(): Boolean {
+        return System.currentTimeMillis() < getSuspensionExpiry()
+    }
+
+    fun saveXIgWwwClaim(claim: String) {
+        sharedPrefs?.edit()?.putString(KEY_X_IG_WWW_CLAIM, claim)?.apply()
+    }
+
+    fun getXIgWwwClaim(): String {
+        return sharedPrefs?.getString(KEY_X_IG_WWW_CLAIM, "0") ?: "0"
     }
 
     fun hasValidSession(): Boolean {
