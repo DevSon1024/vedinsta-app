@@ -74,16 +74,11 @@ class SharedLinkProcessingService : Service() {
                 val quotaManager = DownloadQuotaManager(applicationContext)
                 val quotaStatus = quotaManager.checkQuota()
                 if (quotaStatus is DownloadQuotaManager.QuotaStatus.Exceeded) {
-                    val limitWord = when (quotaStatus.limitType) {
-                        DownloadQuotaManager.LimitType.HOURLY -> "Hourly"
-                        DownloadQuotaManager.LimitType.DAILY -> "Daily"
-                        DownloadQuotaManager.LimitType.WEEKLY -> "Weekly"
-                    }
-                    val msg = "$limitWord quota exceeded cannot download post/reel/story"
+                    val msg = "You have already used more than your set up downloading limit. Please wait for the limit to reset before downloading again."
                     notificationManager.showLinkError(msg)
                     try {
                         notificationManager.addCustomNotification(
-                            title = "Quota Exceeded",
+                            title = "Download Limit Reached",
                             message = msg,
                             type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_FAILED,
                             priority = com.devson.vedinsta.database.NotificationPriority.HIGH
@@ -129,6 +124,7 @@ class SharedLinkProcessingService : Service() {
                     val mediaType = mediaObj.getString("type")
                     val itemId = mediaObj.optString("story_item_id", postData.optString("shortcode", processedUrl))
 
+                    notificationManager.cancelLinkProcessingNotification()
                     (application as VedInstaApplication).enqueueSingleDownload(
                         applicationContext,
                         downloadUrl,
@@ -168,6 +164,7 @@ class SharedLinkProcessingService : Service() {
                     // MULTIPLE CONTENT: Check Settings
                     when (settingsViewModel.defaultLinkAction) {
                         SettingsViewModel.ACTION_DOWNLOAD_ALL -> {
+                            notificationManager.cancelLinkProcessingNotification()
                             handleDownloadAll(processedUrl, startId)
                             shouldStopSelf = false
                         }
@@ -229,12 +226,7 @@ class SharedLinkProcessingService : Service() {
                 val quotaManager = DownloadQuotaManager(applicationContext)
                 val quotaStatus = quotaManager.checkQuota()
                 if (quotaStatus is DownloadQuotaManager.QuotaStatus.Exceeded) {
-                    val limitWord = when (quotaStatus.limitType) {
-                        DownloadQuotaManager.LimitType.HOURLY -> "Hourly"
-                        DownloadQuotaManager.LimitType.DAILY -> "Daily"
-                        DownloadQuotaManager.LimitType.WEEKLY -> "Weekly"
-                    }
-                    val msg = "$limitWord quota exceeded cannot download post/reel/story"
+                    val msg = "You have already used more than your set up downloading limit. Please wait for the limit to reset before downloading again."
                     notificationManager.showLinkError(msg)
                     return@launch
                 }

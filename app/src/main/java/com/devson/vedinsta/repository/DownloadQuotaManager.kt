@@ -33,6 +33,18 @@ class DownloadQuotaManager(private val context: Context) {
         get() = prefs.getBoolean(KEY_OVERSHADOW_QUOTA, false)
         set(value) = prefs.edit().putBoolean(KEY_OVERSHADOW_QUOTA, value).apply()
 
+    var customLimitHourly: Int
+        get() = prefs.getInt("custom_limit_hourly", LIMIT_HOURLY)
+        set(value) = prefs.edit().putInt("custom_limit_hourly", value).apply()
+
+    var customLimitDaily: Int
+        get() = prefs.getInt("custom_limit_daily", LIMIT_DAILY)
+        set(value) = prefs.edit().putInt("custom_limit_daily", value).apply()
+
+    var customLimitWeekly: Int
+        get() = prefs.getInt("custom_limit_weekly", LIMIT_WEEKLY)
+        set(value) = prefs.edit().putInt("custom_limit_weekly", value).apply()
+
     @Synchronized
     fun recordDownload() {
         val now = System.currentTimeMillis()
@@ -113,17 +125,17 @@ class DownloadQuotaManager(private val context: Context) {
         val dailyCount = timestamps.count { it >= dailyCutoff }
         val weeklyCount = timestamps.count { it >= weeklyCutoff }
         
-        if (hourlyCount >= LIMIT_HOURLY) {
+        if (hourlyCount >= customLimitHourly) {
             val resetTime = hourlyCutoff + (60 * 60 * 1000L)
             return QuotaStatus.Exceeded(LimitType.HOURLY, resetTime)
         }
         
-        if (dailyCount >= LIMIT_DAILY) {
+        if (dailyCount >= customLimitDaily) {
             val resetTime = dailyCutoff + (24 * 60 * 60 * 1000L)
             return QuotaStatus.Exceeded(LimitType.DAILY, resetTime)
         }
         
-        if (weeklyCount >= LIMIT_WEEKLY) {
+        if (weeklyCount >= customLimitWeekly) {
             val resetTime = weeklyCutoff + (7 * 24 * 60 * 60 * 1000L)
             return QuotaStatus.Exceeded(LimitType.WEEKLY, resetTime)
         }
@@ -161,13 +173,13 @@ class DownloadQuotaManager(private val context: Context) {
         
         return QuotaStats(
             hourlyCount = hourlyCount,
-            hourlyLimit = LIMIT_HOURLY,
+            hourlyLimit = customLimitHourly,
             hourlyResetMs = hourlyReset,
             dailyCount = dailyCount,
-            dailyLimit = LIMIT_DAILY,
+            dailyLimit = customLimitDaily,
             dailyResetMs = dailyReset,
             weeklyCount = weeklyCount,
-            weeklyLimit = LIMIT_WEEKLY,
+            weeklyLimit = customLimitWeekly,
             weeklyResetMs = weeklyReset
         )
     }

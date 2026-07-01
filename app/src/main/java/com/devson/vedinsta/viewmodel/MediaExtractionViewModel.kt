@@ -75,7 +75,7 @@ class MediaExtractionViewModel(application: Application) : AndroidViewModel(appl
                 DownloadQuotaManager.LimitType.DAILY -> "Daily"
                 DownloadQuotaManager.LimitType.WEEKLY -> "Weekly"
             }
-            _extractionState.value = ExtractionState.Error("$limitWord quota limit reached. Please wait for reset.")
+            _extractionState.value = ExtractionState.Error("$limitWord quota limit reached. You have already used more than your set up downloading limit. Please wait for the limit to reset before downloading again.")
             return
         }
 
@@ -163,7 +163,7 @@ class MediaExtractionViewModel(application: Application) : AndroidViewModel(appl
                 DownloadQuotaManager.LimitType.DAILY -> "Daily"
                 DownloadQuotaManager.LimitType.WEEKLY -> "Weekly"
             }
-            _extractionState.value = ExtractionState.Error("$limitWord quota limit reached. Please wait for reset.")
+            _extractionState.value = ExtractionState.Error("$limitWord quota limit reached. You have already used more than your set up downloading limit. Please wait for the limit to reset before downloading again.")
             return
         }
 

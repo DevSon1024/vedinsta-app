@@ -441,6 +441,9 @@ fun MainAppScreen(
                         onNavigateToLogin = {
                             navController.navigate(Screen.Login.route)
                         },
+                        onNavigateToSecurityLimits = {
+                            navController.navigate(Screen.SecurityLimits.route)
+                        },
                         contentPadding = screenPadding
                     )
                 }

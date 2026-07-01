@@ -121,6 +121,158 @@ fun SecurityLimitsScreen(
                     )
                 }
             }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Text(
+                        text = "Adjust Quota Limits",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Hourly Limit Slider
+                    var hourlyLimitVal by remember { mutableStateOf(quotaManager.customLimitHourly.toFloat()) }
+                    val hourlyRisk = when {
+                        hourlyLimitVal <= 40f -> Pair("Safe", MaterialTheme.colorScheme.primary)
+                        hourlyLimitVal <= 80f -> Pair("Medium Risk", Color(0xFFFFA726))
+                        else -> Pair("High Risk", MaterialTheme.colorScheme.error)
+                    }
+                    Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Hourly Limit: ${hourlyLimitVal.toInt()}",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = hourlyRisk.first,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = hourlyRisk.second
+                            )
+                        }
+                        Slider(
+                            value = hourlyLimitVal,
+                            onValueChange = {
+                                hourlyLimitVal = it
+                                quotaManager.customLimitHourly = it.toInt()
+                                quotaStats = quotaManager.getQuotaStats()
+                            },
+                            valueRange = 10f..200f,
+                            steps = 18,
+                            colors = SliderDefaults.colors(
+                                thumbColor = hourlyRisk.second,
+                                activeTrackColor = hourlyRisk.second
+                            )
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Daily Limit Slider
+                    var dailyLimitVal by remember { mutableStateOf(quotaManager.customLimitDaily.toFloat()) }
+                    val dailyRisk = when {
+                        dailyLimitVal <= 150f -> Pair("Safe", MaterialTheme.colorScheme.primary)
+                        dailyLimitVal <= 300f -> Pair("Medium Risk", Color(0xFFFFA726))
+                        else -> Pair("High Risk", MaterialTheme.colorScheme.error)
+                    }
+                    Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Daily Limit: ${dailyLimitVal.toInt()}",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = dailyRisk.first,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = dailyRisk.second
+                            )
+                        }
+                        Slider(
+                            value = dailyLimitVal,
+                            onValueChange = {
+                                dailyLimitVal = it
+                                quotaManager.customLimitDaily = it.toInt()
+                                quotaStats = quotaManager.getQuotaStats()
+                            },
+                            valueRange = 50f..1000f,
+                            steps = 18,
+                            colors = SliderDefaults.colors(
+                                thumbColor = dailyRisk.second,
+                                activeTrackColor = dailyRisk.second
+                            )
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Weekly Limit Slider
+                    var weeklyLimitVal by remember { mutableStateOf(quotaManager.customLimitWeekly.toFloat()) }
+                    val weeklyRisk = when {
+                        weeklyLimitVal <= 500f -> Pair("Safe", MaterialTheme.colorScheme.primary)
+                        weeklyLimitVal <= 1000f -> Pair("Medium Risk", Color(0xFFFFA726))
+                        else -> Pair("High Risk", MaterialTheme.colorScheme.error)
+                    }
+                    Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Weekly Limit: ${weeklyLimitVal.toInt()}",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = weeklyRisk.first,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = weeklyRisk.second
+                            )
+                        }
+                        Slider(
+                            value = weeklyLimitVal,
+                            onValueChange = {
+                                weeklyLimitVal = it
+                                quotaManager.customLimitWeekly = it.toInt()
+                                quotaStats = quotaManager.getQuotaStats()
+                            },
+                            valueRange = 100f..3000f,
+                            steps = 28,
+                            colors = SliderDefaults.colors(
+                                thumbColor = weeklyRisk.second,
+                                activeTrackColor = weeklyRisk.second
+                            )
+                        )
+                    }
+                }
+            }
         }
     }
 }

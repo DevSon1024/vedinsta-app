@@ -88,6 +88,8 @@ class DownloadService : Service() {
         }
     }
 
+    private val activeNotificationIds = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
+
     override fun onCreate() {
         super.onCreate()
         notificationManager = VedInstaNotificationManager.getInstance(this)
@@ -154,6 +156,7 @@ class DownloadService : Service() {
 
                 val isBatch = postId != null && totalImages > 1
                 val notificationId = if (isBatch) postId!!.hashCode() else (postId?.hashCode() ?: fileNames.firstOrNull()?.hashCode() ?: 4242)
+                activeNotificationIds.add(notificationId)
 
                 val displayUsername = username ?: "unknown"
                 val startMsg = if (isBatch) {
@@ -259,6 +262,7 @@ class DownloadService : Service() {
                 if (url != null && filePath != null && fileName != null) {
                     val isBatch = postId != null && totalImages > 1
                     val notificationId = if (isBatch) postId.hashCode() else (postId?.hashCode() ?: fileName.hashCode())
+                    activeNotificationIds.add(notificationId)
 
                     val displayUsername = username ?: "unknown"
                     val startMsg = if (isBatch) {
@@ -537,6 +541,7 @@ class DownloadService : Service() {
                         }
                     }
 
+                    activeNotificationIds.remove(postId.hashCode())
                     removeProgressFromDb(postId)
                     batchProgressMap.remove(postId)
                     batchCompletedFilesMap.remove(postId)
@@ -576,6 +581,7 @@ class DownloadService : Service() {
                     }
                 }
             }
+            activeNotificationIds.remove(notificationId)
             removeProgressFromDb(postId ?: fileName)
         }
     }
@@ -660,6 +666,7 @@ class DownloadService : Service() {
                             }
                         }
                     }
+                    activeNotificationIds.remove(postId.hashCode())
                     removeProgressFromDb(postId)
                     batchProgressMap.remove(postId)
                     batchCompletedFilesMap.remove(postId)
@@ -695,6 +702,7 @@ class DownloadService : Service() {
                     }
                 }
             }
+            activeNotificationIds.remove(notificationId)
             removeProgressFromDb(postId ?: fileName)
         }
     }
@@ -822,6 +830,14 @@ class DownloadService : Service() {
         super.onDestroy()
         serviceScope.cancel()
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        for (id in activeNotificationIds) {
+            try {
+                notificationManager.cancelDownloadNotification(id)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error cancelling stuck notification $id in onDestroy", e)
+            }
+        }
+        activeNotificationIds.clear()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

@@ -225,6 +225,7 @@ class VedInstaNotificationManager private constructor(private val context: Conte
     }
 
     fun showMultipleContentOptions(url: String, itemCount: Int, autoOpenSelection: Boolean = false) {
+        cancelLinkProcessingNotification()
         val downloadAllIntent = Intent(context, SharedLinkProcessingService::class.java).apply {
             action = SharedLinkProcessingService.ACTION_DOWNLOAD_ALL
             putExtra(SharedLinkProcessingService.EXTRA_INSTAGRAM_URL, url)

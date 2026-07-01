@@ -34,6 +34,7 @@ fun MainPagerScreen(
     onPostClick: (DownloadedPost) -> Unit,
     onNavigateToWhatsAppStatus: (Int) -> Unit,
     onNavigateToLogin: () -> Unit,
+    onNavigateToSecurityLimits: () -> Unit,
     contentPadding: PaddingValues
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -67,6 +68,7 @@ fun MainPagerScreen(
                     coroutineScope.launch { pagerState.animateScrollToPage(3) }
                 },
                 onPostClick = onPostClick,
+                onNavigateToSecurityLimits = onNavigateToSecurityLimits,
                 contentPadding = contentPadding
             )
             1 -> HistoryScreen(
