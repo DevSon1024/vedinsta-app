@@ -16,5 +16,6 @@ local.properties
 .kotlin
 .idea
 /*.txt
+*.log
 update_details.md
 backup

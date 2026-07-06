@@ -62,7 +62,7 @@ fun SecurityLimitsScreen(
                 .padding(16.dp)
         ) {
             SettingsSwitchItem(
-                title = "Overshadow Quota Limitation",
+                title = "Bypass Quota Limitation",
                 subtitle = "Bypass download limits (Warning: increases risk of Instagram account flags)",
                 icon = Icons.Default.Warning,
                 iconContainerColor = MaterialTheme.colorScheme.errorContainer,
