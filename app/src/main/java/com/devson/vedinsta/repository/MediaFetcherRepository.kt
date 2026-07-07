@@ -3,7 +3,9 @@ package com.devson.vedinsta.repository
 import android.content.Context
 import android.util.Log
 import com.devson.vedinsta.extractor.InstagramNativeExtractor
-import com.devson.vedinsta.model.MediaResult
+import com.devson.vedinsta.model.ExtractedMediaNode
+import com.devson.vedinsta.model.MediaQuality
+import com.devson.vedinsta.model.ThumbnailQuality
 import com.devson.vedinsta.model.InstagramResponse
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
@@ -15,7 +17,7 @@ class MediaFetcherRepository(private val context: Context) {
     private val gson = Gson()
 
     /**
-     * Executes native media extraction and returns the list of MediaResult objects.
+     * Executes native media extraction and returns the list of ExtractedMediaNode objects.
      */
     suspend fun fetchMedia(urlOrShortcode: String): com.devson.vedinsta.model.ExtractedPost = withContext(Dispatchers.IO) {
         try {
@@ -25,12 +27,28 @@ class MediaFetcherRepository(private val context: Context) {
             val customIgAppId = prefs.getString("custom_ig_app_id", "") ?: ""
             val networkTimeoutSeconds = prefs.getInt("network_timeout_seconds", 15)
 
+            val qualityPrefStr = prefs.getString("user_quality_preference", "HIGH") ?: "HIGH"
+            val userQualityPreference = try {
+                MediaQuality.valueOf(qualityPrefStr)
+            } catch (e: Exception) {
+                MediaQuality.HIGH
+            }
+
+            val thumbnailPrefStr = prefs.getString("thumbnail_quality_preference", "LOWEST") ?: "LOWEST"
+            val thumbnailQualityPreference = try {
+                ThumbnailQuality.valueOf(thumbnailPrefStr)
+            } catch (e: Exception) {
+                ThumbnailQuality.LOWEST
+            }
+
             val resultJson = InstagramNativeExtractor.getMediaUrls(
                 url = urlOrShortcode,
                 cookieFilePath = cookieFile.absolutePath,
                 userAgent = customUserAgent,
                 appId = customIgAppId,
-                timeoutSeconds = networkTimeoutSeconds
+                timeoutSeconds = networkTimeoutSeconds,
+                userQualityPreference = userQualityPreference,
+                thumbnailQualityPreference = thumbnailQualityPreference
             )
             Log.d("MediaFetcherRepository", "getMediaUrls returned: $resultJson")
 

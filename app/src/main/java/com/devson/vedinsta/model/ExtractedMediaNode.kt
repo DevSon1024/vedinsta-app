@@ -9,20 +9,27 @@ data class QualityOption(
     @SerializedName("height") val height: Int? = null
 ) : Serializable
 
-data class MediaResult(
-    @SerializedName("url") val url: String? = null,
+data class MediaVariant(
+    @SerializedName("url") val url: String,
+    @SerializedName("resolution_label") val resolutionLabel: String
+) : Serializable
+
+data class ExtractedMediaNode(
+    @SerializedName("thumbnail_url") val thumbnailUrl: String,
+    @SerializedName("download_variants") val downloadVariants: List<MediaVariant> = emptyList(),
+    @SerializedName("download_urls") val downloadUrls: List<String> = emptyList(),
+    @SerializedName("url") val url: String? = null, // for backward compatibility
     @SerializedName("type") val type: String? = null,
     @SerializedName("width") val width: Int? = null,
     @SerializedName("height") val height: Int? = null,
     @SerializedName("index") val index: Int? = null,
     @SerializedName("error") val error: String? = null,
-    @SerializedName("thumbnail_url") val thumbnailUrl: String? = null,
     @SerializedName("thumbnail_qualities") val thumbnailQualities: List<QualityOption>? = null,
     @SerializedName("qualities") val qualities: List<QualityOption>? = null
 ) : Serializable
 
 data class ExtractedPost(
-    val mediaList: List<MediaResult>,
+    val mediaList: List<ExtractedMediaNode>,
     val username: String,
     val caption: String?,
     val postId: String
@@ -34,6 +41,5 @@ data class InstagramResponse(
     @SerializedName("username") val username: String? = null,
     @SerializedName("caption") val caption: String? = null,
     @SerializedName("shortcode") val shortcode: String? = null,
-    @SerializedName("media") val media: List<MediaResult>? = null
+    @SerializedName("media") val media: List<ExtractedMediaNode>? = null
 ) : Serializable
-

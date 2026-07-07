@@ -8,12 +8,17 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
 import com.devson.vedinsta.ui.theme.AppThemePalette
 import com.devson.vedinsta.ui.theme.AppThemePaletteHelper
+import com.devson.vedinsta.model.MediaQuality
+import com.devson.vedinsta.model.ThumbnailQuality
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -81,6 +86,42 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     var maxNotificationsLimit: Int
         get() = prefs.getInt("max_notifications_limit", 0)
         set(value) = prefs.edit().putInt("max_notifications_limit", value).apply()
+
+    private val _userQualityPreference = MutableStateFlow(MediaQuality.HIGH)
+    val userQualityPreferenceFlow: StateFlow<MediaQuality> = _userQualityPreference.asStateFlow()
+
+    var userQualityPreference: MediaQuality
+        get() = _userQualityPreference.value
+        set(value) {
+            _userQualityPreference.value = value
+            viewModelScope.launch(Dispatchers.IO) {
+                prefs.edit().putString("user_quality_preference", value.name).apply()
+            }
+        }
+
+    private val _thumbnailQuality = MutableStateFlow(ThumbnailQuality.LOWEST)
+    val thumbnailQualityFlow: StateFlow<ThumbnailQuality> = _thumbnailQuality.asStateFlow()
+
+    var thumbnailQuality: ThumbnailQuality
+        get() = _thumbnailQuality.value
+        set(value) {
+            _thumbnailQuality.value = value
+            viewModelScope.launch(Dispatchers.IO) {
+                prefs.edit().putString("thumbnail_quality_preference", value.name).apply()
+            }
+        }
+
+    init {
+        viewModelScope.launch(Dispatchers.IO) {
+            val qStr = prefs.getString("user_quality_preference", "HIGH") ?: "HIGH"
+            val quality = try { MediaQuality.valueOf(qStr) } catch(e: Exception) { MediaQuality.HIGH }
+            _userQualityPreference.value = quality
+
+            val tStr = prefs.getString("thumbnail_quality_preference", "LOWEST") ?: "LOWEST"
+            val tQuality = try { ThumbnailQuality.valueOf(tStr) } catch(e: Exception) { ThumbnailQuality.LOWEST }
+            _thumbnailQuality.value = tQuality
+        }
+    }
 
     private val _customUserAgent = MutableStateFlow(
         prefs.getString(KEY_CUSTOM_USER_AGENT, "") ?: ""

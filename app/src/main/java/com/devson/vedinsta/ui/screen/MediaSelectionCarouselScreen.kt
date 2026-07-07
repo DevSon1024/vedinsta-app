@@ -37,6 +37,9 @@ import com.devson.vedinsta.notification.VedInstaNotificationManager
 import com.devson.vedinsta.viewmodel.ExtractionState
 import com.devson.vedinsta.viewmodel.InstagramAuthViewModel
 import com.devson.vedinsta.viewmodel.MediaExtractionViewModel
+import com.devson.vedinsta.viewmodel.SettingsViewModel
+import com.devson.vedinsta.model.MediaQuality
+import com.devson.vedinsta.model.ExtractedMediaNode
 import com.devson.vedinsta.repository.DownloadQuotaManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -48,6 +51,7 @@ import kotlin.math.absoluteValue
 fun MediaSelectionCarouselScreen(
     authViewModel: InstagramAuthViewModel,
     extractionViewModel: MediaExtractionViewModel,
+    settingsViewModel: SettingsViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToNotifications: () -> Unit
 ) {
@@ -55,6 +59,7 @@ fun MediaSelectionCarouselScreen(
     val extractionState by extractionViewModel.extractionState.collectAsStateWithLifecycle()
     val selectedIndexes by extractionViewModel.selectedIndexes.collectAsStateWithLifecycle()
     val chosenQualities by extractionViewModel.chosenQualities.collectAsStateWithLifecycle()
+    val globalQuality by settingsViewModel.userQualityPreferenceFlow.collectAsStateWithLifecycle()
     val quotaState by extractionViewModel.quotaState.collectAsStateWithLifecycle()
     val isQuotaExceeded = quotaState is DownloadQuotaManager.QuotaStatus.Exceeded
 
@@ -235,196 +240,23 @@ fun MediaSelectionCarouselScreen(
                         stop = 1.0f,
                         fraction = 1f - pageOffset.coerceIn(0f, 1f)
                     )
-
-                    Card(
-                        modifier = Modifier
-                            .graphicsLayer {
-                                scaleX = scale
-                                scaleY = scale
-                                this.alpha = alpha
-                            }
-                            .fillMaxWidth()
-                            .fillMaxHeight()
-                            .clip(RoundedCornerShape(24.dp))
-                            .clickable { extractionViewModel.toggleSelection(idx) },
-                        shape = RoundedCornerShape(24.dp),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                    ) {
-                        Box(modifier = Modifier.fillMaxSize()) {
-                            val previewUrl = remember(item) {
-                                if (item.type == "video") {
-                                    val tQuals = item.thumbnailQualities?.filter { !it.url.isNullOrBlank() } ?: emptyList()
-                                    if (tQuals.isEmpty()) {
-                                        item.thumbnailUrl ?: item.url
-                                    } else {
-                                        val sorted = tQuals.sortedBy { (it.width ?: 0) * (it.height ?: 0) }
-                                        val target = sorted.find { (it.width ?: 0) >= 360 } ?: sorted.first()
-                                        target.url ?: item.thumbnailUrl ?: item.url
-                                    }
-                                } else {
-                                    val qualities = item.qualities?.filter { !it.url.isNullOrBlank() } ?: emptyList()
-                                    if (qualities.isEmpty()) {
-                                        item.url
-                                    } else {
-                                        val sorted = qualities.sortedBy { (it.width ?: 0) * (it.height ?: 0) }
-                                        val target = sorted.find { (it.width ?: 0) >= 360 } ?: sorted.first()
-                                        target.url ?: item.url
-                                    }
-                                }
-                            }
-
-                            val localFile = remember(localPaths, idx) {
-                                val path = localPaths.getOrNull(idx - 1)
-                                if (!path.isNullOrBlank()) {
-                                    val f = File(path)
-                                    if (f.exists() && f.canRead()) f else null
-                                } else {
-                                    null
-                                }
-                            }
-
-                            val context = LocalContext.current
-                            val imageRequest = remember(localFile, previewUrl) {
-                                ImageRequest.Builder(context)
-                                    .data(localFile ?: previewUrl)
-                                    .diskCachePolicy(CachePolicy.ENABLED)
-                                    .memoryCachePolicy(CachePolicy.ENABLED)
-                                    .build()
-                            }
-                            val isStory = remember {
-                                extractionViewModel.lastExtractedUrl.contains("/stories/", ignoreCase = true)
-                            }
-                            AsyncImage(
-                                model = imageRequest,
-                                contentDescription = "Media Preview",
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = if (isStory) ContentScale.Fit else ContentScale.Crop
-                            )
-
-                            if (item.type == "video") {
-                                Box(
-                                    modifier = Modifier
-                                        .align(Alignment.TopStart)
-                                        .padding(16.dp)
-                                        .size(36.dp)
-                                        .background(Color.Black.copy(alpha = 0.6f), CircleShape),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.PlayArrow,
-                                        contentDescription = "Video",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                            }
-
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .padding(16.dp)
-                                    .size(28.dp)
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .border(
-                                        width = 2.dp,
-                                        color = Color.White,
-                                        shape = RoundedCornerShape(6.dp)
-                                    )
-                                    .background(
-                                        if (isSelected) MaterialTheme.colorScheme.primary else Color.Black.copy(alpha = 0.4f)
-                                    )
-                                    .clickable { extractionViewModel.toggleSelection(idx) },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                if (isSelected) {
-                                    Icon(
-                                        imageVector = Icons.Default.Check,
-                                        contentDescription = "Selected",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-
-                            val qualities = item.qualities ?: emptyList()
-                            val currentQuality = qualities.find { it.url == chosenUrl }
-                            val width = currentQuality?.width ?: item.width ?: 0
-                            val height = currentQuality?.height ?: item.height ?: 0
-
-                            val shorterSide = minOf(width, height)
-                            val resolutionText = if (shorterSide > 0) "${shorterSide} px" else "1080 px"
-
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .padding(bottom = 20.dp)
-                            ) {
-                                var showQualityMenu by remember { mutableStateOf(false) }
-
-                                Surface(
-                                    modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable { showQualityMenu = true },
-                                    shape = RoundedCornerShape(20.dp),
-                                    color = Color.Black.copy(alpha = 0.65f),
-                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.3f))
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = resolutionText,
-                                            color = Color.White,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Icon(
-                                            imageVector = Icons.Default.KeyboardArrowDown,
-                                            contentDescription = "Select Quality",
-                                            tint = Color.White,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
-                                }
-
-                                DropdownMenu(
-                                    expanded = showQualityMenu,
-                                    onDismissRequest = { showQualityMenu = false },
-                                    modifier = Modifier.background(MaterialTheme.colorScheme.surface)
-                                ) {
-                                    if (qualities.isEmpty()) {
-                                        val labelText = if (item.width != null && item.height != null) {
-                                            "${item.width}x${item.height}"
-                                        } else {
-                                            "Original Quality"
-                                        }
-                                        DropdownMenuItem(
-                                            text = { Text(labelText, color = MaterialTheme.colorScheme.onSurface) },
-                                            onClick = { showQualityMenu = false }
-                                        )
-                                    } else {
-                                        qualities.forEachIndexed { i, q ->
-                                            val qWidth = q.width ?: 0
-                                            val qHeight = q.height ?: 0
-                                            val label = if (qWidth > 0 && qHeight > 0) {
-                                                if (i == 0) "${qWidth}x${qHeight} (Original)" else "${qWidth}x${qHeight}"
-                                            } else {
-                                                if (i == 0) "Original Quality" else "Option ${i + 1}"
-                                            }
-                                            DropdownMenuItem(
-                                                text = { Text(label, color = MaterialTheme.colorScheme.onSurface) },
-                                                onClick = {
-                                                    q.url?.let { extractionViewModel.changeQuality(idx, it) }
-                                                    showQualityMenu = false
-                                                }
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                    val isStory = remember {
+                        extractionViewModel.lastExtractedUrl.contains("/stories/", ignoreCase = true)
                     }
+
+                    MediaSelectionCard(
+                        item = item,
+                        idx = idx,
+                        isSelected = isSelected,
+                        chosenUrl = chosenUrl,
+                        globalQuality = globalQuality,
+                        localPaths = localPaths,
+                        isStory = isStory,
+                        scale = scale,
+                        alpha = alpha,
+                        onToggleSelection = { extractionViewModel.toggleSelection(it) },
+                        onChangeQuality = { index, url -> extractionViewModel.changeQuality(index, url) }
+                    )
                 }
 
                 Row(
@@ -474,7 +306,7 @@ fun MediaSelectionCarouselScreen(
                         val containsVideo = selectedItems.any { it.type == "video" }
                         val isReel = instagramUrl.contains("/reel/", ignoreCase = true) || instagramUrl.contains("/reels/", ignoreCase = true) || containsVideo
 
-                        extractionViewModel.downloadSelected(successState.extractedPost, instagramUrl)
+                        extractionViewModel.downloadSelected(successState.extractedPost, instagramUrl, globalQuality)
                         onNavigateToNotifications()
                     },
                     modifier = Modifier
@@ -508,6 +340,204 @@ fun MediaSelectionCarouselScreen(
                         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
                         textAlign = TextAlign.Center
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun MediaSelectionCard(
+    item: ExtractedMediaNode,
+    idx: Int,
+    isSelected: Boolean,
+    chosenUrl: String?,
+    globalQuality: MediaQuality,
+    localPaths: List<String>,
+    isStory: Boolean,
+    scale: Float,
+    alpha: Float,
+    onToggleSelection: (Int) -> Unit,
+    onChangeQuality: (Int, String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                this.alpha = alpha
+            }
+            .fillMaxWidth()
+            .fillMaxHeight()
+            .clip(RoundedCornerShape(24.dp))
+            .clickable { onToggleSelection(idx) },
+        shape = RoundedCornerShape(24.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            val previewUrl = item.thumbnailUrl
+
+            val localFile = remember(localPaths, idx) {
+                val path = localPaths.getOrNull(idx - 1)
+                if (!path.isNullOrBlank()) {
+                    val f = File(path)
+                    if (f.exists() && f.canRead()) f else null
+                } else {
+                    null
+                }
+            }
+
+            val context = LocalContext.current
+            val imageRequest = remember(localFile, previewUrl) {
+                ImageRequest.Builder(context)
+                    .data(localFile ?: previewUrl)
+                    .diskCachePolicy(CachePolicy.ENABLED)
+                    .memoryCachePolicy(CachePolicy.ENABLED)
+                    .build()
+            }
+
+            AsyncImage(
+                model = imageRequest,
+                contentDescription = "Media Preview",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = if (isStory) ContentScale.Fit else ContentScale.Crop
+            )
+
+            if (item.type == "video") {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(16.dp)
+                        .size(36.dp)
+                        .background(Color.Black.copy(alpha = 0.6f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = "Video",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(16.dp)
+                    .size(28.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .border(
+                        width = 2.dp,
+                        color = Color.White,
+                        shape = RoundedCornerShape(6.dp)
+                    )
+                    .background(
+                        if (isSelected) MaterialTheme.colorScheme.primary else Color.Black.copy(alpha = 0.4f)
+                    )
+                    .clickable { onToggleSelection(idx) },
+                contentAlignment = Alignment.Center
+            ) {
+                if (isSelected) {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = "Selected",
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            val activeResolutionLabel = remember(item.downloadVariants, chosenUrl, globalQuality) {
+                if (globalQuality != MediaQuality.CUSTOM) {
+                    item.downloadVariants.firstOrNull()?.resolutionLabel ?: ""
+                } else {
+                    val matchingVariant = item.downloadVariants.find { it.url == chosenUrl }
+                    matchingVariant?.resolutionLabel ?: item.downloadVariants.firstOrNull()?.resolutionLabel ?: ""
+                }
+            }
+
+            if (globalQuality != MediaQuality.CUSTOM && activeResolutionLabel.isNotEmpty()) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 20.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color.Black.copy(alpha = 0.65f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.3f))
+                ) {
+                    Text(
+                        text = activeResolutionLabel,
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                    )
+                }
+            }
+
+            if (globalQuality == MediaQuality.CUSTOM) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 20.dp)
+                ) {
+                    var showQualityMenu by remember { mutableStateOf(false) }
+                    val chosenVariantLabel = remember(item.downloadVariants, chosenUrl) {
+                        val matchingVariant = item.downloadVariants.find { it.url == chosenUrl }
+                        matchingVariant?.resolutionLabel ?: item.downloadVariants.firstOrNull()?.resolutionLabel ?: "1080px"
+                    }
+
+                    Surface(
+                        modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable { showQualityMenu = true },
+                        shape = RoundedCornerShape(20.dp),
+                        color = Color.Black.copy(alpha = 0.65f),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.3f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = chosenVariantLabel,
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowDown,
+                                contentDescription = "Select Quality",
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+
+                    DropdownMenu(
+                        expanded = showQualityMenu,
+                        onDismissRequest = { showQualityMenu = false },
+                        modifier = Modifier.background(MaterialTheme.colorScheme.surface)
+                    ) {
+                        if (item.downloadVariants.isEmpty()) {
+                            DropdownMenuItem(
+                                text = { Text("Original Quality", color = MaterialTheme.colorScheme.onSurface) },
+                                onClick = { showQualityMenu = false }
+                            )
+                        } else {
+                            item.downloadVariants.forEach { variant ->
+                                DropdownMenuItem(
+                                    text = { Text(variant.resolutionLabel, color = MaterialTheme.colorScheme.onSurface) },
+                                    onClick = {
+                                        onChangeQuality(idx, variant.url)
+                                        showQualityMenu = false
+                                    }
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }

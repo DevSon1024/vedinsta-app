@@ -6,8 +6,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.devson.vedinsta.VedInstaApplication
 import com.devson.vedinsta.model.MediaItem
-import com.devson.vedinsta.model.MediaResult
+import com.devson.vedinsta.model.ExtractedMediaNode
 import com.devson.vedinsta.model.ExtractedPost
+import com.devson.vedinsta.model.MediaQuality
 import com.devson.vedinsta.repository.MediaFetcherRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -143,7 +144,7 @@ class MediaExtractionViewModel(application: Application) : AndroidViewModel(appl
         _chosenQualities.value = current
     }
 
-    fun selectAll(mediaList: List<MediaResult>) {
+    fun selectAll(mediaList: List<ExtractedMediaNode>) {
         _selectedIndexes.value = mediaList.mapNotNull { it.index }.toSet()
     }
 
@@ -154,7 +155,7 @@ class MediaExtractionViewModel(application: Application) : AndroidViewModel(appl
     /**
      * Map selected results to MediaSelectionAdapter.MediaItem and download them.
      */
-    fun downloadSelected(extractedPost: ExtractedPost, postUrl: String) {
+    fun downloadSelected(extractedPost: ExtractedPost, postUrl: String, globalQuality: MediaQuality) {
         refreshQuota()
         val currentQuota = _quotaState.value
         if (currentQuota is DownloadQuotaManager.QuotaStatus.Exceeded) {
@@ -172,7 +173,11 @@ class MediaExtractionViewModel(application: Application) : AndroidViewModel(appl
         
         val itemsToDownload = extractedPost.mediaList.filter { selectedIdxs.contains(it.index ?: -1) }.map { result ->
             val index = result.index ?: 1
-            val chosenUrl = chosenUrls[index] ?: result.url ?: ""
+            val chosenUrl = if (globalQuality != MediaQuality.CUSTOM) {
+                result.downloadVariants.firstOrNull()?.url ?: result.url ?: ""
+            } else {
+                chosenUrls[index] ?: result.url ?: ""
+            }
             MediaItem(
                 url = chosenUrl,
                 type = result.type ?: "image",

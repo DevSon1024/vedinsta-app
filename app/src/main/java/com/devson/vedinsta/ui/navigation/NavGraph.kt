@@ -138,7 +138,7 @@ fun MainAppScreen(
                 if (extractedPost.mediaList.size > 1) {
                     navController.navigate(Screen.DownloaderDetails.route)
                 } else {
-                    extractionViewModel.downloadSelected(extractedPost, extractionViewModel.lastExtractedUrl)
+                    extractionViewModel.downloadSelected(extractedPost, extractionViewModel.lastExtractedUrl, settingsViewModel.userQualityPreference)
                     Toast.makeText(context, "Download started!", Toast.LENGTH_SHORT).show()
                     extractionViewModel.reset()
                 }
@@ -454,6 +454,7 @@ fun MainAppScreen(
                     MediaSelectionCarouselScreen(
                         authViewModel = authViewModel,
                         extractionViewModel = extractionViewModel,
+                        settingsViewModel = settingsViewModel,
                         onNavigateBack = {
                             extractionViewModel.reset()
                             navController.popBackStack()

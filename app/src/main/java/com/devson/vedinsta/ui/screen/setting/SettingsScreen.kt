@@ -26,6 +26,8 @@ import androidx.compose.ui.unit.sp
 import coil.Coil
 import com.devson.vedinsta.repository.DownloadQuotaManager
 import com.devson.vedinsta.viewmodel.SettingsViewModel
+import com.devson.vedinsta.model.MediaQuality
+import com.devson.vedinsta.model.ThumbnailQuality
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -51,6 +53,33 @@ fun SettingsScreen(
 
     var linkActionLabel by remember { mutableStateOf(settingsViewModel.getDefaultActionLabel()) }
     var showLinkActionDialog by remember { mutableStateOf(false) }
+
+    val globalQuality by settingsViewModel.userQualityPreferenceFlow.collectAsState()
+    val thumbnailQualityState by settingsViewModel.thumbnailQualityFlow.collectAsState()
+
+    var downloadQualityLabel by remember(globalQuality) {
+        mutableStateOf(
+            when (globalQuality) {
+                MediaQuality.LOW -> "Low Resolution (Fastest)"
+                MediaQuality.MEDIUM -> "Medium Resolution"
+                MediaQuality.HIGH -> "High Resolution (Highest)"
+                MediaQuality.CUSTOM -> "Custom (Manual selection)"
+            }
+        )
+    }
+    var showQualityDialog by remember { mutableStateOf(false) }
+
+    var thumbnailQualityLabel by remember(thumbnailQualityState) {
+        mutableStateOf(
+            when (thumbnailQualityState) {
+                ThumbnailQuality.LOWEST -> "Lowest Resolution (Default)"
+                ThumbnailQuality.MEDIUM -> "Medium Resolution"
+                ThumbnailQuality.HIGHEST -> "Highest Resolution"
+                ThumbnailQuality.SAME_AS_DOWNLOAD -> "Same as Download Quality"
+            }
+        )
+    }
+    var showThumbnailQualityDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -112,6 +141,24 @@ fun SettingsScreen(
             iconContainerColor = MaterialTheme.colorScheme.secondaryContainer,
             iconColor = MaterialTheme.colorScheme.secondary,
             onClick = onNavigateToAdvancedSettings
+        )
+
+        SettingsClickableItem(
+            title = "Default Download Quality",
+            subtitle = downloadQualityLabel,
+            icon = Icons.Default.HighQuality,
+            iconContainerColor = MaterialTheme.colorScheme.primaryContainer,
+            iconColor = MaterialTheme.colorScheme.primary,
+            onClick = { showQualityDialog = true }
+        )
+
+        SettingsClickableItem(
+            title = "Default Thumbnail Quality",
+            subtitle = thumbnailQualityLabel,
+            icon = Icons.Default.PhotoLibrary,
+            iconContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
+            iconColor = MaterialTheme.colorScheme.tertiary,
+            onClick = { showThumbnailQualityDialog = true }
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -216,6 +263,132 @@ fun SettingsScreen(
             },
             confirmButton = {
                 TextButton(onClick = { showLinkActionDialog = false }) {
+                    Text("Cancel", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            titleContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+
+    if (showQualityDialog) {
+        val options = listOf(
+            "High Resolution (Highest)",
+            "Medium Resolution",
+            "Low Resolution (Fastest)",
+            "Custom (Manual selection)"
+        )
+        val currentSelection = when(settingsViewModel.userQualityPreference) {
+            MediaQuality.HIGH -> 0
+            MediaQuality.MEDIUM -> 1
+            MediaQuality.LOW -> 2
+            MediaQuality.CUSTOM -> 3
+        }
+
+        AlertDialog(
+            onDismissRequest = { showQualityDialog = false },
+            title = { Text("Default Download Quality") },
+            text = {
+                Column {
+                    options.forEachIndexed { index, option ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    val newQuality = when(index) {
+                                        0 -> MediaQuality.HIGH
+                                        1 -> MediaQuality.MEDIUM
+                                        2 -> MediaQuality.LOW
+                                        3 -> MediaQuality.CUSTOM
+                                        else -> MediaQuality.HIGH
+                                    }
+                                    settingsViewModel.userQualityPreference = newQuality
+                                    downloadQualityLabel = when (newQuality) {
+                                        MediaQuality.LOW -> "Low Resolution (Fastest)"
+                                        MediaQuality.MEDIUM -> "Medium Resolution"
+                                        MediaQuality.HIGH -> "High Resolution (Highest)"
+                                        MediaQuality.CUSTOM -> "Custom (Manual selection)"
+                                    }
+                                    showQualityDialog = false
+                                }
+                                .padding(vertical = 12.dp)
+                        ) {
+                            RadioButton(
+                                selected = (index == currentSelection),
+                                onClick = null // Click handled by Row
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(option, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showQualityDialog = false }) {
+                    Text("Cancel", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            titleContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+
+    if (showThumbnailQualityDialog) {
+        val options = listOf(
+            "Lowest Resolution (Default)",
+            "Medium Resolution",
+            "Highest Resolution",
+            "Same as Download Quality"
+        )
+        val currentSelection = when(thumbnailQualityState) {
+            ThumbnailQuality.LOWEST -> 0
+            ThumbnailQuality.MEDIUM -> 1
+            ThumbnailQuality.HIGHEST -> 2
+            ThumbnailQuality.SAME_AS_DOWNLOAD -> 3
+        }
+
+        AlertDialog(
+            onDismissRequest = { showThumbnailQualityDialog = false },
+            title = { Text("Default Thumbnail Quality") },
+            text = {
+                Column {
+                    options.forEachIndexed { index, option ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    val newQuality = when(index) {
+                                        0 -> ThumbnailQuality.LOWEST
+                                        1 -> ThumbnailQuality.MEDIUM
+                                        2 -> ThumbnailQuality.HIGHEST
+                                        3 -> ThumbnailQuality.SAME_AS_DOWNLOAD
+                                        else -> ThumbnailQuality.LOWEST
+                                    }
+                                    settingsViewModel.thumbnailQuality = newQuality
+                                    thumbnailQualityLabel = when (newQuality) {
+                                        ThumbnailQuality.LOWEST -> "Lowest Resolution (Default)"
+                                        ThumbnailQuality.MEDIUM -> "Medium Resolution"
+                                        ThumbnailQuality.HIGHEST -> "Highest Resolution"
+                                        ThumbnailQuality.SAME_AS_DOWNLOAD -> "Same as Download Quality"
+                                    }
+                                    showThumbnailQualityDialog = false
+                                }
+                                .padding(vertical = 12.dp)
+                        ) {
+                            RadioButton(
+                                selected = (index == currentSelection),
+                                onClick = null // Click handled by Row
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(option, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showThumbnailQualityDialog = false }) {
                     Text("Cancel", color = MaterialTheme.colorScheme.error)
                 }
             },
