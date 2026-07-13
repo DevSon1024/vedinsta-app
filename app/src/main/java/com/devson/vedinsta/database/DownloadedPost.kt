@@ -37,3 +37,7 @@ class Converters {
         return Gson().fromJson(value, listType)
     }
 }
+
+val DownloadedPost.containsVideo: Boolean
+    get() = hasVideo || mediaPaths.any { it.endsWith(".mp4", ignoreCase = true) }
+

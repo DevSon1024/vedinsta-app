@@ -32,6 +32,7 @@ fun MainPagerScreen(
     onToggleFavorite: (String) -> Unit,
     onFabAction: () -> Unit,
     onPostClick: (DownloadedPost) -> Unit,
+    onNavigateToFeedPlay: (String?, Int?) -> Unit,
     onNavigateToWhatsAppStatus: (Int) -> Unit,
     onNavigateToLogin: () -> Unit,
     onNavigateToSecurityLimits: () -> Unit,
@@ -68,6 +69,7 @@ fun MainPagerScreen(
                     coroutineScope.launch { pagerState.animateScrollToPage(3) }
                 },
                 onPostClick = onPostClick,
+                onNavigateToFeedPlay = onNavigateToFeedPlay,
                 onNavigateToSecurityLimits = onNavigateToSecurityLimits,
                 contentPadding = contentPadding
             )

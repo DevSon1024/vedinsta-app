@@ -43,6 +43,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.request.CachePolicy
 import com.devson.vedinsta.database.DownloadedPost
+import com.devson.vedinsta.database.containsVideo
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
@@ -446,7 +447,7 @@ fun HistoryListCard(
                 }
 
                 // Badge Overlay - Type at top-left corner
-                if (post.hasVideo) {
+                if (post.containsVideo) {
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopStart)
@@ -596,7 +597,7 @@ fun HistoryGridCard(
 
             // Hide all overlays & favorite heart when grid column count is 4
             if (gridColumnCount < 4) {
-                if (post.hasVideo) {
+                if (post.containsVideo) {
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopStart)

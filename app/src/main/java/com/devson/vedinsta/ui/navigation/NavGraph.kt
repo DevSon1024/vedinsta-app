@@ -27,6 +27,7 @@ import androidx.graphics.shapes.CornerRounding
 import androidx.graphics.shapes.RoundedPolygon
 import androidx.graphics.shapes.star
 import com.devson.vedinsta.database.DownloadedPost
+import com.devson.vedinsta.database.containsVideo
 import com.devson.vedinsta.ui.*
 import com.devson.vedinsta.viewmodel.*
 import kotlinx.coroutines.launch
@@ -171,7 +172,8 @@ fun MainAppScreen(
                 currentRoute != Screen.DownloaderDetails.route &&
                 currentRoute != Screen.AdvancedSettings.route &&
                 currentRoute != Screen.StorageSettings.route &&
-                currentRoute != Screen.WhatsAppStatusView.route) {
+                currentRoute != Screen.WhatsAppStatusView.route &&
+                currentRoute != Screen.FeedPlay.route) {
 
                 VedInstaTopAppBar(
                     title = if (currentRoute == Screen.MainPager.route) {
@@ -376,8 +378,9 @@ fun MainAppScreen(
         containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         val applyPadding = currentRoute != Screen.PostView.route &&
-            currentRoute != Screen.Login.route &&
-            currentRoute != Screen.Appearance.route &&
+                currentRoute != Screen.Login.route &&
+                currentRoute != Screen.WhatsAppStatusView.route &&
+                currentRoute != Screen.FeedPlay.route &&
             currentRoute != Screen.DownloaderDetails.route &&
             currentRoute != Screen.WhatsAppStatusView.route
         val screenPadding = if (isBlurEnabled && applyPadding) paddingValues else PaddingValues(0.dp)
@@ -436,7 +439,14 @@ fun MainAppScreen(
                         onToggleFavorite = toggleFavoriteHelper,
                         onFabAction = onFabAction,
                         onPostClick = { post ->
-                            navController.navigate(Screen.PostView.createRoute(post.postId))
+                            if (post.containsVideo) {
+                                navController.navigate(Screen.FeedPlay.createRoute(postId = post.postId))
+                            } else {
+                                navController.navigate(Screen.PostView.createRoute(post.postId))
+                            }
+                        },
+                        onNavigateToFeedPlay = { postId, initialIndex ->
+                            navController.navigate(Screen.FeedPlay.createRoute(postId = postId, initialIndex = initialIndex))
                         },
                         onNavigateToWhatsAppStatus = { index ->
                             navController.navigate(Screen.WhatsAppStatusView.createRoute(index))
@@ -587,6 +597,38 @@ fun MainAppScreen(
                             }
                         )
                     }
+                }
+                composable(
+                    route = Screen.FeedPlay.route,
+                    arguments = listOf(
+                        navArgument("postId") {
+                            type = NavType.StringType
+                            nullable = true
+                            defaultValue = null
+                        },
+                        navArgument("initialIndex") {
+                            type = NavType.StringType
+                            nullable = true
+                            defaultValue = null
+                        }
+                    ),
+                    enterTransition = { fadeIn(tween(250)) },
+                    exitTransition = { fadeOut(tween(250)) },
+                    popEnterTransition = { fadeIn(tween(250)) },
+                    popExitTransition = { fadeOut(tween(250)) }
+                ) { backStackEntry ->
+                    val postId = backStackEntry.arguments?.getString("postId")
+                    val initialIndexStr = backStackEntry.arguments?.getString("initialIndex")
+                    val initialIndex = initialIndexStr?.toIntOrNull()
+
+                    com.devson.vedinsta.ui.screen.FeedPlayScreen(
+                        mainViewModel = mainViewModel,
+                        initialPostId = postId,
+                        initialIndex = initialIndex,
+                        isFavorite = isFavoriteHelper,
+                        onToggleFavorite = toggleFavoriteHelper,
+                        onBackClick = { navController.popBackStack() }
+                    )
                 }
                 composable(
                     route = Screen.WhatsAppStatusView.route,

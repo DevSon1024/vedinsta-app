@@ -31,6 +31,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.request.CachePolicy
 import com.devson.vedinsta.database.DownloadedPost
+import com.devson.vedinsta.database.containsVideo
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -53,6 +54,7 @@ fun HomeScreen(
     onNavigateToSessions: () -> Unit,
     onNavigateToWhatsAppSaver: () -> Unit,
     onPostClick: (DownloadedPost) -> Unit,
+    onNavigateToFeedPlay: (String?, Int?) -> Unit,
     onNavigateToSecurityLimits: () -> Unit,
     contentPadding: PaddingValues
 ) {
@@ -247,6 +249,58 @@ fun HomeScreen(
                             overflow = TextOverflow.Ellipsis
                         )
                     }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Card 4: Video Feed (Reels Style)
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .clickable { onNavigateToFeedPlay(null, 0) },
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f)
+            )
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .background(
+                            MaterialTheme.colorScheme.primaryContainer,
+                            RoundedCornerShape(12.dp)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = "Watch Videos",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+                Column {
+                    Text(
+                        text = "Video Feed",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Scroll through downloaded videos in Reels style",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                    )
                 }
             }
         }
@@ -522,7 +576,7 @@ fun HomeScreen(
                         )
 
                         // Video play badge
-                        if (post.hasVideo) {
+                        if (post.containsVideo) {
                             Box(
                                 modifier = Modifier
                                     .size(40.dp)

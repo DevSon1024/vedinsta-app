@@ -26,6 +26,10 @@ sealed class Screen(val route: String) {
     
     object SecurityLimits : Screen("security_limits")
     object StorageSettings : Screen("storage_settings")
+    object FeedPlay : Screen("feed_play?postId={postId}&initialIndex={initialIndex}") {
+        fun createRoute(postId: String? = null, initialIndex: Int? = null) =
+            "feed_play?postId=${postId ?: ""}&initialIndex=${initialIndex ?: ""}"
+    }
 }
 
 internal fun getScreenOrderValue(screen: Screen): Int {
@@ -48,5 +52,6 @@ internal fun getScreenOrderValue(screen: Screen): Int {
         is Screen.WhatsAppStatusView -> 14
         is Screen.SecurityLimits -> 15
         is Screen.StorageSettings -> 16
+        is Screen.FeedPlay -> 17
     }
 }
