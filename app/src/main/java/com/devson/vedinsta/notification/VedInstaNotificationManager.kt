@@ -255,8 +255,7 @@ class VedInstaNotificationManager private constructor(private val context: Conte
             pendingIntentFlags
         )
 
-        val isStory = url.contains("/stories/", ignoreCase = true)
-        val contentTitle = if (isStory) "Found $itemCount Stories" else "Found $itemCount items"
+        val contentTitle = "Found $itemCount items"
 
         // ALERT CHANNEL (Heads-up)
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_ALERT)

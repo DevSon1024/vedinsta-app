@@ -59,17 +59,7 @@ class SharedLinkProcessingService : Service() {
             try {
                 notificationManager.showLinkProcessing()
 
-                val processedUrl = if (url.contains("/stories/", ignoreCase = true)) {
-                    val storyRegex = Regex("instagram\\.com/stories/([A-Za-z0-9_.-]+)")
-                    val matchResult = storyRegex.find(url)
-                    if (matchResult != null) {
-                        "https://www.instagram.com/stories/${matchResult.groupValues[1]}/"
-                    } else {
-                        url
-                    }
-                } else {
-                    url
-                }
+                val processedUrl = url
 
                 val quotaManager = DownloadQuotaManager(applicationContext)
                 val quotaStatus = quotaManager.checkQuota()
@@ -211,17 +201,7 @@ class SharedLinkProcessingService : Service() {
             try {
                 notificationManager.cancelMultipleContentNotification()
 
-                val processedUrl = if (url.contains("/stories/", ignoreCase = true)) {
-                    val storyRegex = Regex("instagram\\.com/stories/([A-Za-z0-9_.-]+)")
-                    val matchResult = storyRegex.find(url)
-                    if (matchResult != null) {
-                        "https://www.instagram.com/stories/${matchResult.groupValues[1]}/"
-                    } else {
-                        url
-                    }
-                } else {
-                    url
-                }
+                val processedUrl = url
 
                 val quotaManager = DownloadQuotaManager(applicationContext)
                 val quotaStatus = quotaManager.checkQuota()

@@ -240,10 +240,6 @@ fun MediaSelectionCarouselScreen(
                         stop = 1.0f,
                         fraction = 1f - pageOffset.coerceIn(0f, 1f)
                     )
-                    val isStory = remember {
-                        extractionViewModel.lastExtractedUrl.contains("/stories/", ignoreCase = true)
-                    }
-
                     MediaSelectionCard(
                         item = item,
                         idx = idx,
@@ -251,7 +247,6 @@ fun MediaSelectionCarouselScreen(
                         chosenUrl = chosenUrl,
                         globalQuality = globalQuality,
                         localPaths = localPaths,
-                        isStory = isStory,
                         scale = scale,
                         alpha = alpha,
                         onToggleSelection = { extractionViewModel.toggleSelection(it) },
@@ -354,7 +349,6 @@ fun MediaSelectionCard(
     chosenUrl: String?,
     globalQuality: MediaQuality,
     localPaths: List<String>,
-    isStory: Boolean,
     scale: Float,
     alpha: Float,
     onToggleSelection: (Int) -> Unit,
@@ -402,7 +396,7 @@ fun MediaSelectionCard(
                 model = imageRequest,
                 contentDescription = "Media Preview",
                 modifier = Modifier.fillMaxSize(),
-                contentScale = if (isStory) ContentScale.Fit else ContentScale.Crop
+                contentScale = ContentScale.Crop
             )
 
             if (item.type == "video") {

@@ -174,7 +174,7 @@ fun SessionsScreen(
                             }
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = "Session is verified. You can download high-quality posts, reels, and stories.",
+                                text = "Session is verified. You can download high-quality posts and reels.",
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
                                 fontSize = 13.sp,
                                 textAlign = TextAlign.Center

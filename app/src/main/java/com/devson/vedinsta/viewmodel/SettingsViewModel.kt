@@ -302,6 +302,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         get() = prefs.getBoolean("overshadow_quota", false)
         set(value) = prefs.edit().putBoolean("overshadow_quota", value).apply()
 
+    var overshadowRateLimit: Boolean
+        get() = prefs.getBoolean("overshadow_rate_limit", false)
+        set(value) = prefs.edit().putBoolean("overshadow_rate_limit", value).apply()
+
+
     suspend fun getImagePathLabel(): String = withContext(kotlinx.coroutines.Dispatchers.IO) {
         imageDirectoryUri?.let { uriString ->
             DocumentFile.fromTreeUri(getApplication(), Uri.parse(uriString))?.name

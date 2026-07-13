@@ -32,6 +32,7 @@ fun SecurityLimitsScreen(
     val context = LocalContext.current
     val scrollState = rememberScrollState()
     var overshadowQuota by remember { mutableStateOf(settingsViewModel.overshadowQuota) }
+    var overshadowRateLimit by remember { mutableStateOf(settingsViewModel.overshadowRateLimit) }
 
     val quotaManager = remember { DownloadQuotaManager(context) }
     var quotaStats by remember { mutableStateOf(quotaManager.getQuotaStats()) }
@@ -71,6 +72,22 @@ fun SecurityLimitsScreen(
                 onCheckedChange = {
                     settingsViewModel.overshadowQuota = it
                     overshadowQuota = it
+                },
+                subtitleColor = MaterialTheme.colorScheme.error
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            SettingsSwitchItem(
+                title = "Bypass Rate Limit Pauses",
+                subtitle = "Bypass Instagram slowdown pauses (Warning: high risk of account bans/blocks)",
+                icon = Icons.Default.Warning,
+                iconContainerColor = MaterialTheme.colorScheme.errorContainer,
+                iconColor = MaterialTheme.colorScheme.error,
+                checked = overshadowRateLimit,
+                onCheckedChange = {
+                    settingsViewModel.overshadowRateLimit = it
+                    overshadowRateLimit = it
                 },
                 subtitleColor = MaterialTheme.colorScheme.error
             )

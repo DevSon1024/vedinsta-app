@@ -5,6 +5,7 @@ import android.util.Log
 import com.devson.vedinsta.model.MediaQuality
 import com.devson.vedinsta.model.ThumbnailQuality
 import com.devson.vedinsta.model.MediaVariant
+import com.devson.vedinsta.model.ExtractedMediaNode
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -19,6 +20,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.random.Random
+
+class InstagramRateLimitException(message: String) : Exception(message)
 
 object InstagramNativeExtractor {
 
@@ -56,9 +59,11 @@ object InstagramNativeExtractor {
         extractionMutex.withLock {
             val context = try { com.devson.vedinsta.VedInstaApplication.instance } catch (e: Exception) { null }
             val securePrefs = context?.let { com.devson.vedinsta.repository.SecurePreferences(it) }
+            val prefs = context?.getSharedPreferences("VedInstaPrefs", Context.MODE_PRIVATE)
+            val overshadowRateLimit = prefs?.getBoolean("overshadow_rate_limit", false) ?: false
 
             // 1. Check Suspension Expiry
-            if (securePrefs?.isSuspended() == true) {
+            if (securePrefs?.isSuspended() == true && !overshadowRateLimit) {
                 val expiry = securePrefs.getSuspensionExpiry()
                 val remainingMin = java.util.concurrent.TimeUnit.MILLISECONDS.toMinutes(expiry - System.currentTimeMillis()) + 1
                 return@withLock JSONObject().apply {
@@ -68,7 +73,7 @@ object InstagramNativeExtractor {
             }
 
             // 2. Check Rolling Window Limit
-            if (!checkRollingLimit()) {
+            if (!checkRollingLimit() && !overshadowRateLimit) {
                 return@withLock JSONObject().apply {
                     put("status", "rate_limit")
                     put("message", "Too many downloads at once! Please slow down the pace and wait a few minutes before trying again to keep your account safe.")
@@ -79,15 +84,11 @@ object InstagramNativeExtractor {
             applyAntiBanJitter()
 
             val result = withTimeoutOrNull(15000L) {
-                if (isStoryUrl(url)) {
-                    val storyRegex = Regex("instagram\\.com/stories/([A-Za-z0-9_.-]+)")
-                    val matchResult = storyRegex.find(url)
-                    val cleanedUrl = if (matchResult != null) {
-                        "https://www.instagram.com/stories/${matchResult.groupValues[1]}/"
-                    } else {
-                        url
-                    }
-                    getStoryMediaUrls(cleanedUrl, cookieFilePath, userAgent, appId, timeoutSeconds, userQualityPreference, thumbnailQualityPreference)
+                if (url.contains("/stories/", ignoreCase = true)) {
+                    JSONObject().apply {
+                        put("status", "error")
+                        put("message", "Stories downloading is not supported currently.")
+                    }.toString()
                 } else {
                     val sc = extractShortcode(url)
                     val cookieFile = File(cookieFilePath)
@@ -319,8 +320,11 @@ object InstagramNativeExtractor {
         
         // 429 Too Many Requests Backoff
         if (responseCode == 429) {
-            securePrefs?.saveSuspensionExpiry(System.currentTimeMillis() + 15 * 60 * 1000L)
-            throw HTTPException(429, "Too many downloads at once! Instagram has asked us to slow down. Vedinsta will pause downloads for 15 minutes to keep your account safe.")
+            val overshadowRateLimit = prefs?.getBoolean("overshadow_rate_limit", false) ?: false
+            if (!overshadowRateLimit) {
+                securePrefs?.saveSuspensionExpiry(System.currentTimeMillis() + 15 * 60 * 1000L)
+            }
+            throw InstagramRateLimitException("Too many downloads at once! Instagram has asked us to slow down. Vedinsta will pause downloads for 15 minutes to keep your account safe.")
         }
 
         // Cache incoming claim header
@@ -609,206 +613,6 @@ object InstagramNativeExtractor {
         }
     }
 
-    private fun isStoryUrl(url: String): Boolean {
-        return url.contains("/stories/", ignoreCase = true)
-    }
-
-    fun parseStoryUrl(url: String): Pair<String, String> {
-        val pattern = Regex("/stories/([A-Za-z0-9_.-]+)(?:/([0-9]+))?")
-        val match = pattern.find(url)
-        if (match != null) {
-            val username = match.groupValues[1]
-            val storyId = match.groupValues.getOrNull(2) ?: ""
-            return Pair(username, storyId)
-        }
-        return Pair("", "")
-    }
-
-    private suspend fun getUserIdFromUsername(
-        username: String,
-        cookies: Map<String, String>,
-        userAgent: String? = null,
-        appId: String? = null,
-        timeoutSeconds: Int = 15
-    ): String {
-        val apiUrl = "https://i.instagram.com/api/v1/users/$username/usernameinfo/"
-        val jsonResponseStr = performGetRequest(apiUrl, cookies, userAgent, appId, timeoutSeconds)
-        val data = JSONObject(jsonResponseStr)
-        val user = data.optJSONObject("user")
-        val pkId = user?.optString("pk_id", "") ?: ""
-        return if (pkId.isNotEmpty()) {
-            pkId
-        } else {
-            user?.optString("pk", "") ?: ""
-        }
-    }
-
-    private suspend fun getStoryMediaUrls(
-        url: String,
-        cookieFilePath: String,
-        userAgent: String? = null,
-        appId: String? = null,
-        timeoutSeconds: Int = 15,
-        userQualityPreference: MediaQuality = MediaQuality.HIGH,
-        thumbnailQualityPreference: ThumbnailQuality = ThumbnailQuality.LOWEST
-    ): String = withContext(Dispatchers.IO) {
-        val (username, storyId) = parseStoryUrl(url)
-        if (username.isEmpty()) {
-            return@withContext JSONObject().apply {
-                put("status", "error")
-                put("message", "Could not parse username from story URL")
-            }.toString()
-        }
-
-        val cookieFile = File(cookieFilePath)
-        if (!cookieFile.exists()) {
-            return@withContext JSONObject().apply {
-                put("status", "error")
-                put("message", "Cookie file not found: $cookieFilePath")
-            }.toString()
-        }
-
-        try {
-            val cookies = parseCookies(cookieFile)
-            if (!cookies.containsKey("sessionid")) {
-                return@withContext JSONObject().apply {
-                    put("status", "login_required")
-                    put("message", "sessionid missing - re-export cookies")
-                }.toString()
-            }
-
-            val userId = getUserIdFromUsername(username, cookies, userAgent, appId, timeoutSeconds)
-            if (userId.isEmpty()) {
-                return@withContext JSONObject().apply {
-                    put("status", "error")
-                    put("message", "Failed to resolve username to user ID")
-                }.toString()
-            }
-
-            val reelApiUrl = "https://i.instagram.com/api/v1/feed/user/$userId/reel_media/"
-            val jsonResponseStr = performGetRequest(reelApiUrl, cookies, userAgent, appId, timeoutSeconds)
-            val data = JSONObject(jsonResponseStr)
-
-            val items = data.optJSONArray("items")
-            if (items == null || items.length() == 0) {
-                return@withContext JSONObject().apply {
-                    put("status", "not_found")
-                    put("message", "No active stories found for this user.")
-                }.toString()
-            }
-
-            var filteredItems = JSONArray()
-            if (storyId.isNotEmpty()) {
-                for (i in 0 until items.length()) {
-                    val item = items.getJSONObject(i)
-                    val pk = item.optString("pk", "")
-                    val id = item.optString("id", "")
-                    if (pk == storyId || id.startsWith(storyId)) {
-                        filteredItems.put(item)
-                        break
-                    }
-                }
-            }
-
-            if (filteredItems.length() == 0) {
-                filteredItems = items
-            }
-
-            val filteredData = JSONObject().apply {
-                put("items", filteredItems)
-            }
-            val mediaList = parseItems(filteredData, userQualityPreference, thumbnailQualityPreference)
-
-            if (mediaList.length() == 0) {
-                return@withContext JSONObject().apply {
-                    put("status", "not_found")
-                    put("message", "Failed to parse story media items")
-                }.toString()
-            }
-
-            val userObj = data.optJSONObject("user")
-            val realUsername = userObj?.optString("username", username) ?: username
-
-            JSONObject().apply {
-                put("status", "success")
-                put("username", realUsername)
-                put("caption", "")
-                put("media", mediaList)
-                put("media_count", mediaList.length())
-                put("shortcode", if (storyId.isNotEmpty() && filteredItems.length() == 1) "story_${realUsername}_$storyId" else "story_${realUsername}_reel")
-            }.toString()
-        } catch (e: HTTPException) {
-            if (e.statusCode == 401 || e.statusCode == 403) {
-                JSONObject().apply {
-                    put("status", "login_required")
-                    put("message", "Session expired or access denied (API returned ${e.statusCode}). Please login again.")
-                }.toString()
-            } else {
-                JSONObject().apply {
-                    put("status", "error")
-                    put("message", "API returned ${e.statusCode} for story request")
-                }.toString()
-            }
-        } catch (e: Exception) {
-            JSONObject().apply {
-                put("status", "error")
-                put("message", "Story extraction failed: ${e.message}")
-            }.toString()
-        }
-    }
-
-    suspend fun extractUserStories(
-        username: String,
-        cookieFilePath: String,
-        userAgent: String? = null,
-        appId: String? = null,
-        timeoutSeconds: Int = 15,
-        userQualityPreference: MediaQuality = MediaQuality.HIGH,
-        thumbnailQualityPreference: ThumbnailQuality = ThumbnailQuality.LOWEST
-    ): List<com.devson.vedinsta.model.MediaItem> = withContext(Dispatchers.IO) {
-        val cookieFile = File(cookieFilePath)
-        if (!cookieFile.exists()) {
-            throw Exception("Cookie file not found: $cookieFilePath")
-        }
-
-        val cookies = parseCookies(cookieFile)
-        if (!cookies.containsKey("sessionid")) {
-            throw Exception("Login required: sessionid missing")
-        }
-
-        val userId = getUserIdFromUsername(username, cookies, userAgent, appId, timeoutSeconds)
-        if (userId.isEmpty()) {
-            throw Exception("Failed to resolve username to user ID")
-        }
-
-        val reelApiUrl = "https://i.instagram.com/api/v1/feed/user/$userId/reel_media/"
-        val jsonResponseStr = performGetRequest(reelApiUrl, cookies, userAgent, appId, timeoutSeconds)
-        val data = JSONObject(jsonResponseStr)
-
-        val items = data.optJSONArray("items") ?: return@withContext emptyList()
-        val mediaItems = mutableListOf<com.devson.vedinsta.model.MediaItem>()
-
-        val filteredData = JSONObject().apply {
-            put("items", items)
-        }
-        val mediaList = parseItems(filteredData, userQualityPreference, thumbnailQualityPreference)
-
-        for (i in 0 until mediaList.length()) {
-            val mediaObj = mediaList.getJSONObject(i)
-            val downloadUrl = mediaObj.getString("url")
-            val mediaType = mediaObj.getString("type")
-            val index = mediaObj.optInt("index", i + 1)
-            mediaItems.add(
-                com.devson.vedinsta.model.MediaItem(
-                    url = downloadUrl,
-                    type = mediaType,
-                    index = index,
-                    isSelected = true
-                )
-            )
-        }
-        mediaItems
-    }
 
     private class HTTPException(val statusCode: Int, message: String) : Exception(message)
 }
