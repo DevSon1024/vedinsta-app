@@ -191,6 +191,7 @@ dependencies {
     // Networking
     implementation(libs.okhttp)
     implementation(libs.gson)
+    implementation(libs.jsoup)
     debugImplementation(libs.okhttp.logging)   // only in debug builds
 
     // Coroutines

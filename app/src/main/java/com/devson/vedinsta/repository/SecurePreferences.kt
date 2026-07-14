@@ -23,6 +23,7 @@ class SecurePreferences(private val context: Context) {
         private const val KEY_X_IG_APP_ID = "x_ig_app_id"
         private const val KEY_SUSPENSION_EXPIRY = "suspension_expiry"
         private const val KEY_X_IG_WWW_CLAIM = "x_ig_www_claim"
+        private const val KEY_SESSION_ACTIVE = "session_active"
         private const val TAG = "SecurePreferences"
     }
 
@@ -140,6 +141,7 @@ class SecurePreferences(private val context: Context) {
             remove(KEY_MIN_JITTER_DELAY)
             remove(KEY_MAX_JITTER_DELAY)
             remove(KEY_X_IG_APP_ID)
+            putBoolean(KEY_SESSION_ACTIVE, true)
             apply()
         }
     }
@@ -166,5 +168,21 @@ class SecurePreferences(private val context: Context) {
 
     fun hasValidSession(): Boolean {
         return !getSessionId().isNullOrEmpty()
+    }
+
+    fun setSessionActive(isActive: Boolean) {
+        sharedPrefs?.edit()?.putBoolean(KEY_SESSION_ACTIVE, isActive)?.apply()
+    }
+
+    fun isSessionActive(): Boolean {
+        return sharedPrefs?.getBoolean(KEY_SESSION_ACTIVE, true) ?: true
+    }
+
+    fun registerListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
+        sharedPrefs?.registerOnSharedPreferenceChangeListener(listener)
+    }
+
+    fun unregisterListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
+        sharedPrefs?.unregisterOnSharedPreferenceChangeListener(listener)
     }
 }

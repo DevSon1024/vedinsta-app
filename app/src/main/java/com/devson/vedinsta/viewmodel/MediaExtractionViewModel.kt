@@ -13,6 +13,9 @@ import com.devson.vedinsta.repository.MediaFetcherRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import com.devson.vedinsta.repository.DownloadQuotaManager
 
@@ -21,6 +24,12 @@ sealed class ExtractionState {
     object Loading : ExtractionState()
     data class Success(val extractedPost: ExtractedPost) : ExtractionState()
     data class Error(val message: String) : ExtractionState()
+}
+
+sealed class AuthDialogState {
+    object Hidden : AuthDialogState()
+    object RequiresLogin : AuthDialogState()
+    object RequiresActivation : AuthDialogState()
 }
 
 class MediaExtractionViewModel(application: Application) : AndroidViewModel(application) {
@@ -44,6 +53,16 @@ class MediaExtractionViewModel(application: Application) : AndroidViewModel(appl
 
     fun dismissRateLimitDialog() {
         _showRateLimitDialog.value = false
+    }
+
+    private val _authDialogState = MutableStateFlow<AuthDialogState>(AuthDialogState.Hidden)
+    val authDialogState: StateFlow<AuthDialogState> = _authDialogState.asStateFlow()
+
+    val showAuthRequiredDialog: StateFlow<Boolean> = _authDialogState.map { it != AuthDialogState.Hidden }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    fun dismissAuthRequiredDialog() {
+        _authDialogState.value = AuthDialogState.Hidden
     }
 
     // Holds set of selected media item indexes
@@ -98,6 +117,15 @@ class MediaExtractionViewModel(application: Application) : AndroidViewModel(appl
                     (item.index ?: 1) to defaultUrl
                 }
                 _chosenQualities.value = defaultQualities
+            } catch (e: com.devson.vedinsta.extractor.AuthRequiredException) {
+                val errorMessage = e.message ?: "Authentication required"
+                _extractionState.value = ExtractionState.Error(errorMessage)
+                val securePrefs = com.devson.vedinsta.repository.SecurePreferences(getApplication())
+                if (securePrefs.hasValidSession()) {
+                    _authDialogState.value = AuthDialogState.RequiresActivation
+                } else {
+                    _authDialogState.value = AuthDialogState.RequiresLogin
+                }
             } catch (e: Exception) {
                 val errorMessage = e.message ?: "Extraction failed"
                 _extractionState.value = ExtractionState.Error(errorMessage)
@@ -119,6 +147,13 @@ class MediaExtractionViewModel(application: Application) : AndroidViewModel(appl
                 }
             }
         }
+    }
+
+    fun activateSessionAndRetry(urlOrShortcode: String, authViewModel: InstagramAuthViewModel) {
+        val securePrefs = com.devson.vedinsta.repository.SecurePreferences(getApplication())
+        securePrefs.setSessionActive(true)
+        dismissAuthRequiredDialog()
+        extractMedia(urlOrShortcode, authViewModel)
     }
 
     fun reset() {

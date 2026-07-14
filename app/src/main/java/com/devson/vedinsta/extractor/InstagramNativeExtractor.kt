@@ -62,8 +62,10 @@ object InstagramNativeExtractor {
             val prefs = context?.getSharedPreferences("VedInstaPrefs", Context.MODE_PRIVATE)
             val overshadowRateLimit = prefs?.getBoolean("overshadow_rate_limit", false) ?: false
 
-            // 1. Check Suspension Expiry
-            if (securePrefs?.isSuspended() == true && !overshadowRateLimit) {
+            val isSessionActive = securePrefs?.isSessionActive() ?: true
+
+            // 1. Check Suspension Expiry (only if session is active)
+            if (isSessionActive && securePrefs?.isSuspended() == true && !overshadowRateLimit) {
                 val expiry = securePrefs.getSuspensionExpiry()
                 val remainingMin = java.util.concurrent.TimeUnit.MILLISECONDS.toMinutes(expiry - System.currentTimeMillis()) + 1
                 return@withLock JSONObject().apply {
@@ -72,16 +74,18 @@ object InstagramNativeExtractor {
                 }.toString()
             }
 
-            // 2. Check Rolling Window Limit
-            if (!checkRollingLimit() && !overshadowRateLimit) {
+            // 2. Check Rolling Window Limit (only if session is active)
+            if (isSessionActive && !checkRollingLimit() && !overshadowRateLimit) {
                 return@withLock JSONObject().apply {
                     put("status", "rate_limit")
                     put("message", "Too many downloads at once! Please slow down the pace and wait a few minutes before trying again to keep your account safe.")
                 }.toString()
             }
 
-            // 3. Enforce Jitter
-            applyAntiBanJitter()
+            // 3. Enforce Jitter (only if session is active)
+            if (isSessionActive) {
+                applyAntiBanJitter()
+            }
 
             val result = withTimeoutOrNull(15000L) {
                 if (url.contains("/stories/", ignoreCase = true)) {
@@ -92,47 +96,107 @@ object InstagramNativeExtractor {
                 } else {
                     val sc = extractShortcode(url)
                     val cookieFile = File(cookieFilePath)
-                    if (!cookieFile.exists()) {
-                        JSONObject().apply {
-                            put("status", "error")
-                            put("message", "Cookie file not found: $cookieFilePath")
-                        }.toString()
+                    val cookies = if (cookieFile.exists()) parseCookies(cookieFile) else emptyMap()
+                    if (!cookies.containsKey("sessionid") || !isSessionActive) {
+                        try {
+                            val extracted = PublicExtractionOrchestrator.extract(url, userQualityPreference, thumbnailQualityPreference)
+                            JSONObject().apply {
+                                put("status", "success")
+                                put("username", extracted.username)
+                                put("caption", extracted.caption)
+                                put("shortcode", extracted.postId)
+
+                                val mediaArray = JSONArray()
+                                extracted.mediaList.forEach { node ->
+                                    val nodeJson = JSONObject().apply {
+                                        put("thumbnail_url", node.thumbnailUrl)
+                                        put("url", node.url)
+                                        put("type", node.type)
+                                        put("width", node.width ?: 1080)
+                                        put("height", node.height ?: 1080)
+                                        put("index", node.index ?: 1)
+
+                                        val downloadUrlsArray = JSONArray()
+                                        node.downloadUrls.forEach { downloadUrlsArray.put(it) }
+                                        put("download_urls", downloadUrlsArray)
+
+                                        val downloadVariantsArray = JSONArray()
+                                        node.downloadVariants.forEach { variant ->
+                                            downloadVariantsArray.put(JSONObject().apply {
+                                                put("url", variant.url)
+                                                put("resolution_label", variant.resolutionLabel)
+                                            })
+                                        }
+                                        put("download_variants", downloadVariantsArray)
+
+                                        node.qualities?.let { qualitiesList ->
+                                            val qualitiesArray = JSONArray()
+                                            qualitiesList.forEach { q ->
+                                                qualitiesArray.put(JSONObject().apply {
+                                                    put("url", q.url)
+                                                    put("width", q.width ?: 1080)
+                                                    put("height", q.height ?: 1080)
+                                                })
+                                            }
+                                            put("qualities", qualitiesArray)
+                                        }
+
+                                        node.thumbnailQualities?.let { tQualitiesList ->
+                                            val tQualitiesArray = JSONArray()
+                                            tQualitiesList.forEach { q ->
+                                                tQualitiesArray.put(JSONObject().apply {
+                                                    put("url", q.url)
+                                                    put("width", q.width ?: 1080)
+                                                    put("height", q.height ?: 1080)
+                                                })
+                                            }
+                                            put("thumbnail_qualities", tQualitiesArray)
+                                        }
+                                    }
+                                    mediaArray.put(nodeJson)
+                                }
+                                put("media", mediaArray)
+                                put("media_count", mediaArray.length())
+                            }.toString()
+                        } catch (e: AuthRequiredException) {
+                            JSONObject().apply {
+                                put("status", "login_required")
+                                put("message", e.message ?: "Authentication required")
+                            }.toString()
+                        } catch (e: Exception) {
+                            JSONObject().apply {
+                                put("status", "error")
+                                put("message", "Unauthenticated extraction failed: ${e.message}")
+                            }.toString()
+                        }
                     } else {
                         try {
-                            val cookies = parseCookies(cookieFile)
-                            if (!cookies.containsKey("sessionid")) {
+                            val mediaId = shortcodeToId(sc)
+                            val apiUrl = "https://i.instagram.com/api/v1/media/$mediaId/info/"
+                            val jsonResponseStr = performGetRequest(apiUrl, cookies, userAgent, appId, timeoutSeconds)
+                            val data = JSONObject(jsonResponseStr)
+
+                            val items = data.optJSONArray("items")
+                            if (items == null || items.length() == 0) {
                                 JSONObject().apply {
-                                    put("status", "login_required")
-                                    put("message", "sessionid missing - re-export cookies")
+                                    put("status", "not_found")
+                                    put("message", "Post not found or deleted.")
                                 }.toString()
                             } else {
-                                val mediaId = shortcodeToId(sc)
-                                val apiUrl = "https://i.instagram.com/api/v1/media/$mediaId/info/"
-                                val jsonResponseStr = performGetRequest(apiUrl, cookies, userAgent, appId, timeoutSeconds)
-                                val data = JSONObject(jsonResponseStr)
+                                val item = items.getJSONObject(0)
+                                val username = item.optJSONObject("user")?.optString("username", "unknown") ?: "unknown"
+                                val caption = item.optJSONObject("caption")?.optString("text", "") ?: ""
 
-                                val items = data.optJSONArray("items")
-                                if (items == null || items.length() == 0) {
-                                    JSONObject().apply {
-                                        put("status", "not_found")
-                                        put("message", "Post not found or deleted.")
-                                    }.toString()
-                                } else {
-                                    val item = items.getJSONObject(0)
-                                    val username = item.optJSONObject("user")?.optString("username", "unknown") ?: "unknown"
-                                    val caption = item.optJSONObject("caption")?.optString("text", "") ?: ""
+                                val mediaList = parseItems(data, userQualityPreference, thumbnailQualityPreference)
 
-                                    val mediaList = parseItems(data, userQualityPreference, thumbnailQualityPreference)
-
-                                    JSONObject().apply {
-                                        put("status", "success")
-                                        put("username", username)
-                                        put("caption", caption)
-                                        put("media", mediaList)
-                                        put("media_count", mediaList.length())
-                                        put("shortcode", sc)
-                                    }.toString()
-                                }
+                                JSONObject().apply {
+                                    put("status", "success")
+                                    put("username", username)
+                                    put("caption", caption)
+                                    put("media", mediaList)
+                                    put("media_count", mediaList.length())
+                                    put("shortcode", sc)
+                                }.toString()
                             }
                         } catch (e: HTTPException) {
                             if (e.statusCode == 401 || e.statusCode == 403) {

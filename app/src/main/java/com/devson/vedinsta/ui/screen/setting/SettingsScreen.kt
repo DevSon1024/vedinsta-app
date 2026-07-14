@@ -28,6 +28,7 @@ import com.devson.vedinsta.repository.DownloadQuotaManager
 import com.devson.vedinsta.viewmodel.SettingsViewModel
 import com.devson.vedinsta.model.MediaQuality
 import com.devson.vedinsta.model.ThumbnailQuality
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -50,6 +51,12 @@ fun SettingsScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
+
+    val isLoggedIn by settingsViewModel.isLoggedIn.collectAsStateWithLifecycle()
+
+    LaunchedEffect(Unit) {
+        settingsViewModel.refreshLoginState()
+    }
 
     var linkActionLabel by remember { mutableStateOf(settingsViewModel.getDefaultActionLabel()) }
     var showLinkActionDialog by remember { mutableStateOf(false) }
@@ -134,12 +141,18 @@ fun SettingsScreen(
 
         // Advanced Network settings
         SettingsCategoryHeader("Network Settings")
+        val networkSubtitle = if (isLoggedIn) {
+            "Custom user-agent, app ID, and connection timeouts"
+        } else {
+            "Sign in to configure account safety limits."
+        }
         SettingsClickableItem(
             title = "Advanced Network Settings",
-            subtitle = "Custom user-agent, app ID, and connection timeouts",
+            subtitle = networkSubtitle,
             icon = Icons.Default.Dns,
             iconContainerColor = MaterialTheme.colorScheme.secondaryContainer,
             iconColor = MaterialTheme.colorScheme.secondary,
+            enabled = isLoggedIn,
             onClick = onNavigateToAdvancedSettings
         )
 
@@ -164,12 +177,18 @@ fun SettingsScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         SettingsCategoryHeader("Security & Limits")
+        val securitySubtitle = if (isLoggedIn) {
+            "Manage download limits & quota statistics"
+        } else {
+            "Sign in to configure account safety limits."
+        }
         SettingsClickableItem(
             title = "Security & Limits",
-            subtitle = "Manage download limits & quota statistics",
+            subtitle = securitySubtitle,
             icon = Icons.Default.Security,
             iconContainerColor = MaterialTheme.colorScheme.errorContainer,
             iconColor = MaterialTheme.colorScheme.error,
+            enabled = isLoggedIn,
             onClick = onNavigateToSecurityLimits
         )
 
@@ -418,15 +437,25 @@ fun SettingsClickableItem(
     icon: ImageVector,
     iconContainerColor: Color,
     iconColor: Color,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
+    val alpha = if (enabled) 1f else 0.5f
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
-            .clickable { onClick() },
+            .let { cardModifier ->
+                if (enabled) {
+                    cardModifier.clickable { onClick() }
+                } else {
+                    cardModifier
+                }
+            },
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f))
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f * alpha)
+        )
     ) {
         Row(
             modifier = Modifier
@@ -437,13 +466,16 @@ fun SettingsClickableItem(
             Box(
                 modifier = Modifier
                     .size(38.dp)
-                    .background(iconContainerColor, RoundedCornerShape(10.dp)),
+                    .background(
+                        iconContainerColor.copy(alpha = iconContainerColor.alpha * alpha),
+                        RoundedCornerShape(10.dp)
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = iconColor,
+                    tint = iconColor.copy(alpha = iconColor.alpha * alpha),
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -451,14 +483,14 @@ fun SettingsClickableItem(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha),
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = subtitle,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f * alpha),
                     fontSize = 12.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -467,7 +499,7 @@ fun SettingsClickableItem(
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = "Arrow Right",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f * alpha),
                 modifier = Modifier.size(20.dp)
             )
         }

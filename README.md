@@ -53,3 +53,11 @@ VedInsta prioritizes user privacy and data security through industry-standard pr
 4. **Interactive UI**: The user is either prompted with a carousel selector (for multi-media posts) or the download is automatically queued.
 5. **Foreground Download**: The files download through a foreground service, updating progress in real-time in a fraction format ("X/Y").
 6. **MediaStore Update**: Once complete, the database registers the post, indexes it, and triggers a completion notification with retry-on-failure actions.
+
+---
+
+## Acknowledgment & Credit
+
+Special recognition and credit go to the open-source **[Instaloader](https://github.com/instaloader/instaloader)** project and its community of contributors.
+
+Their reverse-engineering efforts and research into Instagram's internal GraphQL endpoints, headers, and parameter mapping strategies (particularly their implementation of `PolarisPostRootQuery` in version updates) provided the foundation for migrating our native Kotlin implementation. Leveraging their patterns has enabled us to achieve robust, unauthenticated public media downloads with full quality selection in VedInsta.

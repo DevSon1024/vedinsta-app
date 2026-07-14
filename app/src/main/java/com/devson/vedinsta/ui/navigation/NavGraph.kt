@@ -83,6 +83,8 @@ fun MainAppScreen(
 
     val extractionState by extractionViewModel.extractionState.collectAsStateWithLifecycle()
     val showRateLimitDialog by extractionViewModel.showRateLimitDialog.collectAsStateWithLifecycle()
+    val showAuthRequiredDialog by extractionViewModel.showAuthRequiredDialog.collectAsStateWithLifecycle()
+    val authDialogState by extractionViewModel.authDialogState.collectAsStateWithLifecycle()
     val isVpnActive by mainViewModel.isVpnActive.collectAsStateWithLifecycle()
     val isNetworkChanged by mainViewModel.isNetworkChanged.collectAsStateWithLifecycle()
     val authState by authViewModel.authState.collectAsStateWithLifecycle()
@@ -122,6 +124,10 @@ fun MainAppScreen(
     }
 
     LaunchedEffect(intent) {
+        if (intent?.getBooleanExtra("OPEN_LOGIN", false) == true) {
+            navController.navigate(Screen.Login.route)
+            intent?.removeExtra("OPEN_LOGIN")
+        }
         val url = intent?.getStringExtra("POST_URL") ?: intent?.getStringExtra("instagram_url")
         if (!url.isNullOrEmpty()) {
             com.devson.vedinsta.notification.VedInstaNotificationManager.getInstance(context).cancelMultipleContentNotification()
@@ -146,17 +152,6 @@ fun MainAppScreen(
             is ExtractionState.Error -> {
                 val msg = state.message
                 Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-                
-                if (msg.contains("sessionid missing", ignoreCase = true) ||
-                    msg.contains("re-export cookies", ignoreCase = true) ||
-                    msg.contains("cookie file not found", ignoreCase = true) ||
-                    msg.contains("Login required", ignoreCase = true) ||
-                    msg.contains("API returned 401", ignoreCase = true) ||
-                    msg.contains("API returned 403", ignoreCase = true) ||
-                    msg.contains("Session expired", ignoreCase = true)) {
-                    navController.navigate(Screen.Login.route)
-                }
-                
                 extractionViewModel.reset()
             }
             else -> {}
@@ -420,6 +415,7 @@ fun MainAppScreen(
                         mainViewModel = mainViewModel,
                         authViewModel = authViewModel,
                         whatsAppViewModel = whatsAppViewModel,
+                        settingsViewModel = settingsViewModel,
                         gridColumnCount = gridColumnCount,
                         onGridColumnsChanged = { cols ->
                             gridColumnCount = cols
@@ -625,6 +621,72 @@ fun MainAppScreen(
                         }
                     }
                 )
+            }
+
+            val currentAuthDialogState = authDialogState
+            when (currentAuthDialogState) {
+                is com.devson.vedinsta.viewmodel.AuthDialogState.Hidden -> {}
+                is com.devson.vedinsta.viewmodel.AuthDialogState.RequiresLogin -> {
+                    AlertDialog(
+                        onDismissRequest = { extractionViewModel.dismissAuthRequiredDialog() },
+                        title = {
+                            Text(
+                                text = "Account Required",
+                                fontWeight = FontWeight.Bold
+                            )
+                        },
+                        text = {
+                            Text(text = "This post is private or age-restricted. Please sign in to your Instagram account to download this specific content.")
+                        },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    extractionViewModel.dismissAuthRequiredDialog()
+                                    navController.navigate(Screen.Login.route)
+                                }
+                            ) {
+                                Text("Sign In")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(
+                                onClick = { extractionViewModel.dismissAuthRequiredDialog() }
+                            ) {
+                                Text("Cancel")
+                            }
+                        }
+                    )
+                }
+                is com.devson.vedinsta.viewmodel.AuthDialogState.RequiresActivation -> {
+                    AlertDialog(
+                        onDismissRequest = { extractionViewModel.dismissAuthRequiredDialog() },
+                        title = {
+                            Text(
+                                text = "Private Content Detected",
+                                fontWeight = FontWeight.Bold
+                            )
+                        },
+                        text = {
+                            Text(text = "This post is private. You have a paused session. Would you like to activate it to download this post?")
+                        },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    extractionViewModel.activateSessionAndRetry(extractionViewModel.lastExtractedUrl, authViewModel)
+                                }
+                            ) {
+                                Text("Activate & Retry")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(
+                                onClick = { extractionViewModel.dismissAuthRequiredDialog() }
+                            ) {
+                                Text("Cancel")
+                            }
+                        }
+                    )
+                }
             }
 
             var showVpnWarningDialog by remember { mutableStateOf(false) }

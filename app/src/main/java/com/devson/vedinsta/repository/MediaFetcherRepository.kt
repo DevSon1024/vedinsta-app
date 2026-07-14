@@ -57,6 +57,9 @@ class MediaFetcherRepository(private val context: Context) {
 
             if (response.status != "success") {
                 val message = response.message ?: "Unknown error"
+                if (response.status == "login_required") {
+                    throw com.devson.vedinsta.extractor.AuthRequiredException(message)
+                }
                 throw Exception(message)
             }
 

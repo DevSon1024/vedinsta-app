@@ -47,6 +47,10 @@ class DownloadQuotaManager(private val context: Context) {
 
     @Synchronized
     fun recordDownload() {
+        val securePrefs = SecurePreferences(context)
+        if (!securePrefs.isSessionActive() || !isUserLoggedIn()) {
+            return
+        }
         val now = System.currentTimeMillis()
         val timestamps = getTimestamps().toMutableList()
         timestamps.add(now)
@@ -109,7 +113,38 @@ class DownloadQuotaManager(private val context: Context) {
         return calendar.timeInMillis
     }
 
+    private fun isUserLoggedIn(): Boolean {
+        return try {
+            val cookieFile = java.io.File(context.filesDir, "instagram_cookies.txt")
+            if (!cookieFile.exists()) return false
+            var hasSessionId = false
+            cookieFile.forEachLine { line ->
+                val trimmed = line.trim()
+                if (trimmed.isNotEmpty() && !trimmed.startsWith("#")) {
+                    val parts = trimmed.split("\t")
+                    if (parts.size >= 7) {
+                        val domain = parts[0].trimStart('.')
+                        if (domain.contains("instagram.com")) {
+                            val name = parts[5]
+                            if (name == "sessionid") {
+                                hasSessionId = true
+                            }
+                        }
+                    }
+                }
+            }
+            hasSessionId
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     fun checkQuota(): QuotaStatus {
+        val securePrefs = SecurePreferences(context)
+        if (!securePrefs.isSessionActive() || !isUserLoggedIn()) {
+            return QuotaStatus.Allowed
+        }
+
         if (isOvershadowEnabled) {
             return QuotaStatus.Allowed
         }

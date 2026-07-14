@@ -24,6 +24,8 @@ class SharedLinkProcessingService : Service() {
         private const val TAG = "SharedLinkService"
         const val EXTRA_INSTAGRAM_URL = "instagram_url"
         const val ACTION_DOWNLOAD_ALL = "com.devson.vedinsta.ACTION_DOWNLOAD_ALL"
+        const val ACTION_ACTIVATE_SESSION_AND_RETRY = "com.devson.vedinsta.ACTION_ACTIVATE_SESSION_AND_RETRY"
+        const val EXTRA_NOTIFICATION_ID = "notification_id"
     }
 
     override fun onCreate() {
@@ -38,6 +40,20 @@ class SharedLinkProcessingService : Service() {
                 ACTION_DOWNLOAD_ALL -> {
                     val url = it.getStringExtra(EXTRA_INSTAGRAM_URL)
                     handleDownloadAll(url, startId)
+                }
+                ACTION_ACTIVATE_SESSION_AND_RETRY -> {
+                    val url = it.getStringExtra(EXTRA_INSTAGRAM_URL)
+                    val notificationId = it.getIntExtra(EXTRA_NOTIFICATION_ID, -1)
+                    if (notificationId != -1) {
+                        notificationManager.cancelDownloadNotification(notificationId)
+                    }
+                    if (!url.isNullOrEmpty()) {
+                        val securePrefs = com.devson.vedinsta.repository.SecurePreferences(applicationContext)
+                        securePrefs.setSessionActive(true)
+                        processSharedLink(url, startId)
+                    } else {
+                        stopSelfResult(startId)
+                    }
                 }
                 else -> {
                     val url = it.getStringExtra(EXTRA_INSTAGRAM_URL)
@@ -80,20 +96,6 @@ class SharedLinkProcessingService : Service() {
                 }
 
                 val postDataJson = fetchPostData(processedUrl)
-                if (postDataJson == null) {
-                    notificationManager.showLinkError("Failed to fetch content. Private or removed.")
-                    try {
-                        notificationManager.addCustomNotification(
-                            title = "Link Processing Failed",
-                            message = "Failed to fetch content for shared link. Private or removed.",
-                            type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_FAILED,
-                            priority = com.devson.vedinsta.database.NotificationPriority.HIGH
-                        )
-                    } catch (ex: Exception) {
-                        Log.e(TAG, "Error adding fail notification to DB", ex)
-                    }
-                    return@launch
-                }
 
                 val postData = JSONObject(postDataJson)
                 val mediaArray = postData.optJSONArray("media")
@@ -123,34 +125,7 @@ class SharedLinkProcessingService : Service() {
                         itemId,
                         caption
                     )
-
-                    /*
-                    try {
-                        notificationManager.addCustomNotification(
-                            title = "Shared Link Auto-Download",
-                            message = "Starting download of single post from @$username",
-                            type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_STARTED,
-                            priority = com.devson.vedinsta.database.NotificationPriority.LOW
-                        )
-                    } catch (ex: Exception) {
-                        Log.e(TAG, "Error adding start notification to DB", ex)
-                    }
-                    */
                 } else if (mediaCount > 1) {
-                    // Removed/Commented out to prevent cluttering the NotificationScreen
-                    /*
-                    try {
-                        notificationManager.addCustomNotification(
-                            title = "Shared Link Processed",
-                            message = "Found $mediaCount files in shared link from @$username",
-                            type = com.devson.vedinsta.database.NotificationType.SYSTEM_INFO,
-                            priority = com.devson.vedinsta.database.NotificationPriority.LOW
-                        )
-                    } catch (ex: Exception) {
-                        Log.e(TAG, "Error adding process notification to DB", ex)
-                    }
-                    */
-
                     // MULTIPLE CONTENT: Check Settings
                     when (settingsViewModel.defaultLinkAction) {
                         SettingsViewModel.ACTION_DOWNLOAD_ALL -> {
@@ -179,9 +154,33 @@ class SharedLinkProcessingService : Service() {
                     }
                 }
 
+            } catch (e: com.devson.vedinsta.extractor.AuthRequiredException) {
+                Log.e(TAG, "AuthRequiredException processing link", e)
+                val securePrefs = com.devson.vedinsta.repository.SecurePreferences(applicationContext)
+                notificationManager.showPrivatePostNotification(url, securePrefs.hasValidSession())
+                try {
+                    notificationManager.addCustomNotification(
+                        title = "Private Post Detected",
+                        message = "Private or age-restricted content. Authentication required.",
+                        type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_FAILED,
+                        priority = com.devson.vedinsta.database.NotificationPriority.HIGH
+                    )
+                } catch (ex: Exception) {
+                    Log.e(TAG, "Error adding auth fail notification to DB", ex)
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing link", e)
                 notificationManager.showLinkError("Error: ${e.message}")
+                try {
+                    notificationManager.addCustomNotification(
+                        title = "Link Processing Failed",
+                        message = "Failed to fetch content for shared link: ${e.message}",
+                        type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_FAILED,
+                        priority = com.devson.vedinsta.database.NotificationPriority.HIGH
+                    )
+                } catch (ex: Exception) {
+                    Log.e(TAG, "Error adding fail notification to DB", ex)
+                }
             } finally {
                 // Only stop if we are not delegating to download all via setting
                 if (shouldStopSelf) {
@@ -213,11 +212,6 @@ class SharedLinkProcessingService : Service() {
 
                 val postDataJson = fetchPostData(processedUrl)
 
-                if (postDataJson == null) {
-                    notificationManager.showLinkError("Failed to fetch post data")
-                    return@launch
-                }
-
                 val postData = JSONObject(postDataJson)
                 val mediaArray = postData.optJSONArray("media")
                 val username = postData.optString("username", "unknown")
@@ -246,20 +240,20 @@ class SharedLinkProcessingService : Service() {
                     caption
                 )
 
-                // Removed/Commented out to prevent cluttering the NotificationScreen
-                /*
+            } catch (e: com.devson.vedinsta.extractor.AuthRequiredException) {
+                Log.e(TAG, "AuthRequiredException in download all", e)
+                val securePrefs = com.devson.vedinsta.repository.SecurePreferences(applicationContext)
+                notificationManager.showPrivatePostNotification(url, securePrefs.hasValidSession())
                 try {
                     notificationManager.addCustomNotification(
-                        title = "Shared Link Batch Download",
-                        message = "Starting batch download of ${itemsToDownload.size} files from @$username",
-                        type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_STARTED,
-                        priority = com.devson.vedinsta.database.NotificationPriority.NORMAL
+                        title = "Private Post Detected",
+                        message = "Private or age-restricted content. Authentication required.",
+                        type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_FAILED,
+                        priority = com.devson.vedinsta.database.NotificationPriority.HIGH
                     )
                 } catch (ex: Exception) {
-                    Log.e(TAG, "Error adding batch start notification to DB", ex)
+                    Log.e(TAG, "Error adding auth fail notification to DB", ex)
                 }
-                */
-
             } catch (e: Exception) {
                 Log.e(TAG, "Error in download all", e)
                 notificationManager.showLinkError("Batch download failed")
@@ -279,29 +273,29 @@ class SharedLinkProcessingService : Service() {
         }
     }
 
-    private suspend fun fetchPostData(url: String): String? {
+    private suspend fun fetchPostData(url: String): String {
         return withContext(Dispatchers.IO) {
-            try {
-                val cookieFile = File(filesDir, "instagram_cookies.txt").absolutePath
-                val resultString = InstagramNativeExtractor.getMediaUrls(
-                    url = url,
-                    cookieFilePath = cookieFile,
-                    userAgent = settingsViewModel.customUserAgent,
-                    appId = settingsViewModel.customIgAppId,
-                    timeoutSeconds = settingsViewModel.networkTimeoutSeconds
-                )
+            val cookieFile = File(filesDir, "instagram_cookies.txt").absolutePath
+            val resultString = InstagramNativeExtractor.getMediaUrls(
+                url = url,
+                cookieFilePath = cookieFile,
+                userAgent = settingsViewModel.customUserAgent,
+                appId = settingsViewModel.customIgAppId,
+                timeoutSeconds = settingsViewModel.networkTimeoutSeconds
+            )
 
-                if (resultString.isNotEmpty()) {
-                    val jsonResult = JSONObject(resultString)
-                    if (jsonResult.optString("status") == "success") {
-                        return@withContext resultString
-                    }
+            if (resultString.isNotEmpty()) {
+                val jsonResult = JSONObject(resultString)
+                val status = jsonResult.optString("status")
+                if (status == "success") {
+                    return@withContext resultString
+                } else if (status == "login_required") {
+                    throw com.devson.vedinsta.extractor.AuthRequiredException(jsonResult.optString("message", "Login required"))
+                } else {
+                    throw Exception(jsonResult.optString("message", "Unknown error"))
                 }
-                null
-            } catch (e: Exception) {
-                Log.e(TAG, "Error fetching post data", e)
-                null
             }
+            throw Exception("Empty response from extractor")
         }
     }
 
