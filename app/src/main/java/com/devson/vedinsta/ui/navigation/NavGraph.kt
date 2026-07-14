@@ -83,6 +83,7 @@ fun MainAppScreen(
 
     val extractionState by extractionViewModel.extractionState.collectAsStateWithLifecycle()
     val showRateLimitDialog by extractionViewModel.showRateLimitDialog.collectAsStateWithLifecycle()
+    val showAuthRequiredDialog by extractionViewModel.showAuthRequiredDialog.collectAsStateWithLifecycle()
     val isVpnActive by mainViewModel.isVpnActive.collectAsStateWithLifecycle()
     val isNetworkChanged by mainViewModel.isNetworkChanged.collectAsStateWithLifecycle()
     val authState by authViewModel.authState.collectAsStateWithLifecycle()
@@ -146,17 +147,6 @@ fun MainAppScreen(
             is ExtractionState.Error -> {
                 val msg = state.message
                 Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-                
-                if (msg.contains("sessionid missing", ignoreCase = true) ||
-                    msg.contains("re-export cookies", ignoreCase = true) ||
-                    msg.contains("cookie file not found", ignoreCase = true) ||
-                    msg.contains("Login required", ignoreCase = true) ||
-                    msg.contains("API returned 401", ignoreCase = true) ||
-                    msg.contains("API returned 403", ignoreCase = true) ||
-                    msg.contains("Session expired", ignoreCase = true)) {
-                    navController.navigate(Screen.Login.route)
-                }
-                
                 extractionViewModel.reset()
             }
             else -> {}
@@ -622,6 +612,38 @@ fun MainAppScreen(
                     confirmButton = {
                         TextButton(onClick = { extractionViewModel.dismissRateLimitDialog() }) {
                             Text("OK")
+                        }
+                    }
+                )
+            }
+
+            if (showAuthRequiredDialog) {
+                AlertDialog(
+                    onDismissRequest = { extractionViewModel.dismissAuthRequiredDialog() },
+                    title = {
+                        Text(
+                            text = "Account Required",
+                            fontWeight = FontWeight.Bold
+                        )
+                    },
+                    text = {
+                        Text(text = "This post is private or age-restricted. Please sign in to your Instagram account to download this specific content.")
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                extractionViewModel.dismissAuthRequiredDialog()
+                                navController.navigate(Screen.Login.route)
+                            }
+                        ) {
+                            Text("Sign In")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = { extractionViewModel.dismissAuthRequiredDialog() }
+                        ) {
+                            Text("Cancel")
                         }
                     }
                 )

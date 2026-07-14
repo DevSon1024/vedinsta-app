@@ -46,6 +46,13 @@ class MediaExtractionViewModel(application: Application) : AndroidViewModel(appl
         _showRateLimitDialog.value = false
     }
 
+    private val _showAuthRequiredDialog = MutableStateFlow(false)
+    val showAuthRequiredDialog: StateFlow<Boolean> = _showAuthRequiredDialog.asStateFlow()
+
+    fun dismissAuthRequiredDialog() {
+        _showAuthRequiredDialog.value = false
+    }
+
     // Holds set of selected media item indexes
     private val _selectedIndexes = MutableStateFlow<Set<Int>>(emptySet())
     val selectedIndexes: StateFlow<Set<Int>> = _selectedIndexes.asStateFlow()
@@ -98,6 +105,10 @@ class MediaExtractionViewModel(application: Application) : AndroidViewModel(appl
                     (item.index ?: 1) to defaultUrl
                 }
                 _chosenQualities.value = defaultQualities
+            } catch (e: com.devson.vedinsta.extractor.AuthRequiredException) {
+                val errorMessage = e.message ?: "Authentication required"
+                _extractionState.value = ExtractionState.Error(errorMessage)
+                _showAuthRequiredDialog.value = true
             } catch (e: Exception) {
                 val errorMessage = e.message ?: "Extraction failed"
                 _extractionState.value = ExtractionState.Error(errorMessage)
