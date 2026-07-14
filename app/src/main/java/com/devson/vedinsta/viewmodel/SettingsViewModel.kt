@@ -428,4 +428,13 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         prefs.edit().putFloat("blur_radius", radius).apply()
         _blurRadius.value = radius
     }
+
+    private val securePrefs = com.devson.vedinsta.repository.SecurePreferences(getApplication())
+
+    private val _isLoggedIn = MutableStateFlow(securePrefs.hasValidSession())
+    val isLoggedIn: StateFlow<Boolean> = _isLoggedIn.asStateFlow()
+
+    fun refreshLoginState() {
+        _isLoggedIn.value = securePrefs.hasValidSession()
+    }
 }
