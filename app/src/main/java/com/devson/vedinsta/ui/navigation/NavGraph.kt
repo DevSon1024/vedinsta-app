@@ -410,6 +410,7 @@ fun MainAppScreen(
                         mainViewModel = mainViewModel,
                         authViewModel = authViewModel,
                         whatsAppViewModel = whatsAppViewModel,
+                        settingsViewModel = settingsViewModel,
                         gridColumnCount = gridColumnCount,
                         onGridColumnsChanged = { cols ->
                             gridColumnCount = cols

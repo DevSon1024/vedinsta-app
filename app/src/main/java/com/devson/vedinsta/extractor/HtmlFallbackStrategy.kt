@@ -5,6 +5,7 @@ import com.devson.vedinsta.model.ExtractedPost
 import com.devson.vedinsta.model.MediaQuality
 import com.devson.vedinsta.model.MediaVariant
 import com.devson.vedinsta.model.QualityOption
+import com.devson.vedinsta.model.ThumbnailQuality
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
@@ -19,7 +20,11 @@ class HtmlFallbackStrategy : PublicExtractionStrategy {
 
     private val client = UnauthenticatedNetworkModule.okHttpClient
 
-    override suspend fun extractMedia(url: String, qualityPref: MediaQuality): ExtractedPost = withContext(Dispatchers.IO) {
+    override suspend fun extractMedia(
+        url: String,
+        qualityPref: MediaQuality,
+        thumbPref: ThumbnailQuality
+    ): ExtractedPost = withContext(Dispatchers.IO) {
         val shortcode = extractShortcode(url)
         val request = Request.Builder()
             .url(url)

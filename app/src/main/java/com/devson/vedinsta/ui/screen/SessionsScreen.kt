@@ -31,10 +31,12 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.devson.vedinsta.viewmodel.InstagramAuthState
 import com.devson.vedinsta.viewmodel.InstagramAuthViewModel
+import com.devson.vedinsta.viewmodel.SettingsViewModel
 
 @Composable
 fun SessionsScreen(
     authViewModel: InstagramAuthViewModel,
+    settingsViewModel: SettingsViewModel,
     onNavigateToLogin: () -> Unit,
     contentPadding: PaddingValues = PaddingValues(0.dp)
 ) {
@@ -179,6 +181,40 @@ fun SessionsScreen(
                                 fontSize = 13.sp,
                                 textAlign = TextAlign.Center
                             )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            val isSessionActiveState by settingsViewModel.isSessionActive.collectAsStateWithLifecycle()
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Use Session for Downloads",
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Switch(
+                                    checked = isSessionActiveState,
+                                    onCheckedChange = { isActive ->
+                                        settingsViewModel.toggleSessionActive(isActive)
+                                    }
+                                )
+                            }
+                            
+                            if (!isSessionActiveState) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Session paused. App will download anonymously and rate limits are disabled.",
+                                    color = MaterialTheme.colorScheme.error,
+                                    fontSize = 12.sp,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
                         }
                         is InstagramAuthState.SessionExpired -> {
                             Text(

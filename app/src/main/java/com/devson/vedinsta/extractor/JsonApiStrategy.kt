@@ -5,6 +5,7 @@ import com.devson.vedinsta.model.ExtractedPost
 import com.devson.vedinsta.model.MediaQuality
 import com.devson.vedinsta.model.MediaVariant
 import com.devson.vedinsta.model.QualityOption
+import com.devson.vedinsta.model.ThumbnailQuality
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -21,7 +22,11 @@ class JsonApiStrategy : PublicExtractionStrategy {
     private val gson = Gson()
     private val client = UnauthenticatedNetworkModule.okHttpClient
 
-    override suspend fun extractMedia(url: String, qualityPref: MediaQuality): ExtractedPost = withContext(Dispatchers.IO) {
+    override suspend fun extractMedia(
+        url: String,
+        qualityPref: MediaQuality,
+        thumbPref: ThumbnailQuality
+    ): ExtractedPost = withContext(Dispatchers.IO) {
         val shortcode = extractShortcode(url)
         if (shortcode.isEmpty()) {
             throw IllegalArgumentException("Invalid Instagram URL, shortcode could not be extracted.")
@@ -29,14 +34,14 @@ class JsonApiStrategy : PublicExtractionStrategy {
 
         // Waterfall 1: Try GraphQL query (POST)
         try {
-            return@withContext queryGraphQL(shortcode, qualityPref)
+            return@withContext queryGraphQL(shortcode, qualityPref, thumbPref)
         } catch (e: Exception) {
             // Log or print warning and try the legacy fallback
             System.err.println("GraphQL query failed for $shortcode: ${e.message}. Trying legacy endpoint fallback...")
         }
 
         // Waterfall 2: Try legacy endpoint (GET)
-        return@withContext queryLegacyEndpoint(shortcode, qualityPref)
+        return@withContext queryLegacyEndpoint(shortcode, qualityPref, thumbPref)
     }
 
     private fun ensureCookies() {
@@ -58,7 +63,7 @@ class JsonApiStrategy : PublicExtractionStrategy {
         }
     }
 
-    private fun queryGraphQL(shortcode: String, qualityPref: MediaQuality): ExtractedPost {
+    private fun queryGraphQL(shortcode: String, qualityPref: MediaQuality, thumbPref: ThumbnailQuality): ExtractedPost {
         ensureCookies()
 
         val variables = mapOf(
@@ -99,10 +104,10 @@ class JsonApiStrategy : PublicExtractionStrategy {
             val carouselItems = item.carouselMedia
             if (!carouselItems.isNullOrEmpty()) {
                 carouselItems.forEachIndexed { idx, childItem ->
-                    mediaList.add(mapLegacyCarouselMedia(childItem, qualityPref, idx + 1))
+                    mediaList.add(mapLegacyCarouselMedia(childItem, qualityPref, thumbPref, idx + 1))
                 }
             } else {
-                mediaList.add(mapLegacyMedia(item, qualityPref, 1))
+                mediaList.add(mapLegacyMedia(item, qualityPref, thumbPref, 1))
             }
 
             return ExtractedPost(
@@ -114,7 +119,7 @@ class JsonApiStrategy : PublicExtractionStrategy {
         }
     }
 
-    private fun queryLegacyEndpoint(shortcode: String, qualityPref: MediaQuality): ExtractedPost {
+    private fun queryLegacyEndpoint(shortcode: String, qualityPref: MediaQuality, thumbPref: ThumbnailQuality): ExtractedPost {
         val request = Request.Builder()
             .url("https://www.instagram.com/p/$shortcode/?__a=1&__d=dis")
             .get()
@@ -141,10 +146,10 @@ class JsonApiStrategy : PublicExtractionStrategy {
             val carouselItems = item.carouselMedia
             if (!carouselItems.isNullOrEmpty()) {
                 carouselItems.forEachIndexed { idx, childItem ->
-                    mediaList.add(mapLegacyCarouselMedia(childItem, qualityPref, idx + 1))
+                    mediaList.add(mapLegacyCarouselMedia(childItem, qualityPref, thumbPref, idx + 1))
                 }
             } else {
-                mediaList.add(mapLegacyMedia(item, qualityPref, 1))
+                mediaList.add(mapLegacyMedia(item, qualityPref, thumbPref, 1))
             }
 
             return ExtractedPost(
@@ -271,12 +276,12 @@ class JsonApiStrategy : PublicExtractionStrategy {
 
     // Helper mappings for legacy API response
 
-    private fun mapLegacyMedia(item: LegacyMediaItem, qualityPref: MediaQuality, index: Int): ExtractedMediaNode {
+    private fun mapLegacyMedia(item: LegacyMediaItem, qualityPref: MediaQuality, thumbPref: ThumbnailQuality, index: Int): ExtractedMediaNode {
         val isVideo = item.mediaType == 2
         val videoVersions = item.videoVersions ?: emptyList()
         val imageVersions = item.imageVersions2?.candidates ?: emptyList()
 
-        val thumbnailUrl = imageVersions.lastOrNull()?.url ?: ""
+        val thumbnailUrl = selectThumbnailUrl(imageVersions, thumbPref, qualityPref)
 
         val downloadUrls = if (isVideo) {
             val urls = videoVersions.mapNotNull { it.url }
@@ -326,12 +331,12 @@ class JsonApiStrategy : PublicExtractionStrategy {
         )
     }
 
-    private fun mapLegacyCarouselMedia(child: LegacyCarouselMedia, qualityPref: MediaQuality, index: Int): ExtractedMediaNode {
+    private fun mapLegacyCarouselMedia(child: LegacyCarouselMedia, qualityPref: MediaQuality, thumbPref: ThumbnailQuality, index: Int): ExtractedMediaNode {
         val isVideo = child.mediaType == 2
         val videoVersions = child.videoVersions ?: emptyList()
         val imageVersions = child.imageVersions2?.candidates ?: emptyList()
 
-        val thumbnailUrl = imageVersions.lastOrNull()?.url ?: ""
+        val thumbnailUrl = selectThumbnailUrl(imageVersions, thumbPref, qualityPref)
 
         val downloadUrls = if (isVideo) {
             val urls = videoVersions.mapNotNull { it.url }
@@ -379,6 +384,25 @@ class JsonApiStrategy : PublicExtractionStrategy {
             qualities = qualities,
             thumbnailQualities = thumbnailQualities
         )
+    }
+
+    private fun selectThumbnailUrl(versions: List<ImageVersion>, thumbPref: ThumbnailQuality, qualityPref: MediaQuality): String {
+        if (versions.isEmpty()) return ""
+        val size = versions.size
+        val selected = when (thumbPref) {
+            ThumbnailQuality.HIGHEST -> versions.firstOrNull()
+            ThumbnailQuality.LOWEST -> versions.lastOrNull()
+            ThumbnailQuality.MEDIUM -> versions.getOrNull(size / 2)
+            ThumbnailQuality.SAME_AS_DOWNLOAD -> {
+                when (qualityPref) {
+                    MediaQuality.HIGH -> versions.firstOrNull()
+                    MediaQuality.LOW -> versions.lastOrNull()
+                    MediaQuality.MEDIUM -> versions.getOrNull(size / 2)
+                    MediaQuality.CUSTOM -> versions.firstOrNull()
+                }
+            }
+        }
+        return selected?.url ?: ""
     }
 
     private fun selectUrls(versions: List<String>, qualityPref: MediaQuality): List<String> {

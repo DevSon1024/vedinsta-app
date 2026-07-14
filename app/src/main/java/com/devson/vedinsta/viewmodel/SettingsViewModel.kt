@@ -431,10 +431,20 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     private val securePrefs = com.devson.vedinsta.repository.SecurePreferences(getApplication())
 
-    private val _isLoggedIn = MutableStateFlow(securePrefs.hasValidSession())
+    private val _isLoggedIn = MutableStateFlow(securePrefs.hasValidSession() && securePrefs.isSessionActive())
     val isLoggedIn: StateFlow<Boolean> = _isLoggedIn.asStateFlow()
 
+    private val _isSessionActive = MutableStateFlow(securePrefs.isSessionActive())
+    val isSessionActive: StateFlow<Boolean> = _isSessionActive.asStateFlow()
+
+    fun toggleSessionActive(isActive: Boolean) {
+        securePrefs.setSessionActive(isActive)
+        _isSessionActive.value = isActive
+        refreshLoginState()
+    }
+
     fun refreshLoginState() {
-        _isLoggedIn.value = securePrefs.hasValidSession()
+        _isSessionActive.value = securePrefs.isSessionActive()
+        _isLoggedIn.value = securePrefs.hasValidSession() && securePrefs.isSessionActive()
     }
 }

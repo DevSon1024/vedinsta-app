@@ -2,6 +2,7 @@ package com.devson.vedinsta.extractor
 
 import com.devson.vedinsta.model.ExtractedPost
 import com.devson.vedinsta.model.MediaQuality
+import com.devson.vedinsta.model.ThumbnailQuality
 
 /**
  * Strategy interface for unauthenticated Instagram public media extraction.
@@ -12,9 +13,14 @@ interface PublicExtractionStrategy {
      *
      * @param url The Instagram post or reel URL.
      * @param qualityPref The desired media quality preference.
+     * @param thumbPref The desired thumbnail quality preference.
      * @return The extracted post metadata and media nodes.
      */
-    suspend fun extractMedia(url: String, qualityPref: MediaQuality): ExtractedPost
+    suspend fun extractMedia(
+        url: String,
+        qualityPref: MediaQuality,
+        thumbPref: ThumbnailQuality
+    ): ExtractedPost
 }
 
 /**

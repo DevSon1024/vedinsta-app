@@ -15,6 +15,7 @@ import com.devson.vedinsta.ui.screen.SessionsScreen
 import com.devson.vedinsta.ui.screen.setting.WhatsAppSaverScreen
 import com.devson.vedinsta.viewmodel.InstagramAuthViewModel
 import com.devson.vedinsta.viewmodel.MainViewModel
+import com.devson.vedinsta.viewmodel.SettingsViewModel
 import com.devson.vedinsta.viewmodel.WhatsAppViewModel
 import kotlinx.coroutines.launch
 
@@ -24,6 +25,7 @@ fun MainPagerScreen(
     mainViewModel: MainViewModel,
     authViewModel: InstagramAuthViewModel,
     whatsAppViewModel: WhatsAppViewModel,
+    settingsViewModel: SettingsViewModel,
     gridColumnCount: Int,
     onGridColumnsChanged: (Int) -> Unit,
     isListView: Boolean,
@@ -100,6 +102,7 @@ fun MainPagerScreen(
             )
             4 -> SessionsScreen(
                 authViewModel = authViewModel,
+                settingsViewModel = settingsViewModel,
                 onNavigateToLogin = onNavigateToLogin,
                 contentPadding = contentPadding
             )

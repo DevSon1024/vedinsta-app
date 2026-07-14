@@ -62,8 +62,10 @@ object InstagramNativeExtractor {
             val prefs = context?.getSharedPreferences("VedInstaPrefs", Context.MODE_PRIVATE)
             val overshadowRateLimit = prefs?.getBoolean("overshadow_rate_limit", false) ?: false
 
-            // 1. Check Suspension Expiry
-            if (securePrefs?.isSuspended() == true && !overshadowRateLimit) {
+            val isSessionActive = securePrefs?.isSessionActive() ?: true
+
+            // 1. Check Suspension Expiry (only if session is active)
+            if (isSessionActive && securePrefs?.isSuspended() == true && !overshadowRateLimit) {
                 val expiry = securePrefs.getSuspensionExpiry()
                 val remainingMin = java.util.concurrent.TimeUnit.MILLISECONDS.toMinutes(expiry - System.currentTimeMillis()) + 1
                 return@withLock JSONObject().apply {
@@ -72,16 +74,18 @@ object InstagramNativeExtractor {
                 }.toString()
             }
 
-            // 2. Check Rolling Window Limit
-            if (!checkRollingLimit() && !overshadowRateLimit) {
+            // 2. Check Rolling Window Limit (only if session is active)
+            if (isSessionActive && !checkRollingLimit() && !overshadowRateLimit) {
                 return@withLock JSONObject().apply {
                     put("status", "rate_limit")
                     put("message", "Too many downloads at once! Please slow down the pace and wait a few minutes before trying again to keep your account safe.")
                 }.toString()
             }
 
-            // 3. Enforce Jitter
-            applyAntiBanJitter()
+            // 3. Enforce Jitter (only if session is active)
+            if (isSessionActive) {
+                applyAntiBanJitter()
+            }
 
             val result = withTimeoutOrNull(15000L) {
                 if (url.contains("/stories/", ignoreCase = true)) {
@@ -93,9 +97,9 @@ object InstagramNativeExtractor {
                     val sc = extractShortcode(url)
                     val cookieFile = File(cookieFilePath)
                     val cookies = if (cookieFile.exists()) parseCookies(cookieFile) else emptyMap()
-                    if (!cookies.containsKey("sessionid")) {
+                    if (!cookies.containsKey("sessionid") || !isSessionActive) {
                         try {
-                            val extracted = PublicExtractionOrchestrator.extract(url, userQualityPreference)
+                            val extracted = PublicExtractionOrchestrator.extract(url, userQualityPreference, thumbnailQualityPreference)
                             JSONObject().apply {
                                 put("status", "success")
                                 put("username", extracted.username)
