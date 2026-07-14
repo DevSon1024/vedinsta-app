@@ -28,7 +28,9 @@ data class ShortcodeMedia(
     @SerializedName("video_url") val videoUrl: String?,
     @SerializedName("video_versions") val videoVersions: List<VideoVersion>?,
     @SerializedName("display_resources") val displayResources: List<ImageVersion>?,
-    @SerializedName("edge_sidecar_to_children") val edgeSidecarToChildren: EdgeSidecarToChildren?
+    @SerializedName("edge_sidecar_to_children") val edgeSidecarToChildren: EdgeSidecarToChildren?,
+    @SerializedName("owner") val owner: Owner?,
+    @SerializedName("edge_media_to_caption") val edgeMediaToCaption: EdgeMediaToCaption?
 )
 
 /**
@@ -94,7 +96,9 @@ data class LegacyMediaItem(
     @SerializedName("media_type") val mediaType: Int?,
     @SerializedName("image_versions2") val imageVersions2: LegacyImageVersions2?,
     @SerializedName("video_versions") val videoVersions: List<VideoVersion>?,
-    @SerializedName("carousel_media") val carouselMedia: List<LegacyCarouselMedia>?
+    @SerializedName("carousel_media") val carouselMedia: List<LegacyCarouselMedia>?,
+    @SerializedName("user") val user: LegacyUser?,
+    @SerializedName("caption") val caption: LegacyCaption?
 )
 
 /**
@@ -113,3 +117,28 @@ data class LegacyCarouselMedia(
     @SerializedName("image_versions2") val imageVersions2: LegacyImageVersions2?,
     @SerializedName("video_versions") val videoVersions: List<VideoVersion>?
 )
+
+data class Owner(
+    @SerializedName("username") val username: String?
+)
+
+data class EdgeMediaToCaption(
+    @SerializedName("edges") val edges: List<CaptionEdge>?
+)
+
+data class CaptionEdge(
+    @SerializedName("node") val node: CaptionNode?
+)
+
+data class CaptionNode(
+    @SerializedName("text") val text: String?
+)
+
+data class LegacyUser(
+    @SerializedName("username") val username: String?
+)
+
+data class LegacyCaption(
+    @SerializedName("text") val text: String?
+)
+
