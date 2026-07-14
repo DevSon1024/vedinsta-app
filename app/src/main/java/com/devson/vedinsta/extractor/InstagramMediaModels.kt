@@ -142,3 +142,18 @@ data class LegacyCaption(
     @SerializedName("text") val text: String?
 )
 
+/**
+ * Root response for PolarisPostRootQuery GraphQL query.
+ */
+data class PolarisPostRootResponse(
+    @SerializedName("data") val data: PolarisPostRootData?
+)
+
+data class PolarisPostRootData(
+    @SerializedName("xdt_api__v1__media__shortcode__web_info") val webInfo: PolarisPostWebInfo?
+)
+
+data class PolarisPostWebInfo(
+    @SerializedName("items") val items: List<LegacyMediaItem>?
+)
+

@@ -9,6 +9,7 @@ import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.FormBody
+import okhttp3.HttpUrl
 import okhttp3.Request
 import java.io.IOException
 
@@ -38,10 +39,36 @@ class JsonApiStrategy : PublicExtractionStrategy {
         return@withContext queryLegacyEndpoint(shortcode, qualityPref)
     }
 
+    private fun ensureCookies() {
+        val url = HttpUrl.Builder().scheme("https").host("www.instagram.com").build()
+        val cookies = UnauthenticatedNetworkModule.cookieJar.loadForRequest(url)
+        val hasCsrf = cookies.any { it.name == "csrftoken" }
+        if (!hasCsrf) {
+            val request = Request.Builder()
+                .url("https://www.instagram.com/")
+                .get()
+                .build()
+            try {
+                client.newCall(request).execute().use { response ->
+                    response.body?.string() // Consume body to save cookies
+                }
+            } catch (e: Exception) {
+                System.err.println("Failed to pre-fetch Instagram cookies: ${e.message}")
+            }
+        }
+    }
+
     private fun queryGraphQL(shortcode: String, qualityPref: MediaQuality): ExtractedPost {
+        ensureCookies()
+
+        val variables = mapOf(
+            "shortcode" to shortcode,
+            "__relay_internal__pv__PolarisAIGMMediaWebLabelEnabledrelayprovider" to false
+        )
+
         val formBody = FormBody.Builder()
-            .add("doc_id", "8845758582119845")
-            .add("variables", gson.toJson(mapOf("shortcode" to shortcode)))
+            .add("doc_id", "27128499623469141")
+            .add("variables", gson.toJson(variables))
             .add("server_timestamps", "true")
             .build()
 
@@ -64,25 +91,24 @@ class JsonApiStrategy : PublicExtractionStrategy {
                 throw AuthRequiredException("Instagram redirected GraphQL request to login screen.")
             }
 
-            val gqlResponse = gson.fromJson(bodyString, ShortcodeMediaResponse::class.java)
-            val media = gqlResponse.data?.shortcodeMedia ?: throw IOException("No shortcode media found in GraphQL response.")
+            val gqlResponse = gson.fromJson(bodyString, PolarisPostRootResponse::class.java)
+            val webInfo = gqlResponse.data?.webInfo ?: throw IOException("No web info found in GraphQL response.")
+            val item = webInfo.items?.firstOrNull() ?: throw IOException("No items found in GraphQL response.")
 
             val mediaList = mutableListOf<ExtractedMediaNode>()
-            val edges = media.edgeSidecarToChildren?.edges
-            if (!edges.isNullOrEmpty()) {
-                edges.forEachIndexed { idx, edge ->
-                    edge.node?.let { childNode ->
-                        mediaList.add(mapGraphQLSidecarNode(childNode, qualityPref, idx + 1))
-                    }
+            val carouselItems = item.carouselMedia
+            if (!carouselItems.isNullOrEmpty()) {
+                carouselItems.forEachIndexed { idx, childItem ->
+                    mediaList.add(mapLegacyCarouselMedia(childItem, qualityPref, idx + 1))
                 }
             } else {
-                mediaList.add(mapGraphQLMedia(media, qualityPref, 1))
+                mediaList.add(mapLegacyMedia(item, qualityPref, 1))
             }
 
             return ExtractedPost(
                 mediaList = mediaList,
-                username = media.owner?.username ?: "unknown",
-                caption = media.edgeMediaToCaption?.edges?.firstOrNull()?.node?.text ?: "",
+                username = item.user?.username ?: "unknown",
+                caption = item.caption?.text ?: "",
                 postId = shortcode
             )
         }

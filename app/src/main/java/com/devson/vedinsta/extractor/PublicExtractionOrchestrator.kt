@@ -27,6 +27,9 @@ object PublicExtractionOrchestrator {
         return try {
             Log.d(TAG, "Attempting primary JSON/GraphQL extraction for: $url")
             jsonStrategy.extractMedia(url, qualityPref)
+        } catch (e: AuthRequiredException) {
+            Log.i(TAG, "AuthRequiredException caught in orchestrator. Propagating directly without cascading.")
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "Primary JSON/GraphQL extraction failed: ${e.message}. Cascading to HTML fallback...")
             try {
