@@ -31,6 +31,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.request.CachePolicy
 import com.devson.vedinsta.database.DownloadedPost
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -60,6 +61,7 @@ fun HomeScreen(
     val recentPosts by mainViewModel.recentPostsHome.observeAsState(emptyList())
     val scrollState = rememberScrollState()
 
+    val isSessionActive by mainViewModel.isSessionActive.collectAsStateWithLifecycle()
     val quotaManager = remember { DownloadQuotaManager(context) }
     var quotaStats by remember { mutableStateOf(quotaManager.getQuotaStats()) }
 
@@ -251,80 +253,82 @@ fun HomeScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        if (isSessionActive) {
+            Spacer(modifier = Modifier.height(16.dp))
 
-        // Quota Usage Card
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                .clickable { onNavigateToSecurityLimits() },
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-            )
-        ) {
-            Column(
+            // Quota Usage Card
+            Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp)
+                    .padding(horizontal = 16.dp)
+                    .clickable { onNavigateToSecurityLimits() },
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                )
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
                 ) {
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Speed,
-                            contentDescription = "Quota",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Text(
-                            text = "Download Quota Usage",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Speed,
+                                contentDescription = "Quota",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = "Download Quota Usage",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        if (quotaManager.isOvershadowEnabled) {
+                            Text(
+                                text = "Bypassed",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier
+                                    .background(MaterialTheme.colorScheme.errorContainer, RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
                     }
-                    if (quotaManager.isOvershadowEnabled) {
-                        Text(
-                            text = "Bypassed",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier
-                                .background(MaterialTheme.colorScheme.errorContainer, RoundedCornerShape(4.dp))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
+                    
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    HomeQuotaProgressRow(
+                        label = "Hourly Limit",
+                        count = quotaStats.hourlyCount,
+                        limit = quotaStats.hourlyLimit,
+                        resetMs = quotaStats.hourlyResetMs
+                    )
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    HomeQuotaProgressRow(
+                        label = "Daily Limit",
+                        count = quotaStats.dailyCount,
+                        limit = quotaStats.dailyLimit,
+                        resetMs = quotaStats.dailyResetMs
+                    )
                 }
-                
-                Spacer(modifier = Modifier.height(12.dp))
-                
-                HomeQuotaProgressRow(
-                    label = "Hourly Limit",
-                    count = quotaStats.hourlyCount,
-                    limit = quotaStats.hourlyLimit,
-                    resetMs = quotaStats.hourlyResetMs
-                )
-                
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                HomeQuotaProgressRow(
-                    label = "Daily Limit",
-                    count = quotaStats.dailyCount,
-                    limit = quotaStats.dailyLimit,
-                    resetMs = quotaStats.dailyResetMs
-                )
             }
-        }
 
-        Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+        }
 
         // Recent Downloads Header
         Row(

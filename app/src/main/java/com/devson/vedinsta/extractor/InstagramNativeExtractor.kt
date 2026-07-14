@@ -158,6 +158,11 @@ object InstagramNativeExtractor {
                                 put("media", mediaArray)
                                 put("media_count", mediaArray.length())
                             }.toString()
+                        } catch (e: AuthRequiredException) {
+                            JSONObject().apply {
+                                put("status", "login_required")
+                                put("message", e.message ?: "Authentication required")
+                            }.toString()
                         } catch (e: Exception) {
                             JSONObject().apply {
                                 put("status", "error")

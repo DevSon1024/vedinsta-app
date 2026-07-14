@@ -302,6 +302,66 @@ class VedInstaNotificationManager private constructor(private val context: Conte
         notify(notificationId, notification)
     }
 
+    fun showPrivatePostNotification(
+        url: String, 
+        hasValidSession: Boolean, 
+        notificationId: Int = System.currentTimeMillis().toInt()
+    ) {
+        cancelLinkProcessingNotification()
+        
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID_ALERT)
+            .setSmallIcon(android.R.drawable.stat_notify_error)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setAutoCancel(true)
+
+        if (hasValidSession) {
+            builder.setContentTitle("Private Post (Session Paused)")
+                .setContentText("This post is private. You have a paused session.")
+                .setStyle(NotificationCompat.BigTextStyle().bigText("This post is private. You have a paused session. Tap 'Activate' to resume your session and download this post."))
+            
+            val activateIntent = Intent(context, SharedLinkProcessingService::class.java).apply {
+                action = SharedLinkProcessingService.ACTION_ACTIVATE_SESSION_AND_RETRY
+                putExtra(SharedLinkProcessingService.EXTRA_INSTAGRAM_URL, url)
+                putExtra(SharedLinkProcessingService.EXTRA_NOTIFICATION_ID, notificationId)
+            }
+            val pendingIntent = PendingIntent.getService(
+                context,
+                notificationId,
+                activateIntent,
+                pendingIntentFlags
+            )
+            builder.addAction(
+                android.R.drawable.ic_menu_manage,
+                "Activate Session",
+                pendingIntent
+            )
+        } else {
+            builder.setContentTitle("Private Post (Login Required)")
+                .setContentText("Please log in to download this private post.")
+                .setStyle(NotificationCompat.BigTextStyle().bigText("This Instagram post is private. Please sign in to download this content."))
+            
+            val loginIntent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                putExtra("OPEN_LOGIN", true)
+            }
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                notificationId,
+                loginIntent,
+                pendingIntentFlags
+            )
+            builder.addAction(
+                android.R.drawable.ic_lock_idle_lock,
+                "Log In",
+                pendingIntent
+            )
+            builder.setContentIntent(pendingIntent)
+        }
+
+        notify(notificationId, builder.build())
+    }
+
     fun showLinkError(message: String) {
         cancelLinkProcessingNotification()
 

@@ -20,9 +20,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val allDownloadedPosts: LiveData<List<DownloadedPost>>
     val recentPostsHome: LiveData<List<DownloadedPost>>
     
-    private val settingsViewModel: SettingsViewModel
+    private val settingsViewModel = SettingsViewModel(application)
     private val _favoritePostIds = MutableStateFlow<Set<String>>(emptySet())
     val favoritePostIds: StateFlow<Set<String>> = _favoritePostIds.asStateFlow()
+    val isSessionActive: StateFlow<Boolean> = settingsViewModel.isSessionActive
 
     private val vpnMonitor = com.devson.vedinsta.repository.VpnAndNetworkMonitor(application)
     val isVpnActive: StateFlow<Boolean> = vpnMonitor.isVpnActive
@@ -37,7 +38,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         repository = DownloadRepository(dao)
         allDownloadedPosts = repository.getAllDownloadedPosts()
         recentPostsHome = repository.getRecentDownloadedPosts(8)
-        settingsViewModel = SettingsViewModel(application)
+        
         
         viewModelScope.launch(Dispatchers.IO) {
             _favoritePostIds.value = settingsViewModel.favoritePostIds

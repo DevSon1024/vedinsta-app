@@ -47,6 +47,10 @@ class DownloadQuotaManager(private val context: Context) {
 
     @Synchronized
     fun recordDownload() {
+        val securePrefs = SecurePreferences(context)
+        if (!securePrefs.isSessionActive() || !isUserLoggedIn()) {
+            return
+        }
         val now = System.currentTimeMillis()
         val timestamps = getTimestamps().toMutableList()
         timestamps.add(now)
@@ -136,7 +140,8 @@ class DownloadQuotaManager(private val context: Context) {
     }
 
     fun checkQuota(): QuotaStatus {
-        if (!isUserLoggedIn()) {
+        val securePrefs = SecurePreferences(context)
+        if (!securePrefs.isSessionActive() || !isUserLoggedIn()) {
             return QuotaStatus.Allowed
         }
 

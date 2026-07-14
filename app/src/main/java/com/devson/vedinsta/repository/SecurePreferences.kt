@@ -177,4 +177,12 @@ class SecurePreferences(private val context: Context) {
     fun isSessionActive(): Boolean {
         return sharedPrefs?.getBoolean(KEY_SESSION_ACTIVE, true) ?: true
     }
+
+    fun registerListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
+        sharedPrefs?.registerOnSharedPreferenceChangeListener(listener)
+    }
+
+    fun unregisterListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
+        sharedPrefs?.unregisterOnSharedPreferenceChangeListener(listener)
+    }
 }

@@ -87,6 +87,20 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         get() = prefs.getInt("max_notifications_limit", 0)
         set(value) = prefs.edit().putInt("max_notifications_limit", value).apply()
 
+    private val securePrefs = com.devson.vedinsta.repository.SecurePreferences(getApplication())
+
+    private val _isLoggedIn = MutableStateFlow(securePrefs.hasValidSession() && securePrefs.isSessionActive())
+    val isLoggedIn: StateFlow<Boolean> = _isLoggedIn.asStateFlow()
+
+    private val _isSessionActive = MutableStateFlow(securePrefs.isSessionActive())
+    val isSessionActive: StateFlow<Boolean> = _isSessionActive.asStateFlow()
+
+    private val securePrefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == "session_active" || key == "ig_sessionid") {
+            refreshLoginState()
+        }
+    }
+
     private val _userQualityPreference = MutableStateFlow(MediaQuality.HIGH)
     val userQualityPreferenceFlow: StateFlow<MediaQuality> = _userQualityPreference.asStateFlow()
 
@@ -112,6 +126,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
 
     init {
+        securePrefs.registerListener(securePrefsListener)
         viewModelScope.launch(Dispatchers.IO) {
             val qStr = prefs.getString("user_quality_preference", "HIGH") ?: "HIGH"
             val quality = try { MediaQuality.valueOf(qStr) } catch(e: Exception) { MediaQuality.HIGH }
@@ -429,14 +444,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         _blurRadius.value = radius
     }
 
-    private val securePrefs = com.devson.vedinsta.repository.SecurePreferences(getApplication())
-
-    private val _isLoggedIn = MutableStateFlow(securePrefs.hasValidSession() && securePrefs.isSessionActive())
-    val isLoggedIn: StateFlow<Boolean> = _isLoggedIn.asStateFlow()
-
-    private val _isSessionActive = MutableStateFlow(securePrefs.isSessionActive())
-    val isSessionActive: StateFlow<Boolean> = _isSessionActive.asStateFlow()
-
     fun toggleSessionActive(isActive: Boolean) {
         securePrefs.setSessionActive(isActive)
         _isSessionActive.value = isActive
@@ -446,5 +453,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun refreshLoginState() {
         _isSessionActive.value = securePrefs.isSessionActive()
         _isLoggedIn.value = securePrefs.hasValidSession() && securePrefs.isSessionActive()
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        securePrefs.unregisterListener(securePrefsListener)
     }
 }
