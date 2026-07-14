@@ -188,6 +188,9 @@ dependencies {
     implementation(libs.coil.video)
     implementation(libs.coil.compose)
 
+    // Lottie animations
+    implementation(libs.lottie.compose)
+
     // Networking
     implementation(libs.okhttp)
     implementation(libs.gson)

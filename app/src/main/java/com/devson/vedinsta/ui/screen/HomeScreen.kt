@@ -1,7 +1,10 @@
 package com.devson.vedinsta.ui.screen
 
-import android.R
+import android.content.ClipboardManager
+import android.content.Context
+import androidx.compose.animation.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -13,42 +16,32 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.material3.carousel.HorizontalMultiBrowseCarousel
 import androidx.compose.material3.carousel.rememberCarouselState
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
+import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
-import coil.request.CachePolicy
-import com.devson.vedinsta.database.DownloadedPost
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.compose.runtime.livedata.observeAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.platform.LocalContext
-import com.devson.vedinsta.viewmodel.MainViewModel
-import java.io.File
-import kotlinx.coroutines.delay
+import com.devson.vedinsta.database.DownloadedPost
 import com.devson.vedinsta.repository.DownloadQuotaManager
+import com.devson.vedinsta.ui.components.*
+import com.devson.vedinsta.viewmodel.ExtractionState
+import com.devson.vedinsta.viewmodel.MainViewModel
+import kotlinx.coroutines.delay
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     mainViewModel: MainViewModel,
-    onFabAction: () -> Unit,
+    extractionState: ExtractionState,
+    onDownloadClick: (String) -> Unit,
     onNavigateToFavorites: () -> Unit,
     onNavigateToHistory: () -> Unit,
     onNavigateToSessions: () -> Unit,
@@ -65,6 +58,8 @@ fun HomeScreen(
     val quotaManager = remember { DownloadQuotaManager(context) }
     var quotaStats by remember { mutableStateOf(quotaManager.getQuotaStats()) }
 
+    var urlInput by remember { mutableStateOf("") }
+
     LaunchedEffect(Unit) {
         while (true) {
             quotaStats = quotaManager.getQuotaStats()
@@ -75,59 +70,123 @@ fun HomeScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(Color.Black)
             .verticalScroll(scrollState)
     ) {
         Spacer(modifier = Modifier.height(contentPadding.calculateTopPadding() + 16.dp))
 
-        // Quick Actions Section Title
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+        ) {
+            Text(
+                text = "Instagram Downloader",
+                color = Color.White,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.ExtraBold,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+
+            VedinstaTextField(
+                value = urlInput,
+                onValueChange = { urlInput = it },
+                placeholder = "Paste Instagram post or reel link...",
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Link,
+                        contentDescription = "Link Icon",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                },
+                onPasteClick = {
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    val clip = clipboard.primaryClip
+                    if (clip != null && clip.itemCount > 0) {
+                        val text = clip.getItemAt(0).coerceToText(context).toString().trim()
+                        urlInput = text
+                    }
+                }
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            VedinstaButton(
+                onClick = {
+                    if (urlInput.isNotEmpty()) {
+                        onDownloadClick(urlInput)
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = urlInput.isNotEmpty() && extractionState !is ExtractionState.Loading,
+                backgroundColor = if (urlInput.isNotEmpty()) MaterialTheme.colorScheme.primary else Color(0xFF1E222A),
+                contentColor = if (urlInput.isNotEmpty()) Color.Black else Color.White.copy(alpha = 0.5f),
+                glowColor = if (urlInput.isNotEmpty()) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f) else Color.Transparent
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Download,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Start Download", fontWeight = FontWeight.Bold)
+            }
+        }
+
+        AnimatedVisibility(
+            visible = extractionState is ExtractionState.Loading,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically()
+        ) {
+            Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                VedinstaLoadingState()
+            }
+        }
+
         Text(
             text = "Quick Actions",
-            color = MaterialTheme.colorScheme.onBackground,
+            color = Color.White,
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
         )
 
-        // Three quick access cards
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Card 1: Favorites
-            Card(
+            Box(
                 modifier = Modifier
                     .weight(1f)
-                    .height(120.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .clickable { onNavigateToFavorites() },
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
+                    .height(110.dp)
+                    .shadow(4.dp, RoundedCornerShape(20.dp))
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color(0xFF0F1115))
+                    .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(20.dp))
+                    .bounceClick { onNavigateToFavorites() }
+                    .padding(16.dp)
             ) {
                 Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp),
+                    modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.SpaceBetween
                 ) {
                     Box(
                         modifier = Modifier
                             .size(36.dp)
                             .background(
-                                MaterialTheme.colorScheme.errorContainer,
-                                RoundedCornerShape(10.dp)
+                                Color(0xFF2C1E21),
+                                RoundedCornerShape(12.dp)
                             ),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.Favorite,
                             contentDescription = "Favorites",
-                            tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(20.dp)
+                            tint = Color(0xFFFF5252),
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                     Column {
@@ -135,51 +194,46 @@ fun HomeScreen(
                             text = "Favorites",
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = Color.White
                         )
                         Text(
                             text = "Starred posts",
                             fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            color = Color.White.copy(alpha = 0.5f)
                         )
                     }
                 }
             }
 
-            // Card 2: WA Status
-            Card(
+            Box(
                 modifier = Modifier
                     .weight(1f)
-                    .height(120.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .clickable { onNavigateToWhatsAppSaver() },
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
+                    .height(110.dp)
+                    .shadow(4.dp, RoundedCornerShape(20.dp))
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color(0xFF0F1115))
+                    .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(20.dp))
+                    .bounceClick { onNavigateToWhatsAppSaver() }
+                    .padding(16.dp)
             ) {
                 Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp),
+                    modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.SpaceBetween
                 ) {
                     Box(
                         modifier = Modifier
                             .size(36.dp)
                             .background(
-                                MaterialTheme.colorScheme.primaryContainer,
-                                RoundedCornerShape(10.dp)
+                                Color(0xFF1E2E24),
+                                RoundedCornerShape(12.dp)
                             ),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.Download,
                             contentDescription = "WA Status",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
+                            tint = Color(0xFF4CAF50),
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                     Column {
@@ -187,51 +241,46 @@ fun HomeScreen(
                             text = "WA Status",
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = Color.White
                         )
                         Text(
                             text = "Save statuses",
                             fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            color = Color.White.copy(alpha = 0.5f)
                         )
                     }
                 }
             }
 
-            // Card 3: Sessions
-            Card(
+            Box(
                 modifier = Modifier
                     .weight(1f)
-                    .height(120.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .clickable { onNavigateToSessions() },
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
+                    .height(110.dp)
+                    .shadow(4.dp, RoundedCornerShape(20.dp))
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color(0xFF0F1115))
+                    .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(20.dp))
+                    .bounceClick { onNavigateToSessions() }
+                    .padding(16.dp)
             ) {
                 Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp),
+                    modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.SpaceBetween
                 ) {
                     Box(
                         modifier = Modifier
                             .size(36.dp)
                             .background(
-                                MaterialTheme.colorScheme.secondaryContainer,
-                                RoundedCornerShape(10.dp)
+                                Color(0xFF2C241E),
+                                RoundedCornerShape(12.dp)
                             ),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.AccountBox,
                             contentDescription = "Sessions",
-                            tint = MaterialTheme.colorScheme.secondary,
-                            modifier = Modifier.size(20.dp)
+                            tint = Color(0xFFFF9800),
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                     Column {
@@ -239,14 +288,12 @@ fun HomeScreen(
                             text = "Sessions",
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = Color.White
                         )
                         Text(
                             text = "Auth & login",
                             fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            color = Color.White.copy(alpha = 0.5f)
                         )
                     }
                 }
@@ -256,22 +303,18 @@ fun HomeScreen(
         if (isSessionActive) {
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Quota Usage Card
-            Card(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
-                    .clickable { onNavigateToSecurityLimits() },
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                )
+                    .shadow(4.dp, RoundedCornerShape(20.dp))
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color(0xFF0F1115))
+                    .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(20.dp))
+                    .bounceClick { onNavigateToSecurityLimits() }
+                    .padding(16.dp)
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -291,7 +334,7 @@ fun HomeScreen(
                                 text = "Download Quota Usage",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 14.sp,
-                                color = MaterialTheme.colorScheme.onSurface
+                                color = Color.White
                             )
                         }
                         if (quotaManager.isOvershadowEnabled) {
@@ -306,18 +349,18 @@ fun HomeScreen(
                             )
                         }
                     }
-                    
+
                     Spacer(modifier = Modifier.height(12.dp))
-                    
+
                     HomeQuotaProgressRow(
                         label = "Hourly Limit",
                         count = quotaStats.hourlyCount,
                         limit = quotaStats.hourlyLimit,
                         resetMs = quotaStats.hourlyResetMs
                     )
-                    
-                    Spacer(modifier = Modifier.height(8.dp))
-                    
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
                     HomeQuotaProgressRow(
                         label = "Daily Limit",
                         count = quotaStats.dailyCount,
@@ -326,11 +369,10 @@ fun HomeScreen(
                     )
                 }
             }
-
-            Spacer(modifier = Modifier.height(16.dp))
         }
 
-        // Recent Downloads Header
+        Spacer(modifier = Modifier.height(20.dp))
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -340,7 +382,7 @@ fun HomeScreen(
         ) {
             Text(
                 text = "Recent Downloads",
-                color = MaterialTheme.colorScheme.onBackground,
+                color = Color.White,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -357,71 +399,32 @@ fun HomeScreen(
             }
         }
 
-        // M3 Expressive HorizontalMultiBrowseCarousel - replaces the old LazyRow.
-        // The carousel natively handles its own horizontal scroll isolation so it
-        // does not leak velocity to the parent HorizontalPager.
         if (recentPosts.isEmpty()) {
-            Card(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
+                    .padding(16.dp)
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Info,
-                        contentDescription = "Empty",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                        modifier = Modifier.size(40.dp)
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = "No media downloaded yet",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Start downloading high quality media now.",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Button(
-                        onClick = { onFabAction() },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary
-                        ),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ContentPaste,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Paste & Download")
+                VedinstaEmptyState(
+                    onActionClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val clip = clipboard.primaryClip
+                        if (clip != null && clip.itemCount > 0) {
+                            val text = clip.getItemAt(0).coerceToText(context).toString().trim()
+                            urlInput = text
+                            if (text.isNotEmpty()) {
+                                onDownloadClick(text)
+                            }
+                        }
                     }
-                }
+                )
             }
         } else {
-            // Build the item list: up to 10 real post cards + 1 "See All" card at the end.
-            // carouselCount is at most 11 items (10 posts + See All).
             val carouselCount = remember(recentPosts) {
                 if (recentPosts.size > 9) 10 + 1 else recentPosts.size + 1
             }
 
             val carouselState = rememberCarouselState { carouselCount }
-            val context = LocalContext.current
 
             HorizontalMultiBrowseCarousel(
                 state = carouselState,
@@ -434,12 +437,12 @@ fun HomeScreen(
                 contentPadding = PaddingValues(horizontal = 16.dp)
             ) { index ->
                 if (index == carouselCount - 1) {
-                    // "See All" card - uses maskClip for the M3 Expressive edge-squish animation
                     Box(
                         modifier = Modifier
                             .height(205.dp)
                             .maskClip(MaterialTheme.shapes.extraLarge)
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .background(Color(0xFF0F1115))
+                            .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(12.dp))
                             .clickable { onNavigateToHistory() },
                         contentAlignment = Alignment.Center
                     ) {
@@ -452,7 +455,7 @@ fun HomeScreen(
                                 modifier = Modifier
                                     .size(52.dp)
                                     .background(
-                                        MaterialTheme.colorScheme.primaryContainer,
+                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
                                         RoundedCornerShape(26.dp)
                                     ),
                                 contentAlignment = Alignment.Center
@@ -460,8 +463,8 @@ fun HomeScreen(
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                                     contentDescription = "See All",
-                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    modifier = Modifier.size(28.dp)
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(24.dp)
                                 )
                             }
                             Spacer(modifier = Modifier.height(12.dp))
@@ -469,96 +472,22 @@ fun HomeScreen(
                                 text = "See All",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 15.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = Color.White
                             )
-                            Spacer(modifier = Modifier.height(3.dp))
                             Text(
                                 text = "View history",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                fontSize = 11.sp,
+                                color = Color.White.copy(alpha = 0.5f)
                             )
                         }
                     }
                 } else {
-                    // Post thumbnail card - maskClip gives the Expressive carousel edge animation
                     val post = recentPosts[index]
-                    val imageRequest = remember(post.thumbnailPath) {
-                        ImageRequest.Builder(context)
-                            .data(if (post.thumbnailPath.isNotEmpty()) File(post.thumbnailPath) else null)
-                            .size(300, 300)
-                            .crossfade(true)
-                            .diskCachePolicy(CachePolicy.ENABLED)
-                            .memoryCachePolicy(CachePolicy.ENABLED)
-                            .memoryCacheKey(post.thumbnailPath)
-                            .diskCacheKey(post.thumbnailPath)
-                            .error(R.drawable.ic_menu_report_image)
-                            .build()
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .height(205.dp)
-                            .maskClip(MaterialTheme.shapes.extraLarge)
-                            .clickable { onPostClick(post) }
-                    ) {
-                        // Thumbnail
-                        AsyncImage(
-                            model = imageRequest,
-                            contentDescription = "Post Thumbnail",
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
-
-                        // Bottom gradient scrim for readability
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .fillMaxHeight(0.5f)
-                                .align(Alignment.BottomCenter)
-                                .background(
-                                    Brush.verticalGradient(
-                                        colors = listOf(
-                                            Color.Transparent,
-                                            Color.Black.copy(alpha = 0.85f)
-                                        )
-                                    )
-                                )
-                        )
-
-                        // Video play badge
-                        if (post.hasVideo) {
-                            Box(
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .align(Alignment.Center)
-                                    .background(
-                                        Color.Black.copy(alpha = 0.55f),
-                                        RoundedCornerShape(20.dp)
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.PlayArrow,
-                                    contentDescription = "Video",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-                        }
-
-                        // Username label
-                        Text(
-                            text = "@${post.username}",
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier
-                                .align(Alignment.BottomStart)
-                                .padding(12.dp)
-                        )
-                    }
+                    VedinstaMediaCard(
+                        post = post,
+                        onClick = { onPostClick(post) },
+                        modifier = Modifier.height(205.dp)
+                    )
                 }
             }
         }
@@ -612,7 +541,7 @@ private fun HomeQuotaProgressRow(
                 text = label,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = Color.White.copy(alpha = 0.7f)
             )
             Text(
                 text = "$count / $limit ($resetText)",
@@ -629,8 +558,7 @@ private fun HomeQuotaProgressRow(
                 .height(4.dp)
                 .clip(RoundedCornerShape(2.dp)),
             color = progressColor,
-            trackColor = MaterialTheme.colorScheme.surfaceVariant
+            trackColor = Color(0xFF1E222A)
         )
     }
 }
-

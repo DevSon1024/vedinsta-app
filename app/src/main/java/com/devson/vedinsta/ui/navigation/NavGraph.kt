@@ -416,6 +416,10 @@ fun MainAppScreen(
                         authViewModel = authViewModel,
                         whatsAppViewModel = whatsAppViewModel,
                         settingsViewModel = settingsViewModel,
+                        extractionState = extractionState,
+                        onDownloadClick = { url ->
+                            extractionViewModel.extractMedia(url, authViewModel)
+                        },
                         gridColumnCount = gridColumnCount,
                         onGridColumnsChanged = { cols ->
                             gridColumnCount = cols
@@ -430,7 +434,6 @@ fun MainAppScreen(
                         },
                         isFavorite = isFavoriteHelper,
                         onToggleFavorite = toggleFavoriteHelper,
-                        onFabAction = onFabAction,
                         onPostClick = { post ->
                             navController.navigate(Screen.PostView.createRoute(post.postId))
                         },

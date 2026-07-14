@@ -17,6 +17,7 @@ import com.devson.vedinsta.viewmodel.InstagramAuthViewModel
 import com.devson.vedinsta.viewmodel.MainViewModel
 import com.devson.vedinsta.viewmodel.SettingsViewModel
 import com.devson.vedinsta.viewmodel.WhatsAppViewModel
+import com.devson.vedinsta.viewmodel.ExtractionState
 import kotlinx.coroutines.launch
 
 @Composable
@@ -26,13 +27,14 @@ fun MainPagerScreen(
     authViewModel: InstagramAuthViewModel,
     whatsAppViewModel: WhatsAppViewModel,
     settingsViewModel: SettingsViewModel,
+    extractionState: ExtractionState,
+    onDownloadClick: (String) -> Unit,
     gridColumnCount: Int,
     onGridColumnsChanged: (Int) -> Unit,
     isListView: Boolean,
     onListViewChanged: (Boolean) -> Unit,
     isFavorite: (String) -> Boolean,
     onToggleFavorite: (String) -> Unit,
-    onFabAction: () -> Unit,
     onPostClick: (DownloadedPost) -> Unit,
     onNavigateToWhatsAppStatus: (Int) -> Unit,
     onNavigateToLogin: () -> Unit,
@@ -56,7 +58,8 @@ fun MainPagerScreen(
         when (page) {
             0 -> HomeScreen(
                 mainViewModel = mainViewModel,
-                onFabAction = onFabAction,
+                extractionState = extractionState,
+                onDownloadClick = onDownloadClick,
                 onNavigateToFavorites = {
                     coroutineScope.launch { pagerState.animateScrollToPage(2) }
                 },
