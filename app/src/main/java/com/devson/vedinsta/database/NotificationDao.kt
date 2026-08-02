@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface NotificationDao {
-    @Query("SELECT * FROM notifications ORDER BY type = 'DOWNLOAD_PROGRESS' DESC, timestamp DESC")
+    @Query("SELECT * FROM notifications ORDER BY (type = 'DOWNLOAD_PROGRESS' OR type = 'DOWNLOAD_STARTED') DESC, timestamp DESC")
     fun getAllNotifications(): LiveData<List<NotificationEntity>>
 
     @Query("SELECT * FROM notifications WHERE isRead = 0 ORDER BY timestamp DESC")

@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
@@ -87,7 +88,17 @@ fun NotificationsScreen(
             }
         }
 
-        if (notifications.isEmpty()) {
+        val sortedNotifications = remember(notifications) {
+            notifications.sortedWith(
+                compareByDescending<NotificationEntity> { 
+                    it.type == NotificationType.DOWNLOAD_PROGRESS || it.type == NotificationType.DOWNLOAD_STARTED
+                }.thenByDescending { 
+                    it.timestamp 
+                }
+            )
+        }
+
+        if (sortedNotifications.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -97,7 +108,21 @@ fun NotificationsScreen(
                 Text("No Notifications", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
             }
         } else {
+            val listState = rememberLazyListState()
+            val activeProgressCount = remember(sortedNotifications) {
+                sortedNotifications.count { 
+                    it.type == NotificationType.DOWNLOAD_PROGRESS || it.type == NotificationType.DOWNLOAD_STARTED 
+                }
+            }
+
+            LaunchedEffect(activeProgressCount) {
+                if (activeProgressCount > 0) {
+                    listState.scrollToItem(0)
+                }
+            }
+
             LazyColumn(
+                state = listState,
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
@@ -109,8 +134,8 @@ fun NotificationsScreen(
                 ),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(notifications, key = { it.id }) { item ->
-                    val isProgress = item.type == NotificationType.DOWNLOAD_PROGRESS
+                items(sortedNotifications, key = { it.id }) { item ->
+                    val isProgress = item.type == NotificationType.DOWNLOAD_PROGRESS || item.type == NotificationType.DOWNLOAD_STARTED
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
