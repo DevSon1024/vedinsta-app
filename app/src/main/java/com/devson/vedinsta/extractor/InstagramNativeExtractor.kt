@@ -22,6 +22,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.random.Random
 
 class InstagramRateLimitException(message: String) : Exception(message)
+class HTTPException(val statusCode: Int, message: String) : Exception(message)
 
 object InstagramNativeExtractor {
 
@@ -89,10 +90,15 @@ object InstagramNativeExtractor {
 
             val result = withTimeoutOrNull(15000L) {
                 if (url.contains("/stories/", ignoreCase = true)) {
-                    JSONObject().apply {
-                        put("status", "error")
-                        put("message", "Stories downloading is not supported currently.")
-                    }.toString()
+                    InstagramStoryExtractor.extractStory(
+                        url = url,
+                        cookieFilePath = cookieFilePath,
+                        userAgent = userAgent,
+                        appId = appId,
+                        timeoutSeconds = timeoutSeconds,
+                        userQualityPreference = userQualityPreference,
+                        thumbnailQualityPreference = thumbnailQualityPreference
+                    )
                 } else {
                     val sc = extractShortcode(url)
                     val cookieFile = File(cookieFilePath)
@@ -273,7 +279,7 @@ object InstagramNativeExtractor {
         return n.toString()
     }
 
-    private fun parseCookies(cookieFile: File): Map<String, String> {
+    internal fun parseCookies(cookieFile: File): Map<String, String> {
         val cookies = mutableMapOf<String, String>()
         try {
             cookieFile.forEachLine { line ->
@@ -296,7 +302,7 @@ object InstagramNativeExtractor {
         return cookies
     }
 
-    private fun performGetRequest(
+    internal fun performGetRequest(
         urlStr: String, 
         cookies: Map<String, String>,
         userAgent: String? = null,
@@ -405,7 +411,7 @@ object InstagramNativeExtractor {
         return conn.inputStream.bufferedReader().use { it.readText() }
     }
 
-    private fun selectDownloadUrls(versionsArray: JSONArray?, preference: MediaQuality): List<String> {
+    internal fun selectDownloadUrls(versionsArray: JSONArray?, preference: MediaQuality): List<String> {
         val urls = mutableListOf<String>()
         if (versionsArray == null) return urls
         val size = versionsArray.length()
@@ -439,7 +445,7 @@ object InstagramNativeExtractor {
         return urls
     }
 
-    private fun parseItems(data: JSONObject, userQualityPreference: MediaQuality, thumbnailQualityPreference: ThumbnailQuality): JSONArray {
+    internal fun parseItems(data: JSONObject, userQualityPreference: MediaQuality, thumbnailQualityPreference: ThumbnailQuality): JSONArray {
         val results = JSONArray()
         val items = data.optJSONArray("items") ?: return results
         for (i in 0 until items.length()) {
@@ -464,7 +470,7 @@ object InstagramNativeExtractor {
         return results
     }
 
-    private fun parseBest(
+    internal fun parseBest(
         item: JSONObject,
         index: Int,
         userQualityPreference: MediaQuality,
@@ -676,7 +682,4 @@ object InstagramNativeExtractor {
             }
         }
     }
-
-
-    private class HTTPException(val statusCode: Int, message: String) : Exception(message)
-}
+}
