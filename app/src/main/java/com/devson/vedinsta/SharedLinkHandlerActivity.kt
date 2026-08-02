@@ -77,19 +77,24 @@ class SharedLinkHandlerActivity : AppCompatActivity() {
     }
 
     private fun extractInstagramUrl(text: String): String? {
-        // Instagram URL patterns
-        val patterns = listOf(
-            Regex("https?://(?:www\\.)?instagram\\.com/(?:p|reel|tv)/([A-Za-z0-9_-]+)/?.*"),
-            Regex("https?://(?:www\\.)?instagr\\.am/(?:p|reel)/([A-Za-z0-9_-]+)/?.*"),
-            Regex("instagram\\.com/(?:p|reel|tv)/([A-Za-z0-9_-]+)"),
-            Regex("instagr\\.am/(?:p|reel)/([A-Za-z0-9_-]+)")
-        )
+        val trimmed = text.trim()
 
-        patterns.forEach { pattern ->
-            pattern.find(text)?.let { matchResult ->
-                val shortcode = matchResult.groupValues[1]
-                return "https://www.instagram.com/p/$shortcode/"
-            }
+        // 1. Check for Story URLs (User story or Highlight)
+        val storyRegex = Regex("(https?://(?:www\\.)?instagram\\.com/stories/[A-Za-z0-9_.-]+(?:/[0-9]+)?/?(?:\\?[^\\s]*)?)", RegexOption.IGNORE_CASE)
+        storyRegex.find(trimmed)?.let {
+            return it.value
+        }
+
+        // 2. Check for Standard Post/Reel/TV URLs
+        val postRegex = Regex("(https?://(?:www\\.)?instagr(?:am\\.com|\\.am)/(?:p|reel|reels|tv)/[A-Za-z0-9_-]+/?(?:\\?[^\\s]*)?)", RegexOption.IGNORE_CASE)
+        postRegex.find(trimmed)?.let {
+            return it.value
+        }
+
+        // 3. Fallback generic instagram.com link matcher
+        val genericIgRegex = Regex("(https?://(?:www\\.)?instagr(?:am\\.com|\\.am)/[^\\s]+)", RegexOption.IGNORE_CASE)
+        genericIgRegex.find(trimmed)?.let {
+            return it.value
         }
 
         return null

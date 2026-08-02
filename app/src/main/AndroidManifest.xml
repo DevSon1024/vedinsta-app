@@ -66,7 +66,9 @@
                 <data android:host="instagr.am" />
                 <data android:pathPrefix="/p/" />
                 <data android:pathPrefix="/reel/" />
+                <data android:pathPrefix="/reels/" />
                 <data android:pathPrefix="/tv/" />
+                <data android:pathPrefix="/stories/" />
             </intent-filter>
         </activity>
 
