@@ -25,6 +25,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
 import java.io.File
 import android.os.Environment
 import kotlinx.coroutines.withContext
@@ -784,6 +785,7 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
                             
                             // Clear temporary cache
                             clearAppCache(context)
+                            delay(500)
                             notificationManager.removeProgressFromDb(groupTag)
 
                             try {
@@ -810,8 +812,9 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
                             withContext(Dispatchers.Main) {
                                 val message = "Downloaded ${completedFilePaths.size}/$expectedCount files for $finalUsername."
                                 Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                                val uniqueCompletionId = System.currentTimeMillis().toInt()
                                 notificationManager.showDownloadCompleted(
-                                    notificationId = groupTag.hashCode(),
+                                    notificationId = uniqueCompletionId,
                                     title = "Download Completed",
                                     message = "Saved ${completedFilePaths.size}/$expectedCount files from @$finalUsername"
                                 )
@@ -820,6 +823,7 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
                     } else {
                         Log.w(TAG, "All work finished for tag '$groupTag', but no files succeeded.")
                         withContext(Dispatchers.IO) {
+                            delay(500)
                             notificationManager.removeProgressFromDb(groupTag)
                             try {
                                 notificationManager.addCustomNotification(
@@ -835,8 +839,9 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
                             }
                             withContext(Dispatchers.Main) {
                                 Toast.makeText(context, "Download failed for post $finalUsername.", Toast.LENGTH_LONG).show()
+                                val uniqueId = System.currentTimeMillis().toInt()
                                 notificationManager.showDownloadError(
-                                    notificationId = groupTag.hashCode(),
+                                    notificationId = uniqueId,
                                     fileName = "Post $finalUsername",
                                     error = "All downloads failed"
                                 )
@@ -897,6 +902,7 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
             // Clear temporary cache
             clearAppCache(context)
             val notificationManager = VedInstaNotificationManager.getInstance(context)
+            delay(500)
             notificationManager.removeProgressFromDb(tag)
 
             val fileName = File(filePath).name
@@ -919,8 +925,9 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
             // Show completion feedback on Main thread
             withContext(Dispatchers.Main) {
                 Toast.makeText(context, "Download complete: $fileName", Toast.LENGTH_SHORT).show()
+                val uniqueCompletionId = System.currentTimeMillis().toInt()
                 notificationManager.showDownloadCompleted(
-                    notificationId = notificationId,
+                    notificationId = uniqueCompletionId,
                     title = "Download Completed",
                     message = "Saved $mediaTypeWord from @$finalUsername"
                 )
@@ -935,6 +942,7 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
         val finalUsername = cachedUsername ?: "unknown"
         applicationScope.launch(Dispatchers.IO) {
             val notificationManager = VedInstaNotificationManager.getInstance(context)
+            delay(500)
             notificationManager.removeProgressFromDb(tag)
             try {
                 notificationManager.addCustomNotification(
@@ -949,7 +957,8 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
             }
             withContext(Dispatchers.Main) {
                 Toast.makeText(context, "Download failed: $fileName", Toast.LENGTH_SHORT).show()
-                notificationManager.showDownloadError(notificationId = notificationId, fileName = fileName, error = "Download failed or cancelled")
+                val uniqueId = System.currentTimeMillis().toInt()
+                notificationManager.showDownloadError(notificationId = uniqueId, fileName = fileName, error = "Download failed or cancelled")
             }
         }
     }

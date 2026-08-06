@@ -171,7 +171,7 @@ class DownloadService : Service() {
                     batchCompletedFilesMap.putIfAbsent(postId, CopyOnWriteArrayList())
                     updateProgressInDb(postId, username, "0/$totalImages")
                 } else {
-                    updateProgressInDb(postId ?: fileNames.firstOrNull(), username, "0/1")
+                    updateProgressInDb(postId ?: fileNames.firstOrNull(), username, "0%")
                 }
 
                 val currentTaskCount = activeTasks.addAndGet(size)
@@ -280,7 +280,7 @@ class DownloadService : Service() {
                         batchCompletedFilesMap.putIfAbsent(postId, CopyOnWriteArrayList())
                         updateProgressInDb(postId, username, "0/$totalImages")
                     } else {
-                        updateProgressInDb(postId ?: fileName, username, "0/1")
+                        updateProgressInDb(postId ?: fileName, username, "0%")
                     }
 
                     if (isFirstTask) {
@@ -358,9 +358,9 @@ class DownloadService : Service() {
     private fun createForegroundNotification(fileName: String): android.app.Notification {
         return NotificationCompat.Builder(this, VedInstaNotificationManager.CHANNEL_ID_SILENT)
             .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle("VedInsta · Downloading")
-            .setContentText("Downloading safely (Anti-Ban active)... (0/1 files)")
-            .setProgress(0, 0, true)
+            .setContentTitle("VedInsta - Downloading")
+            .setContentText("Downloading safely (Anti-Ban active)... 0%")
+            .setProgress(100, 0, false)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
             .build()
@@ -402,6 +402,7 @@ class DownloadService : Service() {
 
                 val contentLength = body.contentLength()
                 var currentTotalBytesRead = 0L
+                var lastUpdateTime = 0L
 
                 body.byteStream().use { inputStream ->
                     FileOutputStream(file).use { outputStream ->
@@ -414,6 +415,16 @@ class DownloadService : Service() {
                             }
                             outputStream.write(buffer, 0, bytesRead)
                             currentTotalBytesRead += bytesRead
+
+                            if (totalImages <= 1 && contentLength > 0) {
+                                val now = System.currentTimeMillis()
+                                if (now - lastUpdateTime >= 500) {
+                                    val progress = (currentTotalBytesRead * 100 / contentLength).toInt()
+                                    updateProgressInDb(postId ?: fileName, username, "$progress%")
+                                    notificationManager.showSingleDownloadProgress(notificationId, postId ?: fileName, progress)
+                                    lastUpdateTime = now
+                                }
+                            }
                         }
                     }
                 }
@@ -504,8 +515,9 @@ class DownloadService : Service() {
                     val title = "Download Completed"
                     val msg = "Saved $successes/$totalImages files from @$displayUsername"
                     
+                    val uniqueCompletionId = System.currentTimeMillis().toInt()
                     notificationManager.showDownloadCompleted(
-                        notificationId = postId.hashCode(),
+                        notificationId = uniqueCompletionId,
                         title = title,
                         message = msg
                     )
@@ -538,11 +550,12 @@ class DownloadService : Service() {
                             } catch (e: Exception) {
                                 Log.e(TAG, "Failed to insert success batch notification in DB", e)
                             }
+                            delay(500)
+                            notificationManager.removeProgressFromDb(postId)
                         }
                     }
 
                     activeNotificationIds.remove(postId.hashCode())
-                    removeProgressFromDb(postId)
                     batchProgressMap.remove(postId)
                     batchCompletedFilesMap.remove(postId)
                 } else {
@@ -554,9 +567,10 @@ class DownloadService : Service() {
             val mediaTypeWord = if (isVideo) "reel" else "post"
             val title = "Download Completed"
             val msg = "Saved $mediaTypeWord from @$displayUsername"
-            notificationManager.showDownloadProgress(notificationId = notificationId, completedFiles = 1, totalFiles = 1)
-            updateProgressInDb(postId ?: fileName, username, "1/1")
-            notificationManager.showDownloadCompleted(notificationId = notificationId, title = title, message = msg)
+            notificationManager.showSingleDownloadProgress(notificationId, postId ?: fileName, 100)
+            updateProgressInDb(postId ?: fileName, username, "100%")
+            val uniqueCompletionId = System.currentTimeMillis().toInt()
+            notificationManager.showDownloadCompleted(notificationId = uniqueCompletionId, title = title, message = msg)
 
             serviceScope.launch {
                 // BUG FIX: NonCancellable prevents JobCancellationException when
@@ -579,10 +593,11 @@ class DownloadService : Service() {
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to insert success single notification in DB", e)
                     }
+                    delay(500)
+                    notificationManager.removeProgressFromDb(postId ?: fileName)
                 }
             }
             activeNotificationIds.remove(notificationId)
-            removeProgressFromDb(postId ?: fileName)
         }
     }
 
@@ -613,8 +628,9 @@ class DownloadService : Service() {
                         val title = "Download Completed with errors"
                         val msg = "Saved $successes/$totalImages files from @$displayUsername"
                         
+                        val uniqueCompletionId = System.currentTimeMillis().toInt()
                         notificationManager.showDownloadCompleted(
-                            notificationId = postId.hashCode(),
+                            notificationId = uniqueCompletionId,
                             title = title,
                             message = msg
                         )
@@ -635,14 +651,17 @@ class DownloadService : Service() {
                                 } catch (e: Exception) {
                                     Log.e(TAG, "Failed to insert partial success notification in DB", e)
                                 }
+                                delay(500)
+                                notificationManager.removeProgressFromDb(postId)
                             }
                         }
                     } else {
                         val title = "Download Failed"
                         val msg = "Could not download files from @$displayUsername"
                         
+                        val uniqueId = System.currentTimeMillis().toInt()
                         notificationManager.showDownloadError(
-                            notificationId = postId.hashCode(),
+                            notificationId = uniqueId,
                             fileName = "Batch Download Failed",
                             error = msg
                         )
@@ -663,11 +682,12 @@ class DownloadService : Service() {
                                 } catch (e: Exception) {
                                     Log.e(TAG, "Failed to insert batch error notification in DB", e)
                                 }
+                                delay(500)
+                                notificationManager.removeProgressFromDb(postId)
                             }
                         }
                     }
                     activeNotificationIds.remove(postId.hashCode())
-                    removeProgressFromDb(postId)
                     batchProgressMap.remove(postId)
                     batchCompletedFilesMap.remove(postId)
                 } else {
@@ -678,8 +698,9 @@ class DownloadService : Service() {
             val title = "Download Failed"
             val msg = "Error downloading $fileName: $errorMessage"
             
+            val uniqueId = System.currentTimeMillis().toInt()
             notificationManager.showDownloadError(
-                notificationId = notificationId,
+                notificationId = uniqueId,
                 fileName = fileName,
                 error = errorMessage
             )
@@ -700,10 +721,11 @@ class DownloadService : Service() {
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to insert single error notification in DB", e)
                     }
+                    delay(500)
+                    notificationManager.removeProgressFromDb(postId ?: fileName)
                 }
             }
             activeNotificationIds.remove(notificationId)
-            removeProgressFromDb(postId ?: fileName)
         }
     }
 

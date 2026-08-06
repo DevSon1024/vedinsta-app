@@ -144,11 +144,19 @@ class VedInstaNotificationManager private constructor(private val context: Conte
     }
 
     fun showSingleDownloadProgress(notificationId: Int, fileName: String, progress: Int) {
-        if (progress >= 100) {
-            showDownloadProgress(notificationId, 1, 1)
-        } else {
-            showDownloadProgress(notificationId, 0, 1)
-        }
+        val title = "VedInsta - Downloading"
+        val contentText = "Downloading safely (Anti-Ban active)... $progress%"
+
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID_SILENT)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentTitle(title)
+            .setContentText(contentText)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setProgress(100, progress, false)
+
+        notify(notificationId, builder.build())
     }
 
     fun showBatchDownloadComplete(totalFiles: Int) {

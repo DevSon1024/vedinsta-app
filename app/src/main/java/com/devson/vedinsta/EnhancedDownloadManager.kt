@@ -103,7 +103,7 @@ class EnhancedDownloadManager(
                 .setPriority(NotificationCompat.PRIORITY_LOW)
                 .build()
         } else {
-            createProgressNotification(fileName, 0)
+            createProgressNotification(fileName, 0, isBatch)
         }
 
         try {
@@ -113,7 +113,11 @@ class EnhancedDownloadManager(
             Log.e(TAG, "Error setting foreground info (permission or other issue)", e)
         }
 
-        setProgress(workDataOf(PROGRESS to 0))
+        setProgress(workDataOf(
+            PROGRESS to 0,
+            KEY_FILE_NAME to fileName,
+            KEY_MEDIA_TYPE to inputData.getString(KEY_MEDIA_TYPE)
+        ))
 
         return try {
             Log.d(TAG, "Starting download for: $mediaUrl")
@@ -122,7 +126,7 @@ class EnhancedDownloadManager(
                 Log.d(TAG, "Download finished successfully: $filePath")
                 setProgress(workDataOf(PROGRESS to 100))
                 if (!isBatch) {
-                    val notification = createProgressNotification(fileName, 100)
+                    val notification = createProgressNotification(fileName, 100, isBatch)
                     try {
                         notificationManagerCompat.notify(finalNotificationId, notification)
                     } catch (e: SecurityException) {
@@ -187,6 +191,25 @@ class EnhancedDownloadManager(
                             }
                             outputStream.write(buffer, 0, bytesRead)
                             currentTotalBytesRead += bytesRead
+
+                            if (!isBatch && contentLength > 0) {
+                                val now = System.currentTimeMillis()
+                                if (now - lastNotificationUpdateTime >= NOTIFICATION_UPDATE_INTERVAL_MS) {
+                                    val progress = (currentTotalBytesRead * 100 / contentLength).toInt()
+                                    setProgress(workDataOf(
+                                        PROGRESS to progress,
+                                        KEY_FILE_NAME to fileName,
+                                        KEY_MEDIA_TYPE to inputData.getString(KEY_MEDIA_TYPE)
+                                    ))
+                                    val notification = createProgressNotification(fileName, progress, isBatch)
+                                    try {
+                                        notificationManagerCompat.notify(notificationId, notification)
+                                    } catch (e: SecurityException) {
+                                        Log.w(TAG, "Permission denied updating notification")
+                                    }
+                                    lastNotificationUpdateTime = now
+                                }
+                            }
                         }
                     }
                 }
@@ -213,10 +236,14 @@ class EnhancedDownloadManager(
     }
 
 
-    private fun createProgressNotification(fileName: String, progress: Int): Notification {
+    private fun createProgressNotification(fileName: String, progress: Int, isBatch: Boolean = false): Notification {
         val title = "Downloading Media"
-        val contentText = if (progress >= 100) "Downloading safely (Anti-Ban active)... (1/1 files)" else "Downloading safely (Anti-Ban active)... (0/1 files)"
-        val indeterminate = progress < 100
+        val contentText = if (isBatch) {
+            if (progress >= 100) "Downloading safely (Anti-Ban active)... (1/1 files)" else "Downloading safely (Anti-Ban active)... (0/1 files)"
+        } else {
+            "Downloading safely (Anti-Ban active)... $progress%"
+        }
+        val indeterminate = isBatch && progress < 100
 
         val mainActivityIntent = Intent(applicationContext, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
@@ -232,7 +259,7 @@ class EnhancedDownloadManager(
             .createCancelPendingIntent(id)
 
         // USE SILENT CHANNEL FOR PROGRESS
-        return NotificationCompat.Builder(applicationContext, VedInstaNotificationManager.CHANNEL_ID_SILENT)
+        val builder = NotificationCompat.Builder(applicationContext, VedInstaNotificationManager.CHANNEL_ID_SILENT)
             .setContentTitle(title)
             .setTicker(title)
             .setContentText(contentText)
@@ -241,10 +268,16 @@ class EnhancedDownloadManager(
             .setAutoCancel(false)
             .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_LOW) // Silent
-            .setProgress(0, 0, indeterminate)
             .setContentIntent(contentPendingIntent)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Cancel", cancelPendingIntent)
-            .build()
+
+        if (isBatch) {
+            builder.setProgress(0, 0, indeterminate)
+        } else {
+            builder.setProgress(100, progress, false)
+        }
+
+        return builder.build()
     }
 
     private fun createEnhancedRequest(url: String): Request {
@@ -270,7 +303,7 @@ class EnhancedDownloadManager(
                 .setPriority(NotificationCompat.PRIORITY_LOW)
                 .build()
         } else {
-            createProgressNotification(fileName, 0)
+            createProgressNotification(fileName, 0, isBatch)
         }
         return ForegroundInfo(finalNotificationId, notification)
     }
