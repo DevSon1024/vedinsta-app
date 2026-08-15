@@ -455,6 +455,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         _isLoggedIn.value = securePrefs.hasValidSession() && securePrefs.isSessionActive()
     }
 
+    fun getLoggedInUsername(): String? = securePrefs.getUsername()
+
     override fun onCleared() {
         super.onCleared()
         securePrefs.unregisterListener(securePrefsListener)
