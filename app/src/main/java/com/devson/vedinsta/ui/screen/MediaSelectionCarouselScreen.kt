@@ -387,6 +387,9 @@ fun MediaSelectionCard(
             val imageRequest = remember(localFile, previewUrl) {
                 ImageRequest.Builder(context)
                     .data(localFile ?: previewUrl)
+                    .size(600, 600)
+                    .crossfade(true)
+                    .allowHardware(true)
                     .diskCachePolicy(CachePolicy.ENABLED)
                     .memoryCachePolicy(CachePolicy.ENABLED)
                     .build()

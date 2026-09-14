@@ -1,19 +1,23 @@
 package com.devson.vedinsta.model
 
+import androidx.compose.runtime.Immutable
 import com.google.gson.annotations.SerializedName
 import java.io.Serializable
 
+@Immutable
 data class QualityOption(
     @SerializedName("url") val url: String? = null,
     @SerializedName("width") val width: Int? = null,
     @SerializedName("height") val height: Int? = null
 ) : Serializable
 
+@Immutable
 data class MediaVariant(
     @SerializedName("url") val url: String,
     @SerializedName("resolution_label") val resolutionLabel: String
 ) : Serializable
 
+@Immutable
 data class ExtractedMediaNode(
     @SerializedName("thumbnail_url") val thumbnailUrl: String,
     @SerializedName("download_variants") val downloadVariants: List<MediaVariant> = emptyList(),
@@ -28,6 +32,7 @@ data class ExtractedMediaNode(
     @SerializedName("qualities") val qualities: List<QualityOption>? = null
 ) : Serializable
 
+@Immutable
 data class ExtractedPost(
     val mediaList: List<ExtractedMediaNode>,
     val username: String,
@@ -35,6 +40,7 @@ data class ExtractedPost(
     val postId: String
 ) : Serializable
 
+@Immutable
 data class InstagramResponse(
     @SerializedName("status") val status: String? = null,
     @SerializedName("message") val message: String? = null,

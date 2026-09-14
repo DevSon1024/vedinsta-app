@@ -74,6 +74,7 @@ fun MainAppScreen(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     val pagerState = rememberPagerState(pageCount = { 5 })
+    val currentMainPage by remember { derivedStateOf { pagerState.currentPage } }
     val scope = rememberCoroutineScope()
 
     var gridColumnCount by remember { mutableStateOf(settingsViewModel.gridColumnCount) }
@@ -115,7 +116,7 @@ fun MainAppScreen(
         }
     }
 
-    BackHandler(enabled = currentRoute != Screen.MainPager.route || pagerState.currentPage > 0) {
+    BackHandler(enabled = currentRoute != Screen.MainPager.route || currentMainPage > 0) {
         if (currentRoute == Screen.MainPager.route) {
             scope.launch { pagerState.animateScrollToPage(0) }
         } else {
@@ -170,7 +171,7 @@ fun MainAppScreen(
 
                 VedInstaTopAppBar(
                     title = if (currentRoute == Screen.MainPager.route) {
-                        when (pagerState.currentPage) {
+                        when (currentMainPage) {
                             0 -> "Home"
                             1 -> "History"
                             2 -> "Favorites"
@@ -207,7 +208,7 @@ fun MainAppScreen(
                     },
                     actions = {
                         if (currentRoute == Screen.MainPager.route) {
-                            if (pagerState.currentPage == 0) {
+                            if (currentMainPage == 0) {
                                 NotificationBadge(
                                     notificationViewModel = notificationViewModel,
                                     onClick = {
@@ -226,7 +227,7 @@ fun MainAppScreen(
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
-                            } else if (pagerState.currentPage == 1 || pagerState.currentPage == 2) {
+                            } else if (currentMainPage == 1 || currentMainPage == 2) {
                                 IconButton(onClick = { showViewSettingsSheet = true }) {
                                     Icon(
                                         imageVector = Icons.Default.Tune,
@@ -277,35 +278,35 @@ fun MainAppScreen(
                         .height(60.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())
                 ) {
                     NavigationBarItem(
-                        selected = pagerState.currentPage == 0,
+                        selected = currentMainPage == 0,
                         onClick = { scope.launch { pagerState.animateScrollToPage(0) } },
                         icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
                         label = { Text("Home", fontSize = 11.sp, fontWeight = FontWeight.Medium) },
                         alwaysShowLabel = false
                     )
                     NavigationBarItem(
-                        selected = pagerState.currentPage == 1,
+                        selected = currentMainPage == 1,
                         onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
                         icon = { Icon(Icons.Default.History, contentDescription = "History") },
                         label = { Text("History", fontSize = 11.sp, fontWeight = FontWeight.Medium) },
                         alwaysShowLabel = false
                     )
                     NavigationBarItem(
-                        selected = pagerState.currentPage == 2,
+                        selected = currentMainPage == 2,
                         onClick = { scope.launch { pagerState.animateScrollToPage(2) } },
                         icon = { Icon(Icons.Default.Favorite, contentDescription = "Favorites") },
                         label = { Text("Favorites", fontSize = 11.sp, fontWeight = FontWeight.Medium) },
                         alwaysShowLabel = false
                     )
                     NavigationBarItem(
-                        selected = pagerState.currentPage == 3,
+                        selected = currentMainPage == 3,
                         onClick = { scope.launch { pagerState.animateScrollToPage(3) } },
                         icon = { Icon(Icons.Default.Download, contentDescription = "WA Status") },
                         label = { Text("WA Status", fontSize = 11.sp, fontWeight = FontWeight.Medium) },
                         alwaysShowLabel = false
                     )
                     NavigationBarItem(
-                        selected = pagerState.currentPage == 4,
+                        selected = currentMainPage == 4,
                         onClick = { scope.launch { pagerState.animateScrollToPage(4) } },
                         icon = { Icon(Icons.Default.AccountBox, contentDescription = "Sessions") },
                         label = { Text("Sessions", fontSize = 11.sp, fontWeight = FontWeight.Medium) },
@@ -315,7 +316,7 @@ fun MainAppScreen(
             }
         },
         floatingActionButton = {
-            if (currentRoute == Screen.MainPager.route && pagerState.currentPage == 0) {
+            if (currentRoute == Screen.MainPager.route && currentMainPage == 0) {
                 val isLoading = extractionState is ExtractionState.Loading
 
                 val loadingPolygons = remember {

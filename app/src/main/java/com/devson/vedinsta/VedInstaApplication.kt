@@ -454,6 +454,7 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
                     .build()
 
                 val downloadWorkRequest = OneTimeWorkRequestBuilder<EnhancedDownloadManager>()
+                    .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                     .setInputData(inputData)
                     .setConstraints(constraints)
                     .addTag(groupTag) // Tag all work in the batch
@@ -539,6 +540,7 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
                 .build()
 
             val downloadWorkRequest = OneTimeWorkRequestBuilder<EnhancedDownloadManager>()
+                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                 .setInputData(inputData)
                 .setConstraints(constraints)
                 .addTag(postIdOrKey) // Tag with the unique key
@@ -675,30 +677,17 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
 
     fun downloadSingleMedia(url: String, type: String, username: String, index: Int) {
         try {
-            val timestamp = System.currentTimeMillis()
-            val extension = if (type == "video") "mp4" else "jpg"
-            val fileName = "${username}_${timestamp + index}.$extension"
-
-            val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            val vedInstaDir = File(downloadDir, "VedInsta")
-            vedInstaDir.mkdirs()
-            val filePath = File(vedInstaDir, fileName).absolutePath
-
-            Log.d("VedInstaApp", "Downloading: $fileName to $filePath")
-
-            // Start download service
-            val downloadIntent = Intent(this, DownloadService::class.java).apply {
-                putExtra(DownloadService.EXTRA_DOWNLOAD_URL, url)
-                putExtra(DownloadService.EXTRA_FILE_NAME, fileName)
-                putExtra(DownloadService.EXTRA_FILE_PATH, filePath)
-                putExtra(DownloadService.EXTRA_USERNAME, username)
-                putExtra(DownloadService.EXTRA_TOTAL_IMAGES, 1)
-                putExtra(DownloadService.EXTRA_HAS_VIDEO, type == "video")
-            }
-            startService(downloadIntent)
-
+            val key = "single_${username}_${System.currentTimeMillis()}_$index"
+            enqueueSingleDownload(
+                context = this,
+                mediaUrl = url,
+                mediaType = type,
+                username = username,
+                postIdOrKey = key,
+                postCaption = null
+            )
         } catch (e: Exception) {
-            Log.e("VedInstaApp", "Error downloading media", e)
+            Log.e("VedInstaApp", "Error downloading media via WorkManager", e)
         }
     }
 

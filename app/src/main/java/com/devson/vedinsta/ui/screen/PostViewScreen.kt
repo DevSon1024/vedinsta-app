@@ -58,6 +58,10 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import coil.size.Size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
@@ -164,6 +168,7 @@ fun PostViewScreen(
     }
 
     val pagerState = rememberPagerState(pageCount = { if (mediaFiles.isEmpty()) 1 else mediaFiles.size })
+    val activePage by remember { derivedStateOf { pagerState.currentPage } }
     val fav = isFavorite(post.postId)
 
     var isZoomActive by remember { mutableStateOf(false) }
@@ -312,12 +317,13 @@ fun PostViewScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (isVideo) {
-                                    VideoPlayer(file = file, isCurrentPage = pagerState.currentPage == page)
+                                    VideoPlayer(file = file, isCurrentPage = activePage == page)
                                 } else {
                                     val mediaPath = file.absolutePath
                                     val imageRequest = remember(mediaPath) {
                                         ImageRequest.Builder(context)
                                             .data(mediaPath)
+                                            .size(Size.ORIGINAL)
                                             .diskCachePolicy(CachePolicy.DISABLED)
                                             .memoryCachePolicy(CachePolicy.ENABLED)
                                             .memoryCacheKey(mediaPath)
@@ -364,7 +370,7 @@ fun PostViewScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         repeat(mediaFiles.size) { index ->
-                            val isActive = pagerState.currentPage == index
+                            val isActive = activePage == index
                             Box(
                                 modifier = Modifier
                                     .padding(horizontal = 3.dp)
@@ -380,7 +386,7 @@ fun PostViewScreen(
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "${pagerState.currentPage + 1}/${mediaFiles.size}",
+                            text = "${activePage + 1}/${mediaFiles.size}",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -891,8 +897,30 @@ fun VideoPlayer(file: File, isCurrentPage: Boolean) {
         }
     }
 
-    DisposableEffect(file) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, file) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP -> {
+                    isPlaying = false
+                    try {
+                        mediaPlayerRef.value?.let { mp ->
+                            if (mp.isPlaying) mp.pause()
+                        }
+                    } catch (_: Exception) {}
+                }
+                Lifecycle.Event.ON_DESTROY -> {
+                    val player = mediaPlayerRef.value
+                    mediaPlayerRef.value = null
+                    isPrepared = false
+                    releasePlayer(player)
+                }
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
             val player = mediaPlayerRef.value
             mediaPlayerRef.value = null
             isPrepared = false

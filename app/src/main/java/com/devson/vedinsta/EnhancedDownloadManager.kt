@@ -83,17 +83,14 @@ class EnhancedDownloadManager(
     }
 
 
-    override suspend fun doWork(): Result {
-        val mediaUrl = inputData.getString(KEY_MEDIA_URL) ?: return Result.failure()
-        val filePath = inputData.getString(KEY_FILE_PATH) ?: return Result.failure()
+    override suspend fun getForegroundInfo(): ForegroundInfo {
         val fileName = inputData.getString(KEY_FILE_NAME) ?: "downloading_file"
         val isBatch = inputData.getBoolean("is_batch", false)
         val postId = inputData.getString(KEY_POST_ID)
-        
         val notificationId = id.hashCode() + NOTIFICATION_ID_OFFSET
         val finalNotificationId = if (isBatch && postId != null) postId.hashCode() else notificationId
 
-        val initialNotification = if (isBatch) {
+        val notification = if (isBatch) {
             NotificationCompat.Builder(applicationContext, VedInstaNotificationManager.CHANNEL_ID_SILENT)
                 .setContentTitle("VedInsta · Downloading")
                 .setContentText("Preparing files…")
@@ -106,8 +103,29 @@ class EnhancedDownloadManager(
             createProgressNotification(fileName, 0, isBatch)
         }
 
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ForegroundInfo(
+                finalNotificationId,
+                notification,
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            )
+        } else {
+            ForegroundInfo(finalNotificationId, notification)
+        }
+    }
+
+    override suspend fun doWork(): Result {
+        val mediaUrl = inputData.getString(KEY_MEDIA_URL) ?: return Result.failure()
+        val filePath = inputData.getString(KEY_FILE_PATH) ?: return Result.failure()
+        val fileName = inputData.getString(KEY_FILE_NAME) ?: "downloading_file"
+        val isBatch = inputData.getBoolean("is_batch", false)
+        val postId = inputData.getString(KEY_POST_ID)
+        
+        val notificationId = id.hashCode() + NOTIFICATION_ID_OFFSET
+        val finalNotificationId = if (isBatch && postId != null) postId.hashCode() else notificationId
+
         try {
-            setForeground(ForegroundInfo(finalNotificationId, initialNotification))
+            setForeground(getForegroundInfo())
             Log.d(TAG, "Foreground service started for worker $id with notification ID $finalNotificationId")
         } catch (e: Exception) {
             Log.e(TAG, "Error setting foreground info (permission or other issue)", e)
@@ -285,26 +303,5 @@ class EnhancedDownloadManager(
             .url(url)
             .get()
             .build()
-    }
-
-    override suspend fun getForegroundInfo(): ForegroundInfo {
-        val fileName = inputData.getString(KEY_FILE_NAME) ?: "downloading_file"
-        val isBatch = inputData.getBoolean("is_batch", false)
-        val postId = inputData.getString(KEY_POST_ID)
-        val finalNotificationId = if (isBatch && postId != null) postId.hashCode() else (id.hashCode() + NOTIFICATION_ID_OFFSET)
-        
-        val notification = if (isBatch) {
-            NotificationCompat.Builder(applicationContext, VedInstaNotificationManager.CHANNEL_ID_SILENT)
-                .setContentTitle("Downloading batch media")
-                .setContentText("Preparing files...")
-                .setSmallIcon(android.R.drawable.stat_sys_download)
-                .setOngoing(true)
-                .setOnlyAlertOnce(true)
-                .setPriority(NotificationCompat.PRIORITY_LOW)
-                .build()
-        } else {
-            createProgressNotification(fileName, 0, isBatch)
-        }
-        return ForegroundInfo(finalNotificationId, notification)
     }
 }
