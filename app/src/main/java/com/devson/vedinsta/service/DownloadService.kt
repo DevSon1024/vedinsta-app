@@ -169,9 +169,9 @@ class DownloadService : Service() {
                 if (isBatch) {
                     batchProgressMap.putIfAbsent(postId!!, Pair(AtomicInteger(0), AtomicInteger(0)))
                     batchCompletedFilesMap.putIfAbsent(postId, CopyOnWriteArrayList())
-                    updateProgressInDb(postId, username, "0/$totalImages")
+                    updateProgressInDb(postId, username, "0/$totalImages", postUrl)
                 } else {
-                    updateProgressInDb(postId ?: fileNames.firstOrNull(), username, "0%")
+                    updateProgressInDb(postId ?: fileNames.firstOrNull(), username, "0%", postUrl)
                 }
 
                 val currentTaskCount = activeTasks.addAndGet(size)
@@ -278,9 +278,9 @@ class DownloadService : Service() {
                     if (isBatch) {
                         batchProgressMap.putIfAbsent(postId!!, Pair(AtomicInteger(0), AtomicInteger(0)))
                         batchCompletedFilesMap.putIfAbsent(postId, CopyOnWriteArrayList())
-                        updateProgressInDb(postId, username, "0/$totalImages")
+                        updateProgressInDb(postId, username, "0/$totalImages", postUrl)
                     } else {
-                        updateProgressInDb(postId ?: fileName, username, "0%")
+                        updateProgressInDb(postId ?: fileName, username, "0%", postUrl)
                     }
 
                     if (isFirstTask) {
@@ -420,7 +420,7 @@ class DownloadService : Service() {
                                 val now = System.currentTimeMillis()
                                 if (now - lastUpdateTime >= 500) {
                                     val progress = (currentTotalBytesRead * 100 / contentLength).toInt()
-                                    updateProgressInDb(postId ?: fileName, username, "$progress%")
+                                    updateProgressInDb(postId ?: fileName, username, "$progress%", postUrl)
                                     notificationManager.showSingleDownloadProgress(notificationId, postId ?: fileName, progress)
                                     lastUpdateTime = now
                                 }
@@ -450,7 +450,7 @@ class DownloadService : Service() {
                 )
             }
 
-            handleDownloadSuccess(postId, totalImages, username, fileName, notificationId, filePath)
+            handleDownloadSuccess(postId, totalImages, username, fileName, notificationId, filePath, postUrl)
 
         } catch (e: Exception) {
             if (e is CancellationException) {
@@ -492,7 +492,8 @@ class DownloadService : Service() {
         username: String?,
         fileName: String,
         notificationId: Int,
-        filePath: String
+        filePath: String,
+        postUrl: String? = null
     ) {
         val quotaManager = DownloadQuotaManager(applicationContext)
         quotaManager.recordDownload()
@@ -536,7 +537,11 @@ class DownloadService : Service() {
                                     ""
                                 }
                                 val db = com.devson.vedinsta.database.AppDatabase.getDatabase(applicationContext)
-                                val pUrl = db.downloadedPostDao().getPostById(postId)?.postUrl
+                                val pUrl = postUrl 
+                                    ?: db.downloadedPostDao().getPostById(postId)?.postUrl
+                                    ?: if (postId.startsWith("http://") || postId.startsWith("https://")) postId
+                                    else if (!postId.startsWith("batch_") && !postId.startsWith("single_") && !postId.contains(" ") && !postId.contains("/")) "https://www.instagram.com/p/$postId/"
+                                    else null
 
                                 notificationManager.addCustomNotification(
                                     title = title,
@@ -559,7 +564,7 @@ class DownloadService : Service() {
                     batchProgressMap.remove(postId)
                     batchCompletedFilesMap.remove(postId)
                 } else {
-                    updateProgressInDb(postId, username, "$finished/$totalImages")
+                    updateProgressInDb(postId, username, "$finished/$totalImages", postUrl)
                 }
             }
         } else {
@@ -568,7 +573,7 @@ class DownloadService : Service() {
             val title = "Download Completed"
             val msg = "Saved $mediaTypeWord from @$displayUsername"
             notificationManager.showSingleDownloadProgress(notificationId, postId ?: fileName, 100)
-            updateProgressInDb(postId ?: fileName, username, "100%")
+            updateProgressInDb(postId ?: fileName, username, "100%", postUrl)
             val uniqueCompletionId = System.currentTimeMillis().toInt()
             notificationManager.showDownloadCompleted(notificationId = uniqueCompletionId, title = title, message = msg)
 
@@ -579,14 +584,19 @@ class DownloadService : Service() {
                 withContext(NonCancellable) {
                     try {
                         val db = com.devson.vedinsta.database.AppDatabase.getDatabase(applicationContext)
-                        val pUrl = db.downloadedPostDao().getPostById(postId ?: fileName)?.postUrl
+                        val targetKey = postId ?: fileName
+                        val pUrl = postUrl 
+                            ?: db.downloadedPostDao().getPostById(targetKey)?.postUrl
+                            ?: if (targetKey.startsWith("http://") || targetKey.startsWith("https://")) targetKey
+                            else if (!targetKey.startsWith("batch_") && !targetKey.startsWith("single_") && !targetKey.contains(" ") && !targetKey.contains("/")) "https://www.instagram.com/p/$targetKey/"
+                            else null
 
                         notificationManager.addCustomNotification(
                             title = title,
                             message = msg,
                             type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_COMPLETED,
                             priority = com.devson.vedinsta.database.NotificationPriority.NORMAL,
-                            postId = postId ?: fileName,
+                            postId = targetKey,
                             postUrl = pUrl,
                             thumbnailPath = com.devson.vedinsta.ui.ThumbnailHelper.getSafeThumbnailPath(applicationContext, filePath)
                         )
@@ -671,13 +681,18 @@ class DownloadService : Service() {
                             // stopSelf() races ahead of this DB insert on batch full-failure.
                             withContext(NonCancellable) {
                                 try {
+                                    val resolvedUrl = postUrl 
+                                        ?: if (postId.startsWith("http://") || postId.startsWith("https://")) postId
+                                        else if (!postId.startsWith("batch_") && !postId.startsWith("single_") && !postId.contains(" ") && !postId.contains("/")) "https://www.instagram.com/p/$postId/"
+                                        else null
+
                                     notificationManager.addCustomNotification(
                                         title = title,
                                         message = msg,
                                         type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_FAILED,
                                         priority = com.devson.vedinsta.database.NotificationPriority.HIGH,
                                         postId = postId,
-                                        postUrl = postUrl
+                                        postUrl = resolvedUrl
                                     )
                                 } catch (e: Exception) {
                                     Log.e(TAG, "Failed to insert batch error notification in DB", e)
@@ -691,7 +706,7 @@ class DownloadService : Service() {
                     batchProgressMap.remove(postId)
                     batchCompletedFilesMap.remove(postId)
                 } else {
-                    updateProgressInDb(postId, username, "$finished/$totalImages")
+                    updateProgressInDb(postId, username, "$finished/$totalImages", postUrl)
                 }
             }
         } else {
@@ -710,13 +725,19 @@ class DownloadService : Service() {
                 // stopSelf() races ahead of this single-download error DB insert.
                 withContext(NonCancellable) {
                     try {
+                        val targetKey = postId ?: fileName
+                        val resolvedUrl = postUrl 
+                            ?: if (targetKey.startsWith("http://") || targetKey.startsWith("https://")) targetKey
+                            else if (!targetKey.startsWith("batch_") && !targetKey.startsWith("single_") && !targetKey.contains(" ") && !targetKey.contains("/")) "https://www.instagram.com/p/$targetKey/"
+                            else null
+
                         notificationManager.addCustomNotification(
                             title = title,
                             message = msg,
                             type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_FAILED,
                             priority = com.devson.vedinsta.database.NotificationPriority.HIGH,
-                            postId = postId ?: fileName,
-                            postUrl = postUrl
+                            postId = targetKey,
+                            postUrl = resolvedUrl
                         )
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to insert single error notification in DB", e)
@@ -820,10 +841,10 @@ class DownloadService : Service() {
         }
     }
 
-    private fun updateProgressInDb(postId: String?, username: String?, progressText: String) {
+    private fun updateProgressInDb(postId: String?, username: String?, progressText: String, postUrl: String? = null) {
         if (postId == null) return
         serviceScope.launch {
-            notificationManager.updateProgressInDb(postId, username, progressText)
+            notificationManager.updateProgressInDb(postId, username, progressText, postUrl)
         }
     }
 

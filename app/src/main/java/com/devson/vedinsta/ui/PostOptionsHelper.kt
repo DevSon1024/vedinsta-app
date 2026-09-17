@@ -16,6 +16,7 @@ fun showPostOptions(
 ) {
     val options = arrayOf(
         if (isFavorite) "Remove from Favorites" else "Add to Favorites",
+        "Copy Post Link",
         "Share Post File(s)",
         "Delete from History"
     )
@@ -26,6 +27,13 @@ fun showPostOptions(
             when (which) {
                 0 -> onToggleFavorite(post.postId)
                 1 -> {
+                    val url = if (post.postUrl.isNotBlank()) post.postUrl else "https://www.instagram.com/p/${post.postId}/"
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    val clip = android.content.ClipData.newPlainText("Instagram Post Link", url)
+                    clipboard.setPrimaryClip(clip)
+                    Toast.makeText(context, "Post link copied to clipboard", Toast.LENGTH_SHORT).show()
+                }
+                2 -> {
                     if (post.mediaPaths.isNotEmpty()) {
                         val file = File(post.mediaPaths.first())
                         val fileUri = androidx.core.content.FileProvider.getUriForFile(
@@ -44,7 +52,7 @@ fun showPostOptions(
                         Toast.makeText(context, "No media files found to share", Toast.LENGTH_SHORT).show()
                     }
                 }
-                2 -> {
+                3 -> {
                     androidx.appcompat.app.AlertDialog.Builder(context)
                         .setTitle("Delete Post")
                         .setMessage("Are you sure you want to delete this post and its downloaded files? This cannot be undone.")

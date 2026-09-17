@@ -10,7 +10,9 @@ import com.devson.vedinsta.database.AppDatabase
 import com.devson.vedinsta.database.NotificationDao
 import com.devson.vedinsta.database.NotificationEntity
 import com.devson.vedinsta.database.NotificationType
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class NotificationViewModel(application: Application) : AndroidViewModel(application) {
     private val notificationDao: NotificationDao = AppDatabase.getDatabase(application).notificationDao()
@@ -52,9 +54,38 @@ class NotificationViewModel(application: Application) : AndroidViewModel(applica
         }
     }
 
+    suspend fun resolvePostUrl(notification: NotificationEntity): String? = withContext(Dispatchers.IO) {
+        if (!notification.postUrl.isNullOrBlank()) {
+            return@withContext notification.postUrl
+        }
+        val postId = notification.postId
+        if (!postId.isNullOrBlank()) {
+            if (postId.startsWith("http://") || postId.startsWith("https://")) {
+                return@withContext postId
+            }
+            if (!postId.startsWith("batch_") && !postId.startsWith("single_") && !postId.contains(" ") && !postId.contains("/")) {
+                return@withContext "https://www.instagram.com/p/$postId/"
+            }
+            try {
+                val db = AppDatabase.getDatabase(getApplication())
+                val post = db.downloadedPostDao().getPostById(postId)
+                if (!post?.postUrl.isNullOrBlank()) {
+                    return@withContext post?.postUrl
+                }
+            } catch (e: Exception) {
+                Log.e("NotificationViewModel", "Error resolving postUrl from DB for $postId", e)
+            }
+        }
+        null
+    }
+
     fun retryDownload(notification: NotificationEntity) {
-        val postUrl = notification.postUrl ?: return
         viewModelScope.launch {
+            val postUrl = resolvePostUrl(notification)
+            if (postUrl.isNullOrBlank()) {
+                Log.w("NotificationViewModel", "Cannot retry download: postUrl could not be resolved for notification ${notification.id}")
+                return@launch
+            }
             // First, delete the failed notification from DB so it's replaced
             notificationDao.deleteNotificationById(notification.id)
             

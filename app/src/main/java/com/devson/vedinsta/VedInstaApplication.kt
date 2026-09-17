@@ -398,7 +398,8 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
         context: Context,
         filesToDownload: List<ImageCard>,
         postId: String?,
-        postCaption: String?
+        postCaption: String?,
+        postUrl: String? = null
     ): List<UUID> {
         Log.i(TAG, "Enqueueing multiple downloads (${filesToDownload.size}) for Post ID/Key: $postId")
 
@@ -483,7 +484,12 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
             Log.i(TAG, "Enqueued ${workRequests.size} download requests with tag: $groupTag")
 
             // Start observing the progress/completion of the batch using the tag
-            observeWorkProgressByTag(context.applicationContext, groupTag, workRequests.size, filesToDownload.first().url)
+            val resolvedPostUrl = postUrl
+                ?: if (postId != null && (postId.startsWith("http://") || postId.startsWith("https://"))) postId
+                else if (postId != null && !postId.startsWith("batch_") && !postId.startsWith("single_") && !postId.contains(" ") && !postId.contains("/")) "https://www.instagram.com/p/$postId/"
+                else filesToDownload.first().url
+
+            observeWorkProgressByTag(context.applicationContext, groupTag, workRequests.size, resolvedPostUrl)
         } else {
             Log.w(TAG, "No valid WorkRequests were created for tag: $groupTag")
             // Clean up cache if nothing was enqueued
@@ -500,7 +506,8 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
         mediaType: String,
         username: String?, // Can be null initially
         postIdOrKey: String, // Can be postId or a generated key/URL
-        postCaption: String? // Pass the fetched caption
+        postCaption: String?, // Pass the fetched caption
+        postUrl: String? = null
     ): UUID? {
         Log.i(TAG, "Enqueueing single download for Key: $postIdOrKey")
 
@@ -552,8 +559,13 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
 
             Log.i(TAG, "Enqueued single WorkRequest ${downloadWorkRequest.id} for key $postIdOrKey (Policy: KEEP)")
 
+            val resolvedPostUrl = postUrl
+                ?: if (postIdOrKey.startsWith("http://") || postIdOrKey.startsWith("https://")) postIdOrKey
+                else if (!postIdOrKey.startsWith("batch_") && !postIdOrKey.startsWith("single_") && !postIdOrKey.contains(" ") && !postIdOrKey.contains("/")) "https://www.instagram.com/p/$postIdOrKey/"
+                else mediaUrl
+
             // Start observing the progress/completion using the Work ID
-            observeWorkProgressById(context.applicationContext, downloadWorkRequest.id, postIdOrKey, mediaUrl)
+            observeWorkProgressById(context.applicationContext, downloadWorkRequest.id, postIdOrKey, resolvedPostUrl)
 
             return downloadWorkRequest.id
 
@@ -649,14 +661,14 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
                             handleSingleCompletion(context, tag, postUrl, filePath, mediaType, targetNotificationId)
                         } else {
                             Log.e(TAG, "Observer: Work $workId ($fileName) SUCCEEDED but outputData missing KEY_FILE_PATH!")
-                            handleSingleFailure(context, fileName, tag, targetNotificationId) // Treat as failure if path is missing
+                            handleSingleFailure(context, fileName, tag, targetNotificationId, postUrl) // Treat as failure if path is missing
                         }
                         observedWorkIds.remove(workId)
                         throw kotlinx.coroutines.CancellationException("Work Finished")
                     }
                     WorkInfo.State.FAILED, WorkInfo.State.CANCELLED -> {
                         Log.w(TAG, "Observer: Work $workId ($fileName) ${workInfo.state}.")
-                        handleSingleFailure(context, fileName, tag, targetNotificationId)
+                        handleSingleFailure(context, fileName, tag, targetNotificationId, postUrl)
                         observedWorkIds.remove(workId)
                         throw kotlinx.coroutines.CancellationException("Work Finished")
                     }
@@ -664,7 +676,7 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
                         val progressVal = workInfo.progress.getInt("Progress", -1)
                         val progressText = if (progressVal >= 0) "$progressVal%" else "Downloading..."
                         withContext(Dispatchers.IO) {
-                            notificationManager.updateProgressInDb(postId = tag, username = displayUsername, progressText = progressText)
+                            notificationManager.updateProgressInDb(postId = tag, username = displayUsername, progressText = progressText, postUrl = postUrl)
                         }
                     }
                     WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED -> {
@@ -846,7 +858,7 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
                     val cachedMetadata = getCachedMetadata(groupTag)
                     val displayUsername = cachedMetadata.first ?: "unknown"
                     withContext(Dispatchers.IO) {
-                        notificationManager.updateProgressInDb(postId = groupTag, username = displayUsername, progressText = "$finishedCount/$expectedCount")
+                        notificationManager.updateProgressInDb(postId = groupTag, username = displayUsername, progressText = "$finishedCount/$expectedCount", postUrl = postUrl)
                     }
                     notificationManager.showDownloadProgress(
                         notificationId = groupTag.hashCode(),
@@ -925,7 +937,7 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
     }
 
     // Handle failure for single file downloads (called by ID observer)
-    private fun handleSingleFailure(context: Context, fileName: String, tag: String, notificationId: Int) {
+    private fun handleSingleFailure(context: Context, fileName: String, tag: String, notificationId: Int, postUrl: String? = null) {
         val (cachedUsername, _) = getCachedMetadata(tag)
         removeCachedMetadata(tag) // Clean cache on failure
         val finalUsername = cachedUsername ?: "unknown"
@@ -934,12 +946,18 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
             delay(500)
             notificationManager.removeProgressFromDb(tag)
             try {
+                val resolvedUrl = postUrl
+                    ?: if (tag.startsWith("http://") || tag.startsWith("https://")) tag
+                    else if (!tag.startsWith("batch_") && !tag.startsWith("single_") && !tag.contains(" ") && !tag.contains("/")) "https://www.instagram.com/p/$tag/"
+                    else null
+
                 notificationManager.addCustomNotification(
                     title = "Download Failed",
                     message = "Error downloading $fileName from @$finalUsername",
                     type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_FAILED,
                     priority = com.devson.vedinsta.database.NotificationPriority.HIGH,
-                    postId = tag
+                    postId = tag,
+                    postUrl = resolvedUrl
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to insert single failure notification to DB", e)

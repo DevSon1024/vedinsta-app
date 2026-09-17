@@ -473,17 +473,23 @@ class VedInstaNotificationManager private constructor(private val context: Conte
         }
     }
 
-    suspend fun updateProgressInDb(postId: String?, username: String?, progressText: String) {
+    suspend fun updateProgressInDb(postId: String?, username: String?, progressText: String, postUrl: String? = null) {
         if (postId == null) return
         try {
             val dao = database.notificationDao()
             val existing = dao.getNotificationByPostIdAndType(postId, NotificationType.DOWNLOAD_PROGRESS)
             val title = if (username != null) "Downloading from @$username" else "Downloading Media"
             val message = progressText
+            val resolvedUrl = postUrl
+                ?: existing?.postUrl
+                ?: if (postId.startsWith("http://") || postId.startsWith("https://")) postId
+                else if (!postId.startsWith("batch_") && !postId.startsWith("single_") && !postId.contains(" ") && !postId.contains("/")) "https://www.instagram.com/p/$postId/"
+                else null
             
             if (existing != null) {
                 dao.updateNotification(existing.copy(
                     message = message,
+                    postUrl = resolvedUrl,
                     timestamp = System.currentTimeMillis()
                 ))
             } else {
@@ -492,6 +498,7 @@ class VedInstaNotificationManager private constructor(private val context: Conte
                     message = message,
                     type = NotificationType.DOWNLOAD_PROGRESS,
                     postId = postId,
+                    postUrl = resolvedUrl,
                     timestamp = System.currentTimeMillis()
                 ))
             }

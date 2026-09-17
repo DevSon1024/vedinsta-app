@@ -1,5 +1,6 @@
 package com.devson.vedinsta.ui.screen
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -8,16 +9,20 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -41,6 +46,9 @@ fun NotificationsScreen(
     notificationViewModel: NotificationViewModel,
     contentPadding: PaddingValues = PaddingValues(0.dp)
 ) {
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+    val coroutineScope = rememberCoroutineScope()
     var showSettingsSheet by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     
@@ -230,21 +238,69 @@ fun NotificationsScreen(
                                 }
                             }
                             if (isProgress) {
-                                TextButton(onClick = { onCancelClick(item) }) {
-                                    Text("Cancel", color = MaterialTheme.colorScheme.error)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    IconButton(
+                                        onClick = {
+                                            coroutineScope.launch {
+                                                val url = notificationViewModel.resolvePostUrl(item)
+                                                if (!url.isNullOrBlank()) {
+                                                    clipboardManager.setText(AnnotatedString(url))
+                                                    Toast.makeText(context, "Post link copied to clipboard", Toast.LENGTH_SHORT).show()
+                                                } else {
+                                                    Toast.makeText(context, "Post link not available", Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                        }
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.ContentCopy,
+                                            contentDescription = "Copy Post Link",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                    IconButton(onClick = { onCancelClick(item) }) {
+                                        Icon(
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = "Cancel & Delete Download",
+                                            tint = MaterialTheme.colorScheme.error,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
                                 }
                             } else {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    if (item.type == NotificationType.DOWNLOAD_FAILED && item.postUrl != null) {
+                                    if (item.type == NotificationType.DOWNLOAD_FAILED) {
                                         TextButton(onClick = { onRetryClick(item) }) {
                                             Text("Retry", color = MaterialTheme.colorScheme.primary)
                                         }
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            coroutineScope.launch {
+                                                val url = notificationViewModel.resolvePostUrl(item)
+                                                if (!url.isNullOrBlank()) {
+                                                    clipboardManager.setText(AnnotatedString(url))
+                                                    Toast.makeText(context, "Post link copied to clipboard", Toast.LENGTH_SHORT).show()
+                                                } else {
+                                                    Toast.makeText(context, "Post link not available", Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                        }
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.ContentCopy,
+                                            contentDescription = "Copy Post Link",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
                                     }
                                     IconButton(onClick = { onDeleteClick(item.id) }) {
                                         Icon(
                                             imageVector = Icons.Default.Delete,
                                             contentDescription = "Delete",
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                            modifier = Modifier.size(20.dp)
                                         )
                                     }
                                 }

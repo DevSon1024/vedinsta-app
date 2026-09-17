@@ -123,7 +123,8 @@ class SharedLinkProcessingService : Service() {
                         mediaType,
                         username,
                         itemId,
-                        caption
+                        caption,
+                        processedUrl
                     )
                 } else if (mediaCount > 1) {
                     // MULTIPLE CONTENT: Check Settings
@@ -237,7 +238,8 @@ class SharedLinkProcessingService : Service() {
                     applicationContext,
                     itemsToDownload,
                     shortcode,
-                    caption
+                    caption,
+                    url
                 )
 
             } catch (e: com.devson.vedinsta.extractor.AuthRequiredException) {
