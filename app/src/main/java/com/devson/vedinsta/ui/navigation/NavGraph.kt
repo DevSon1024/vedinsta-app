@@ -95,6 +95,7 @@ fun MainAppScreen(
     val isBlurEnabled by settingsViewModel.isBlurEnabled.collectAsStateWithLifecycle()
     val blurOpacity by settingsViewModel.blurOpacity.collectAsStateWithLifecycle()
     val blurRadius by settingsViewModel.blurRadius.collectAsStateWithLifecycle()
+    val isLegalNoticeAccepted by settingsViewModel.isLegalNoticeAccepted.collectAsStateWithLifecycle()
 
     val favoritePostIds by mainViewModel.favoritePostIds.collectAsStateWithLifecycle()
     val isFavoriteHelper = { postId: String -> favoritePostIds.contains(postId) }
@@ -601,6 +602,15 @@ fun MainAppScreen(
                         onNavigateBack = { navController.popBackStack() }
                     )
                 }
+            }
+
+            // Fresh Install Legal & Account Notice Dialog
+            if (!isLegalNoticeAccepted) {
+                com.devson.vedinsta.ui.dialog.LegalNoticeDialog(
+                    onAccept = {
+                        settingsViewModel.acceptLegalNotice()
+                    }
+                )
             }
 
             // Duplicate Link Detected Dialog

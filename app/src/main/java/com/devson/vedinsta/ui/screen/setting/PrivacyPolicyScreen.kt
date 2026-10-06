@@ -132,7 +132,55 @@ fun PrivacyPolicyScreen(onNavigateBack: () -> Unit) {
                             )
                         }
 
-                        // Section 4: Child Safety & Storage Insets
+                        // Section 4: Intellectual Property & Copyright Notice
+                        PolicySection(
+                            title = "INTELLECTUAL PROPERTY & COPYRIGHT",
+                            icon = Icons.Default.Security
+                        ) {
+                            PolicyPointRow(
+                                icon = Icons.Default.CheckCircle,
+                                title = "Personal & Educational Archiving",
+                                description = "VedInsta is designed exclusively as an open-source personal utility for media archiving, backup, and fair-use educational purposes. Commercial exploitation is strictly disallowed."
+                            )
+                            PolicyPointSeparator()
+                            PolicyPointRow(
+                                icon = Icons.Default.Lock,
+                                title = "Respect for Copyright Owners",
+                                description = "All downloaded media remains the intellectual property of their respective creators. You must not re-upload, broadcast, redistribute, or monetize downloaded media without explicit consent from the copyright owner."
+                            )
+                            PolicyPointSeparator()
+                            PolicyPointRow(
+                                icon = Icons.Default.Info,
+                                title = "Independent Third-Party Disclaimer",
+                                description = "VedInsta is an independent open-source project. It is not affiliated with, endorsed by, sponsored by, or associated with Meta Platforms, Inc., Instagram, or WhatsApp in any manner."
+                            )
+                        }
+
+                        // Section 5: App Permissions Transparency
+                        PolicySection(
+                            title = "APP PERMISSIONS & USAGE TRANSPARENCY",
+                            icon = Icons.Default.Info
+                        ) {
+                            PolicyPointRow(
+                                icon = Icons.Default.CheckCircle,
+                                title = "Notifications Permission",
+                                description = "The POST_NOTIFICATIONS permission is utilized solely to present foreground download progress fractions ('X/Y') and immediate completion or error notifications."
+                            )
+                            PolicyPointSeparator()
+                            PolicyPointRow(
+                                icon = Icons.Default.CheckCircle,
+                                title = "Storage & MediaStore Indexing",
+                                description = "Media permissions (READ_MEDIA_IMAGES, READ_MEDIA_VIDEO) allow the app to index downloaded media into Android's native MediaStore so they appear in gallery apps, and access WhatsApp status directories for status saving."
+                            )
+                            PolicyPointSeparator()
+                            PolicyPointRow(
+                                icon = Icons.Default.Security,
+                                title = "Network & Foreground Services",
+                                description = "Network access (INTERNET) connects directly to official Instagram endpoints without proxy servers. Foreground services guarantee downloads finish seamlessly without premature termination."
+                            )
+                        }
+
+                        // Section 6: Child Safety & Stability
                         PolicySection(
                             title = "CHILD ACCESSIBILITY & STABILITY",
                             icon = Icons.Default.Info

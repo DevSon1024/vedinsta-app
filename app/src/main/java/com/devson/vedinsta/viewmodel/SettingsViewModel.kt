@@ -52,6 +52,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         const val ACTION_DOWNLOAD_ALL = 1
         const val ACTION_OPEN_SELECTION = 2
 
+        // First Install Legal Notice
+        const val KEY_LEGAL_NOTICE_ACCEPTED = "legal_notice_accepted"
+
         // Sample values used to render the filename live preview
         private const val SAMPLE_USERNAME = "devson"
         private const val SAMPLE_MILLIS = "1698765432100"
@@ -86,6 +89,16 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     var maxNotificationsLimit: Int
         get() = prefs.getInt("max_notifications_limit", 0)
         set(value) = prefs.edit().putInt("max_notifications_limit", value).apply()
+
+    private val _isLegalNoticeAccepted = MutableStateFlow(
+        prefs.getBoolean(KEY_LEGAL_NOTICE_ACCEPTED, false)
+    )
+    val isLegalNoticeAccepted: StateFlow<Boolean> = _isLegalNoticeAccepted.asStateFlow()
+
+    fun acceptLegalNotice() {
+        prefs.edit().putBoolean(KEY_LEGAL_NOTICE_ACCEPTED, true).apply()
+        _isLegalNoticeAccepted.value = true
+    }
 
     private val securePrefs = com.devson.vedinsta.repository.SecurePreferences(getApplication())
 

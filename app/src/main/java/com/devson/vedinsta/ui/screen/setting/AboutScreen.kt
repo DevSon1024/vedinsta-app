@@ -215,6 +215,10 @@ fun AboutScreen(onNavigateBack: () -> Unit) {
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         CreditRow(
+                            name = "InsGet",
+                            desc = "Main design and UI inspiration for app layout, media actions, and aesthetics."
+                        )
+                        CreditRow(
                             name = "Kotlin & Coroutines",
                             desc = "Powering async, multi-threaded task pipelines safely."
                         )
