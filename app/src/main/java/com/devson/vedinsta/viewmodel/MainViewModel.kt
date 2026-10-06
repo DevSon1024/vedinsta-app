@@ -78,6 +78,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return repository.getPostById(postId)
     }
 
+    suspend fun checkPostExists(shortcode: String): Boolean {
+        return repository.checkPostExists(shortcode)
+    }
+
+    suspend fun getPostByShortcode(shortcode: String): DownloadedPost? {
+        return repository.getPostByShortcode(shortcode)
+    }
+
     fun cleanUpGhostRecords() {
         viewModelScope.launch(Dispatchers.IO) {
             try {

@@ -83,6 +83,7 @@ fun MainAppScreen(
     val viewSettingsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val extractionState by extractionViewModel.extractionState.collectAsStateWithLifecycle()
+    val duplicateLinkState by extractionViewModel.duplicateLinkState.collectAsStateWithLifecycle()
     val showRateLimitDialog by extractionViewModel.showRateLimitDialog.collectAsStateWithLifecycle()
     val showAuthRequiredDialog by extractionViewModel.showAuthRequiredDialog.collectAsStateWithLifecycle()
     val authDialogState by extractionViewModel.authDialogState.collectAsStateWithLifecycle()
@@ -598,6 +599,23 @@ fun MainAppScreen(
                         viewModel = whatsAppViewModel,
                         initialIndex = initialIndex,
                         onNavigateBack = { navController.popBackStack() }
+                    )
+                }
+            }
+
+            // Duplicate Link Detected Dialog
+            when (val state = duplicateLinkState) {
+                is com.devson.vedinsta.viewmodel.DuplicateLinkState.Idle -> {}
+                is com.devson.vedinsta.viewmodel.DuplicateLinkState.DuplicateFound -> {
+                    com.devson.vedinsta.ui.dialog.DuplicateDownloadDialog(
+                        sanitizedUrl = state.sanitizedUrl,
+                        existingPost = state.existingPost,
+                        onDismiss = {
+                            extractionViewModel.dismissDuplicateDialog()
+                        },
+                        onDownloadAgain = {
+                            extractionViewModel.downloadAgain(authViewModel)
+                        }
                     )
                 }
             }

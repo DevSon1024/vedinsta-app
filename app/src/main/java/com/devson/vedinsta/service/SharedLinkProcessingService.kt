@@ -77,6 +77,28 @@ class SharedLinkProcessingService : Service() {
 
                 val processedUrl = url
 
+                // Check duplicate before starting extraction/download
+                val duplicateShortcode = com.devson.vedinsta.util.UrlSanitizer.extractBaseShortcode(processedUrl)
+                if (!duplicateShortcode.isNullOrBlank()) {
+                    val db = com.devson.vedinsta.database.AppDatabase.getDatabase(applicationContext)
+                    val isDuplicate = db.downloadedPostDao().checkPostExists(duplicateShortcode)
+                    if (isDuplicate) {
+                        notificationManager.cancelLinkProcessingNotification()
+                        notificationManager.showLinkError("Already downloaded! This post is saved in your history.")
+                        try {
+                            notificationManager.addCustomNotification(
+                                title = "Already Downloaded",
+                                message = "This post/reel is already saved in your history.",
+                                type = com.devson.vedinsta.database.NotificationType.DOWNLOAD_COMPLETED,
+                                priority = com.devson.vedinsta.database.NotificationPriority.NORMAL
+                            )
+                        } catch (ex: Exception) {
+                            Log.e(TAG, "Error adding duplicate notification to DB", ex)
+                        }
+                        return@launch
+                    }
+                }
+
                 val quotaManager = DownloadQuotaManager(applicationContext)
                 val quotaStatus = quotaManager.checkQuota()
                 if (quotaStatus is DownloadQuotaManager.QuotaStatus.Exceeded) {
@@ -202,6 +224,17 @@ class SharedLinkProcessingService : Service() {
                 notificationManager.cancelMultipleContentNotification()
 
                 val processedUrl = url
+
+                // Check duplicate before batch processing
+                val duplicateShortcode = com.devson.vedinsta.util.UrlSanitizer.extractBaseShortcode(processedUrl)
+                if (!duplicateShortcode.isNullOrBlank()) {
+                    val db = com.devson.vedinsta.database.AppDatabase.getDatabase(applicationContext)
+                    val isDuplicate = db.downloadedPostDao().checkPostExists(duplicateShortcode)
+                    if (isDuplicate) {
+                        notificationManager.showLinkError("Already downloaded! This post is saved in your history.")
+                        return@launch
+                    }
+                }
 
                 val quotaManager = DownloadQuotaManager(applicationContext)
                 val quotaStatus = quotaManager.checkQuota()

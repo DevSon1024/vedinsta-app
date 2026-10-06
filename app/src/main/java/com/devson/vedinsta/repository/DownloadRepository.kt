@@ -21,6 +21,12 @@ class DownloadRepository(private val downloadedPostDao: DownloadedPostDao) {
     suspend fun getPostById(postId: String): DownloadedPost? =
         downloadedPostDao.getPostById(postId)
 
+    suspend fun checkPostExists(shortcode: String): Boolean =
+        downloadedPostDao.checkPostExists(shortcode)
+
+    suspend fun getPostByShortcode(shortcode: String): DownloadedPost? =
+        downloadedPostDao.getPostByShortcode(shortcode)
+
     suspend fun deleteDownloadedPost(post: DownloadedPost) =
         downloadedPostDao.delete(post)
 

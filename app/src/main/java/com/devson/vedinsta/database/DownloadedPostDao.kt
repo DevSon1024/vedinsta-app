@@ -50,6 +50,12 @@ interface DownloadedPostDao {
     @Query("SELECT COUNT(*) FROM downloaded_posts WHERE postId = :postId")
     suspend fun isPostDownloaded(postId: String): Int
 
+    @Query("SELECT EXISTS(SELECT 1 FROM downloaded_posts WHERE postId = :shortcode OR postUrl LIKE '%' || :shortcode || '%' LIMIT 1)")
+    suspend fun checkPostExists(shortcode: String): Boolean
+
+    @Query("SELECT * FROM downloaded_posts WHERE postId = :shortcode OR postUrl LIKE '%' || :shortcode || '%' LIMIT 1")
+    suspend fun getPostByShortcode(shortcode: String): DownloadedPost?
+
     @Query("SELECT * FROM downloaded_posts WHERE hasVideo = 1 ORDER BY downloadDate DESC")
     fun getVideoPostsOnly(): LiveData<List<DownloadedPost>>
 

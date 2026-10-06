@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
 import com.devson.vedinsta.repository.DownloadQuotaManager
 
 sealed class ExtractionState {
@@ -32,10 +33,36 @@ sealed class AuthDialogState {
     object RequiresActivation : AuthDialogState()
 }
 
+sealed class DuplicateLinkState {
+    object Idle : DuplicateLinkState()
+    data class DuplicateFound(
+        val sanitizedUrl: String,
+        val originalInput: String,
+        val existingPost: com.devson.vedinsta.database.DownloadedPost? = null
+    ) : DuplicateLinkState()
+}
+
 class MediaExtractionViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = MediaFetcherRepository(application.applicationContext)
     private val app = application as VedInstaApplication
+    private val postDao = com.devson.vedinsta.database.AppDatabase.getDatabase(application).downloadedPostDao()
+
+    private val _duplicateLinkState = MutableStateFlow<DuplicateLinkState>(DuplicateLinkState.Idle)
+    val duplicateLinkState: StateFlow<DuplicateLinkState> = _duplicateLinkState.asStateFlow()
+
+    fun dismissDuplicateDialog() {
+        _duplicateLinkState.value = DuplicateLinkState.Idle
+    }
+
+    fun downloadAgain(authViewModel: InstagramAuthViewModel) {
+        val current = _duplicateLinkState.value
+        if (current is DuplicateLinkState.DuplicateFound) {
+            val original = current.originalInput
+            _duplicateLinkState.value = DuplicateLinkState.Idle
+            extractMedia(urlOrShortcode = original, authViewModel = authViewModel, forceDownload = true)
+        }
+    }
 
     private val quotaManager = DownloadQuotaManager(application.applicationContext)
     private val _quotaState = MutableStateFlow<DownloadQuotaManager.QuotaStatus>(quotaManager.checkQuota())
@@ -80,7 +107,11 @@ class MediaExtractionViewModel(application: Application) : AndroidViewModel(appl
     /**
      * Triggers the native media extraction and updates flow states.
      */
-    fun extractMedia(urlOrShortcode: String, authViewModel: InstagramAuthViewModel) {
+    fun extractMedia(
+        urlOrShortcode: String,
+        authViewModel: InstagramAuthViewModel,
+        forceDownload: Boolean = false
+    ) {
         if (urlOrShortcode.isBlank()) {
             _extractionState.value = ExtractionState.Error("Please enter a valid Instagram URL or shortcode")
             return
@@ -100,6 +131,24 @@ class MediaExtractionViewModel(application: Application) : AndroidViewModel(appl
         }
 
         viewModelScope.launch {
+            if (!forceDownload) {
+                val shortcode = com.devson.vedinsta.util.UrlSanitizer.extractBaseShortcode(urlOrShortcode)
+                if (!shortcode.isNullOrBlank()) {
+                    val existingPost = kotlinx.coroutines.withContext(Dispatchers.IO) {
+                        postDao.getPostByShortcode(shortcode)
+                    }
+                    if (existingPost != null) {
+                        val cleanUrl = com.devson.vedinsta.util.UrlSanitizer.sanitizeInstagramUrl(urlOrShortcode)
+                        _duplicateLinkState.value = DuplicateLinkState.DuplicateFound(
+                            sanitizedUrl = cleanUrl,
+                            originalInput = urlOrShortcode,
+                            existingPost = existingPost
+                        )
+                        return@launch
+                    }
+                }
+            }
+
             _extractionState.value = ExtractionState.Loading
             _selectedIndexes.value = emptySet()
             _chosenQualities.value = emptyMap()
@@ -161,6 +210,7 @@ class MediaExtractionViewModel(application: Application) : AndroidViewModel(appl
         _selectedIndexes.value = emptySet()
         _chosenQualities.value = emptyMap()
         lastExtractedUrl = ""
+        _duplicateLinkState.value = DuplicateLinkState.Idle
     }
 
     fun toggleSelection(index: Int) {
