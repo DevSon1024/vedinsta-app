@@ -9,11 +9,10 @@ import java.io.File
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
+import com.devson.vedinsta.ui.safeCombinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -378,7 +377,6 @@ fun StatusesGrid(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun StatusItem(
     file: DocumentFile,
@@ -410,7 +408,7 @@ fun StatusItem(
             .fillMaxWidth()
             .aspectRatio(0.7f)
             .clip(RoundedCornerShape(12.dp))
-            .combinedClickable(
+            .safeCombinedClickable(
                 onClick = onItemClick,
                 onLongClick = onItemLongClick
             ),

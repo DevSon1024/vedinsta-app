@@ -5,9 +5,8 @@ import java.io.File
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
+import com.devson.vedinsta.ui.safeCombinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateZoom
@@ -49,7 +48,6 @@ import androidx.compose.ui.platform.LocalContext
 import com.devson.vedinsta.ui.showPostOptions
 import com.devson.vedinsta.viewmodel.MainViewModel
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HistoryScreen(
     mainViewModel: MainViewModel,
@@ -373,7 +371,6 @@ fun ViewSettingBottomSheet(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HistoryListCard(
     post: DownloadedPost,
@@ -386,7 +383,7 @@ fun HistoryListCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .combinedClickable(
+            .safeCombinedClickable(
                 onClick = onClick,
                 onLongClick = onLongClick
             ),
@@ -525,7 +522,6 @@ fun HistoryListCard(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HistoryGridCard(
     post: DownloadedPost,
@@ -540,7 +536,7 @@ fun HistoryGridCard(
             .fillMaxWidth()
             .aspectRatio(1f)
             .clip(RoundedCornerShape(20.dp))
-            .combinedClickable(
+            .safeCombinedClickable(
                 onClick = onClick,
                 onLongClick = onLongClick
             ),
