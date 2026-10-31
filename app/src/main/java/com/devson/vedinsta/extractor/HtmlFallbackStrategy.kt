@@ -37,6 +37,18 @@ class HtmlFallbackStrategy : PublicExtractionStrategy {
             }
 
             val htmlBody = response.body?.string() ?: throw IOException("Empty HTML response body")
+
+            // 1. First attempt rich embedded JSON extraction
+            try {
+                val parsed = JsonApiStrategy.parseWebpageHtml(htmlBody, shortcode, qualityPref, thumbPref)
+                if (parsed != null && parsed.mediaList.isNotEmpty()) {
+                    return@withContext parsed
+                }
+            } catch (e: Exception) {
+                // Ignore and fall through to OpenGraph meta tag scraping
+            }
+
+            // 2. OpenGraph meta tag fallback
             val doc = Jsoup.parse(htmlBody)
 
             val videoUrl = doc.select("meta[property=og:video]").attr("content")

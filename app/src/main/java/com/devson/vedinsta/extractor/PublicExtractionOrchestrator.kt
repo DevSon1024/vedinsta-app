@@ -31,17 +31,17 @@ object PublicExtractionOrchestrator {
         thumbPref: ThumbnailQuality
     ): ExtractedPost {
         return try {
-            Log.d(TAG, "Attempting primary JSON/GraphQL extraction for: $url")
+            Log.d(TAG, "Attempting primary JSON extraction for: $url")
             jsonStrategy.extractMedia(url, qualityPref, thumbPref)
-        } catch (e: AuthRequiredException) {
-            Log.i(TAG, "AuthRequiredException caught in orchestrator. Propagating directly without cascading.")
-            throw e
         } catch (e: Exception) {
-            Log.w(TAG, "Primary JSON/GraphQL extraction failed: ${e.message}. Cascading to HTML fallback...")
+            Log.w(TAG, "Primary JSON extraction failed: ${e.message}. Cascading to HTML fallback...")
             try {
                 htmlStrategy.extractMedia(url, qualityPref, thumbPref)
             } catch (fallbackEx: Exception) {
                 Log.e(TAG, "HTML fallback extraction failed: ${fallbackEx.message}")
+                if (e is AuthRequiredException) {
+                    throw e
+                }
                 throw fallbackEx
             }
         }

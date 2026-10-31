@@ -94,6 +94,8 @@ data class LegacyMediaItem(
     @SerializedName("code") val code: String?,
     @SerializedName("pk") val pk: String?,
     @SerializedName("media_type") val mediaType: Int?,
+    @SerializedName("original_width") val originalWidth: Int? = null,
+    @SerializedName("original_height") val originalHeight: Int? = null,
     @SerializedName("image_versions2") val imageVersions2: LegacyImageVersions2?,
     @SerializedName("video_versions") val videoVersions: List<VideoVersion>?,
     @SerializedName("carousel_media") val carouselMedia: List<LegacyCarouselMedia>?,
@@ -114,6 +116,8 @@ data class LegacyImageVersions2(
 data class LegacyCarouselMedia(
     @SerializedName("id") val id: String?,
     @SerializedName("media_type") val mediaType: Int?,
+    @SerializedName("original_width") val originalWidth: Int? = null,
+    @SerializedName("original_height") val originalHeight: Int? = null,
     @SerializedName("image_versions2") val imageVersions2: LegacyImageVersions2?,
     @SerializedName("video_versions") val videoVersions: List<VideoVersion>?
 )

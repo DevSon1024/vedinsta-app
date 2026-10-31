@@ -22,14 +22,51 @@ object UnauthenticatedNetworkModule {
 
     private val headerInterceptor = Interceptor { chain ->
         val original = chain.request()
+        val path = original.url.encodedPath
+        val isWebpage = path.startsWith("/p/") ||
+                path.startsWith("/reel/") ||
+                path.startsWith("/reels/") ||
+                path.startsWith("/tv/") ||
+                (original.header("Accept")?.contains("text/html") == true)
+
         val builder = original.newBuilder()
-            .header("User-Agent", BROWSER_USER_AGENT)
-            .header("Accept", "*/*")
-            .header("Accept-Language", "en-US,en;q=0.9")
-            .header("Sec-Fetch-Dest", "empty")
-            .header("Sec-Fetch-Mode", "cors")
-            .header("Sec-Fetch-Site", "same-origin")
-            .header("X-Requested-With", "XMLHttpRequest")
+        if (original.header("User-Agent") == null) {
+            builder.header("User-Agent", BROWSER_USER_AGENT)
+        }
+        if (original.header("Accept-Language") == null) {
+            builder.header("Accept-Language", "en-US,en;q=0.9")
+        }
+
+        if (isWebpage) {
+            if (original.header("Accept") == null) {
+                builder.header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
+            }
+            if (original.header("Sec-Fetch-Dest") == null) {
+                builder.header("Sec-Fetch-Dest", "document")
+            }
+            if (original.header("Sec-Fetch-Mode") == null) {
+                builder.header("Sec-Fetch-Mode", "navigate")
+            }
+            if (original.header("Sec-Fetch-Site") == null) {
+                builder.header("Sec-Fetch-Site", "none")
+            }
+        } else {
+            if (original.header("Accept") == null) {
+                builder.header("Accept", "*/*")
+            }
+            if (original.header("Sec-Fetch-Dest") == null) {
+                builder.header("Sec-Fetch-Dest", "empty")
+            }
+            if (original.header("Sec-Fetch-Mode") == null) {
+                builder.header("Sec-Fetch-Mode", "cors")
+            }
+            if (original.header("Sec-Fetch-Site") == null) {
+                builder.header("Sec-Fetch-Site", "same-origin")
+            }
+            if (original.header("X-Requested-With") == null) {
+                builder.header("X-Requested-With", "XMLHttpRequest")
+            }
+        }
 
         // Retrieve cookies for instagram.com and set X-CSRFToken if present
         val cookies = cookieJar.loadForRequest(original.url)
