@@ -30,6 +30,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -439,111 +440,130 @@ fun PostViewScreen(
                 }
             }
 
-            Surface(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .navigationBarsPadding(),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 2.dp
+                    .navigationBarsPadding()
+                    .padding(start = 24.dp, end = 24.dp, bottom = 12.dp, top = 4.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Row(
+                Surface(
+                    shape = RoundedCornerShape(32.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f),
+                    tonalElevation = 0.dp,
+                    shadowElevation = 6.dp,
+                    border = BorderStroke(
+                        1.dp,
+                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)
+                    ),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
+                        .height(60.dp)
+                        .clip(RoundedCornerShape(32.dp))
                 ) {
-                    IconButton(onClick = { showDeleteConfirmDialog = true }) {
-                        Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = "Delete Post",
-                            tint = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-
-                    IconButton(
-                        onClick = { showMoreOptionsSheet = true },
+                    Row(
                         modifier = Modifier
-                            .size(48.dp)
-                            .border(
-                                width = 1.5.dp,
-                                color = MaterialTheme.colorScheme.primary,
-                                shape = CircleShape
-                            )
+                            .fillMaxSize()
+                            .padding(horizontal = 20.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Menu,
-                            contentDescription = "More Options",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-
-                    Box {
-                        IconButton(onClick = { showShareMenu = true }) {
+                        IconButton(
+                            onClick = { showDeleteConfirmDialog = true },
+                            modifier = Modifier.size(44.dp)
+                        ) {
                             Icon(
-                                imageVector = Icons.Default.Share,
-                                contentDescription = "Share",
-                                tint = MaterialTheme.colorScheme.onSurface,
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Delete Post",
+                                tint = MaterialTheme.colorScheme.error,
                                 modifier = Modifier.size(24.dp)
                             )
                         }
 
-                        DropdownMenu(
-                            expanded = showShareMenu,
-                            onDismissRequest = { showShareMenu = false }
+                        FilledTonalIconButton(
+                            onClick = { showMoreOptionsSheet = true },
+                            modifier = Modifier.size(46.dp),
+                            shape = CircleShape,
+                            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
                         ) {
-                            if (mediaFiles.isNotEmpty()) {
-                                DropdownMenuItem(
-                                    text = { Text("Share Current Media File") },
-                                    onClick = {
-                                        showShareMenu = false
-                                        val currentFile = mediaFiles[pagerState.currentPage]
-                                        val fileUri = FileProvider.getUriForFile(
-                                            context,
-                                            "${context.packageName}.fileprovider",
-                                            currentFile
-                                        )
-                                        val shareIntent = Intent().apply {
-                                            action = Intent.ACTION_SEND
-                                            type = if (currentFile.extension.lowercase() in listOf("mp4", "mov", "avi")) "video/*" else "image/*"
-                                            putExtra(Intent.EXTRA_STREAM, fileUri)
-                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                        }
-                                        context.startActivity(Intent.createChooser(shareIntent, "Share Current Media"))
-                                    }
+                            Icon(
+                                imageVector = Icons.Default.Menu,
+                                contentDescription = "More Options",
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+
+                        Box {
+                            IconButton(
+                                onClick = { showShareMenu = true },
+                                modifier = Modifier.size(44.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Share,
+                                    contentDescription = "Share",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(24.dp)
                                 )
-                                if (mediaFiles.size > 1) {
+                            }
+
+                            DropdownMenu(
+                                expanded = showShareMenu,
+                                onDismissRequest = { showShareMenu = false }
+                            ) {
+                                if (mediaFiles.isNotEmpty()) {
                                     DropdownMenuItem(
-                                        text = { Text("Share All Media Files") },
+                                        text = { Text("Share Current Media File") },
                                         onClick = {
                                             showShareMenu = false
-                                            val fileUris = ArrayList<Uri>()
-                                            mediaFiles.forEach { file ->
-                                                val fileUri = FileProvider.getUriForFile(
-                                                    context,
-                                                    "${context.packageName}.fileprovider",
-                                                    file
-                                                )
-                                                fileUris.add(fileUri)
-                                            }
+                                            val currentFile = mediaFiles[pagerState.currentPage]
+                                            val fileUri = FileProvider.getUriForFile(
+                                                context,
+                                                "${context.packageName}.fileprovider",
+                                                currentFile
+                                            )
                                             val shareIntent = Intent().apply {
-                                                action = Intent.ACTION_SEND_MULTIPLE
-                                                type = "*/*"
-                                                putParcelableArrayListExtra(Intent.EXTRA_STREAM, fileUris)
+                                                action = Intent.ACTION_SEND
+                                                type = if (currentFile.extension.lowercase() in listOf("mp4", "mov", "avi")) "video/*" else "image/*"
+                                                putExtra(Intent.EXTRA_STREAM, fileUri)
                                                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                             }
-                                            context.startActivity(Intent.createChooser(shareIntent, "Share All Media"))
+                                            context.startActivity(Intent.createChooser(shareIntent, "Share Current Media"))
                                         }
                                     )
+                                    if (mediaFiles.size > 1) {
+                                        DropdownMenuItem(
+                                            text = { Text("Share All Media Files") },
+                                            onClick = {
+                                                showShareMenu = false
+                                                val fileUris = ArrayList<Uri>()
+                                                mediaFiles.forEach { file ->
+                                                    val fileUri = FileProvider.getUriForFile(
+                                                        context,
+                                                        "${context.packageName}.fileprovider",
+                                                        file
+                                                    )
+                                                    fileUris.add(fileUri)
+                                                }
+                                                val shareIntent = Intent().apply {
+                                                    action = Intent.ACTION_SEND_MULTIPLE
+                                                    type = "*/*"
+                                                    putParcelableArrayListExtra(Intent.EXTRA_STREAM, fileUris)
+                                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                }
+                                                context.startActivity(Intent.createChooser(shareIntent, "Share All Media"))
+                                            }
+                                        )
+                                    }
+                                } else {
+                                    DropdownMenuItem(
+                                        text = { Text("Media deleted from device") },
+                                        onClick = { showShareMenu = false },
+                                        enabled = false
+                                    )
                                 }
-                            } else {
-                                DropdownMenuItem(
-                                    text = { Text("Media deleted from device") },
-                                    onClick = { showShareMenu = false },
-                                    enabled = false
-                                )
                             }
                         }
                     }

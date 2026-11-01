@@ -427,6 +427,16 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         _isNavBarTransparent.value = transparent
     }
 
+    private val _isBottomNavVisible = MutableStateFlow(
+        prefs.getBoolean("is_bottom_nav_visible", true)
+    )
+    val isBottomNavVisible: StateFlow<Boolean> = _isBottomNavVisible.asStateFlow()
+
+    fun setBottomNavVisible(visible: Boolean) {
+        prefs.edit().putBoolean("is_bottom_nav_visible", visible).apply()
+        _isBottomNavVisible.value = visible
+    }
+
     private val _isBlurEnabled = MutableStateFlow(
         prefs.getBoolean("is_blur_enabled", true)
     )

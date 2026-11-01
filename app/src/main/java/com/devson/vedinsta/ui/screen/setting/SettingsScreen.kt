@@ -2,6 +2,7 @@ package com.devson.vedinsta.ui.screen.setting
 
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -21,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -135,7 +137,10 @@ fun SettingsScreen(
         Spacer(modifier = Modifier.height(20.dp))
 
         // 1. Appearance & Theme Section
-        SettingsSection(title = "Appearance & Interface") {
+        SettingsSection(
+            title = "Appearance & Interface",
+            icon = Icons.Default.Palette
+        ) {
             SettingsItemRow(
                 title = "App Theme & Palette",
                 subtitle = "Themes, color palettes, AMOLED & blur effects",
@@ -149,7 +154,10 @@ fun SettingsScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         // 2. Downloads & Media Quality Section
-        SettingsSection(title = "Downloads & Media") {
+        SettingsSection(
+            title = "Downloads & Media",
+            icon = Icons.Default.Download
+        ) {
             SettingsItemRow(
                 title = "Default Download Quality",
                 subtitle = "Target resolution for downloaded media",
@@ -194,7 +202,10 @@ fun SettingsScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         // 3. Storage & Filenames Section
-        SettingsSection(title = "Storage & Files") {
+        SettingsSection(
+            title = "Storage & Files",
+            icon = Icons.Default.FolderOpen
+        ) {
             SettingsItemRow(
                 title = "Storage & Filenames",
                 subtitle = "Custom save directories, templates & tags",
@@ -208,7 +219,10 @@ fun SettingsScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         // 4. Network & Security Section
-        SettingsSection(title = "Network & Security") {
+        SettingsSection(
+            title = "Network & Security",
+            icon = Icons.Default.Security
+        ) {
             val networkSubtitle = if (isLoggedIn) {
                 "Custom user-agent, app ID, timeouts & jitter"
             } else {
@@ -250,7 +264,10 @@ fun SettingsScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         // 5. Cache & Maintenance Section
-        SettingsSection(title = "Data & Maintenance") {
+        SettingsSection(
+            title = "Data & Maintenance",
+            icon = Icons.Default.Delete
+        ) {
             SettingsItemRow(
                 title = "Clear Application Cache",
                 subtitle = "Frees thumbnail previews & temporary files",
@@ -267,7 +284,10 @@ fun SettingsScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         // 6. About & Information Section
-        SettingsSection(title = "About & Legal") {
+        SettingsSection(
+            title = "About & Legal",
+            icon = Icons.Default.Info
+        ) {
             SettingsItemRow(
                 title = "Privacy Policy",
                 subtitle = "View VedInsta privacy conditions and terms",
@@ -291,6 +311,11 @@ fun SettingsScreen(
                 onClick = onNavigateToAbout
             )
         }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // - App Branding Footer
+        SettingsAppFooter()
 
         Spacer(modifier = Modifier.height(contentPadding.calculateBottomPadding() + 24.dp))
     }
@@ -507,24 +532,32 @@ private fun SettingsSessionHeroCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(24.dp),
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (isLoggedIn) {
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
+            } else {
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+            }
+        ),
         colors = CardDefaults.cardColors(
             containerColor = if (isLoggedIn) {
-                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
             } else {
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                MaterialTheme.colorScheme.surfaceContainerLow
             }
         )
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(18.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(48.dp)
+                    .size(52.dp)
                     .background(
                         color = if (isLoggedIn) {
                             MaterialTheme.colorScheme.primaryContainer
@@ -539,7 +572,7 @@ private fun SettingsSessionHeroCard(
                     imageVector = if (isLoggedIn) Icons.Default.CheckCircle else Icons.Default.AccountCircle,
                     contentDescription = null,
                     tint = if (isLoggedIn) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(26.dp)
+                    modifier = Modifier.size(28.dp)
                 )
             }
 
@@ -571,12 +604,12 @@ private fun SettingsSessionHeroCard(
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(6.dp)
+                                    .size(7.dp)
                                     .background(
                                         color = if (isLoggedIn) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                                         shape = CircleShape
@@ -592,7 +625,7 @@ private fun SettingsSessionHeroCard(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(2.dp))
+                Spacer(modifier = Modifier.height(3.dp))
 
                 Text(
                     text = if (isLoggedIn) {
@@ -614,23 +647,41 @@ private fun SettingsSessionHeroCard(
 @Composable
 private fun SettingsSection(
     title: String,
+    icon: ImageVector? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            text = title.uppercase(),
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary,
-            letterSpacing = 0.8.sp,
-            modifier = Modifier.padding(start = 8.dp, bottom = 8.dp)
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(start = 6.dp, bottom = 8.dp)
+        ) {
+            if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+            Text(
+                text = title.uppercase(),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+                letterSpacing = 0.8.sp
+            )
+        }
 
         Card(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(18.dp),
+            shape = RoundedCornerShape(22.dp),
+            border = BorderStroke(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)
+            ),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
             )
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
@@ -657,7 +708,7 @@ private fun SettingsItemRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
+            .clip(RoundedCornerShape(20.dp))
             .let { modifier ->
                 if (enabled) {
                     modifier.clickable { onClick() }
@@ -665,15 +716,15 @@ private fun SettingsItemRow(
                     modifier
                 }
             }
-            .padding(horizontal = 14.dp, vertical = 13.dp),
+            .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
-                .size(40.dp)
+                .size(42.dp)
                 .background(
                     color = iconContainerColor.copy(alpha = iconContainerColor.alpha * alpha),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(13.dp)
                 ),
             contentAlignment = Alignment.Center
         ) {
@@ -681,7 +732,7 @@ private fun SettingsItemRow(
                 imageVector = icon,
                 contentDescription = null,
                 tint = iconColor.copy(alpha = iconColor.alpha * alpha),
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier.size(22.dp)
             )
         }
 
@@ -713,7 +764,7 @@ private fun SettingsItemRow(
                 Text(
                     text = badgeText,
                     style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Medium,
+                    fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.primary.copy(alpha = alpha),
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                     maxLines = 1
@@ -726,8 +777,50 @@ private fun SettingsItemRow(
         Icon(
             imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f * alpha),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f * alpha),
             modifier = Modifier.size(20.dp)
+        )
+    }
+}
+
+// - Settings Screen Footer Branding
+@Composable
+private fun SettingsAppFooter() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .background(MaterialTheme.colorScheme.primary, CircleShape)
+                )
+                Text(
+                    text = "VedInsta v2.0",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+        Text(
+            text = "Native Jetpack Compose & Python Architecture",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+            textAlign = TextAlign.Center
         )
     }
 }
@@ -760,18 +853,21 @@ private fun <T> SingleChoiceSelectionDialog(
         text = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 options.forEach { option ->
                     val isSelected = option.value == selectedValue
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
+                            .clip(RoundedCornerShape(16.dp))
                             .clickable { onSelect(option.value) },
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        border = if (isSelected) {
+                            BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f))
+                        } else null,
                         color = if (isSelected) {
-                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
                         } else {
                             Color.Transparent
                         }

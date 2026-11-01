@@ -44,6 +44,7 @@ fun AppearanceSettingsScreen(
     val dynamicColor  by settingsViewModel.dynamicColor.collectAsStateWithLifecycle()
     val selectedPalette by settingsViewModel.selectedPalette.collectAsStateWithLifecycle()
     val navBarTransparent by settingsViewModel.isNavBarTransparent.collectAsStateWithLifecycle()
+    val isBottomNavVisible by settingsViewModel.isBottomNavVisible.collectAsStateWithLifecycle()
     val isAmoledTheme by settingsViewModel.isAmoledTheme.collectAsStateWithLifecycle()
     val isBlurEnabled by settingsViewModel.isBlurEnabled.collectAsStateWithLifecycle()
     val blurOpacity   by settingsViewModel.blurOpacity.collectAsStateWithLifecycle()
@@ -184,9 +185,18 @@ fun AppearanceSettingsScreen(
                 AppearanceToggleRow(
                     icon      = Icons.Default.WebAsset,
                     title     = "Transparent Navigation Buttons",
-                    subtitle  = "Content scrolls behind the system navigation buttons",
+                    subtitle  = "Content scrolls behind the system navigation buttons and floating capsule",
                     checked   = navBarTransparent,
                     onCheckedChange = { settingsViewModel.setNavBarTransparent(it) }
+                )
+
+                AppearanceDivider()
+                AppearanceToggleRow(
+                    icon      = Icons.Default.Navigation,
+                    title     = "Bottom Navigation Bar",
+                    subtitle  = "Show floating capsule navigation bar",
+                    checked   = isBottomNavVisible,
+                    onCheckedChange = { settingsViewModel.setBottomNavVisible(it) }
                 )
 
                 AppearanceDivider()

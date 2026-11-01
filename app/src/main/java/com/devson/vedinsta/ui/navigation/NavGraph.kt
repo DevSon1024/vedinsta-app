@@ -6,8 +6,15 @@ import android.content.Intent
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -16,8 +23,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
@@ -96,6 +108,8 @@ fun MainAppScreen(
     val blurOpacity by settingsViewModel.blurOpacity.collectAsStateWithLifecycle()
     val blurRadius by settingsViewModel.blurRadius.collectAsStateWithLifecycle()
     val isLegalNoticeAccepted by settingsViewModel.isLegalNoticeAccepted.collectAsStateWithLifecycle()
+    val navBarTransparent by settingsViewModel.isNavBarTransparent.collectAsStateWithLifecycle()
+    val isBottomNavVisible by settingsViewModel.isBottomNavVisible.collectAsStateWithLifecycle()
 
     val favoritePostIds by mainViewModel.favoritePostIds.collectAsStateWithLifecycle()
     val isFavoriteHelper = { postId: String -> favoritePostIds.contains(postId) }
@@ -247,6 +261,17 @@ fun MainAppScreen(
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
+                            } else if (currentMainPage == 3 || currentMainPage == 4) {
+                                IconButton(
+                                    onClick = { navController.navigate(Screen.Settings.route) },
+                                    modifier = Modifier.padding(end = 8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Settings,
+                                        contentDescription = "Settings",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                         }
                     }
@@ -254,67 +279,18 @@ fun MainAppScreen(
             }
         },
         bottomBar = {
-            if (currentRoute == Screen.MainPager.route) {
-                NavigationBar(
-                    containerColor = if (isBlurEnabled) {
-                        Color.Transparent
-                    } else {
-                        MaterialTheme.colorScheme.background
+            if (isBottomNavVisible && currentRoute == Screen.MainPager.route) {
+                CapsuleNavigationBar(
+                    currentMainPage = currentMainPage,
+                    onPageSelected = { page ->
+                        scope.launch { pagerState.animateScrollToPage(page) }
                     },
-                    tonalElevation = 0.dp,
-                    windowInsets = WindowInsets.navigationBars,
-                    modifier = Modifier
-                        .let { modifier ->
-                            if (isBlurEnabled) {
-                                modifier.hazeChild(
-                                    state = hazeState,
-                                    style = HazeStyle(
-                                        blurRadius = blurRadius.dp,
-                                        tint = MaterialTheme.colorScheme.surface.copy(alpha = blurOpacity)
-                                    )
-                                )
-                            } else {
-                                modifier
-                            }
-                        }
-                        .height(60.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())
-                ) {
-                    NavigationBarItem(
-                        selected = currentMainPage == 0,
-                        onClick = { scope.launch { pagerState.animateScrollToPage(0) } },
-                        icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
-                        label = { Text("Home", fontSize = 11.sp, fontWeight = FontWeight.Medium) },
-                        alwaysShowLabel = false
-                    )
-                    NavigationBarItem(
-                        selected = currentMainPage == 1,
-                        onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
-                        icon = { Icon(Icons.Default.History, contentDescription = "History") },
-                        label = { Text("History", fontSize = 11.sp, fontWeight = FontWeight.Medium) },
-                        alwaysShowLabel = false
-                    )
-                    NavigationBarItem(
-                        selected = currentMainPage == 2,
-                        onClick = { scope.launch { pagerState.animateScrollToPage(2) } },
-                        icon = { Icon(Icons.Default.Favorite, contentDescription = "Favorites") },
-                        label = { Text("Favorites", fontSize = 11.sp, fontWeight = FontWeight.Medium) },
-                        alwaysShowLabel = false
-                    )
-                    NavigationBarItem(
-                        selected = currentMainPage == 3,
-                        onClick = { scope.launch { pagerState.animateScrollToPage(3) } },
-                        icon = { Icon(Icons.Default.Download, contentDescription = "WA Status") },
-                        label = { Text("WA Status", fontSize = 11.sp, fontWeight = FontWeight.Medium) },
-                        alwaysShowLabel = false
-                    )
-                    NavigationBarItem(
-                        selected = currentMainPage == 4,
-                        onClick = { scope.launch { pagerState.animateScrollToPage(4) } },
-                        icon = { Icon(Icons.Default.AccountBox, contentDescription = "Sessions") },
-                        label = { Text("Sessions", fontSize = 11.sp, fontWeight = FontWeight.Medium) },
-                        alwaysShowLabel = false
-                    )
-                }
+                    isBlurEnabled = isBlurEnabled,
+                    hazeState = hazeState,
+                    blurRadius = blurRadius,
+                    blurOpacity = blurOpacity,
+                    isNavBarTransparent = navBarTransparent
+                )
             }
         },
         floatingActionButton = {
@@ -378,7 +354,14 @@ fun MainAppScreen(
             currentRoute != Screen.Appearance.route &&
             currentRoute != Screen.DownloaderDetails.route &&
             currentRoute != Screen.WhatsAppStatusView.route
-        val screenPadding = if (isBlurEnabled && applyPadding) paddingValues else PaddingValues(0.dp)
+        val screenPadding = if (applyPadding) {
+            PaddingValues(
+                top = if (isBlurEnabled) paddingValues.calculateTopPadding() else 0.dp,
+                bottom = paddingValues.calculateBottomPadding()
+            )
+        } else {
+            PaddingValues(0.dp)
+        }
         
         Box(
             modifier = Modifier
@@ -392,7 +375,7 @@ fun MainAppScreen(
                 }
                 .padding(
                     top = if (applyPadding && !isBlurEnabled) paddingValues.calculateTopPadding() else 0.dp,
-                    bottom = if (applyPadding && !isBlurEnabled) paddingValues.calculateBottomPadding() else 0.dp
+                    bottom = 0.dp
                 )
         ) {
             NavHost(
@@ -834,6 +817,184 @@ fun NotificationBadge(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun CapsuleNavigationBar(
+    currentMainPage: Int,
+    onPageSelected: (Int) -> Unit,
+    isBlurEnabled: Boolean,
+    hazeState: HazeState,
+    blurRadius: Float,
+    blurOpacity: Float,
+    isNavBarTransparent: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val haptic = LocalHapticFeedback.current
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(start = 20.dp, end = 20.dp, bottom = 12.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(
+            shape = RoundedCornerShape(32.dp),
+            color = if (isBlurEnabled) {
+                MaterialTheme.colorScheme.surface.copy(alpha = blurOpacity)
+            } else if (isNavBarTransparent) {
+                MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.70f)
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerHigh
+            },
+            tonalElevation = 0.dp,
+            shadowElevation = if (isNavBarTransparent || isBlurEnabled) 0.dp else 6.dp,
+            border = BorderStroke(
+                1.dp,
+                if (isNavBarTransparent) {
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.20f)
+                } else {
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)
+                }
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(64.dp)
+                .clip(RoundedCornerShape(32.dp))
+                .let { mod ->
+                    if (isBlurEnabled) {
+                        mod.hazeChild(
+                            state = hazeState,
+                            shape = RoundedCornerShape(32.dp),
+                            style = HazeStyle(
+                                blurRadius = blurRadius.dp,
+                                tint = MaterialTheme.colorScheme.surface.copy(alpha = blurOpacity)
+                            )
+                        )
+                    } else {
+                        mod
+                    }
+                }
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 6.dp),
+                horizontalArrangement = Arrangement.SpaceAround,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val navItems = listOf(
+                    Triple(0, Icons.Default.Home, "Home"),
+                    Triple(1, Icons.Default.History, "History"),
+                    Triple(2, Icons.Default.Favorite, "Favorites"),
+                    Triple(3, Icons.Default.Download, "WA Status"),
+                    Triple(4, Icons.Default.AccountBox, "Sessions")
+                )
+
+                navItems.forEach { (pageIndex, icon, label) ->
+                    val isSelected = currentMainPage == pageIndex
+
+                    CapsuleNavItem(
+                        selected = isSelected,
+                        icon = icon,
+                        label = label,
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onPageSelected(pageIndex)
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CapsuleNavItem(
+    selected: Boolean,
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val iconScale by animateFloatAsState(
+        targetValue = if (selected) 1.15f else 1.0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "iconScale"
+    )
+
+    val contentColor by animateColorAsState(
+        targetValue = if (selected) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
+        },
+        animationSpec = tween(durationMillis = 200),
+        label = "contentColor"
+    )
+
+    val pillColor by animateColorAsState(
+        targetValue = if (selected) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+        } else {
+            Color.Transparent
+        },
+        animationSpec = tween(durationMillis = 200),
+        label = "pillColor"
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxHeight()
+            .padding(vertical = 4.dp)
+            .clip(RoundedCornerShape(24.dp))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .height(28.dp)
+                    .width(48.dp)
+                    .background(pillColor, RoundedCornerShape(14.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = label,
+                    tint = contentColor,
+                    modifier = Modifier
+                        .size(22.dp)
+                        .scale(iconScale)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(2.dp))
+
+            Text(
+                text = label,
+                fontSize = 10.sp,
+                maxLines = 1,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                color = contentColor
+            )
         }
     }
 }
