@@ -9,7 +9,8 @@ plugins {
 }
 
 val appName = "VedInsta"
-val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystorePropertiesFile = rootProject.file("keystore.properties").takeIf { it.exists() }
+    ?: project.file("keystore.properties")
 val keystoreProperties = Properties()
 if (keystorePropertiesFile.exists()) {
     FileInputStream(keystorePropertiesFile).use { keystoreProperties.load(it) }
@@ -26,8 +27,8 @@ android {
         applicationId = "com.devson.vedinsta"
         minSdk = 26
         targetSdk = 36
-        versionCode = 111
-        versionName = "1.1.1"
+        versionCode = 112
+        versionName = "1.1.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         vectorDrawables {
@@ -45,7 +46,9 @@ android {
             if (keystorePropertiesFile.exists()) {
                 keyAlias = keystoreProperties.getProperty("keyAlias")
                 keyPassword = keystoreProperties.getProperty("keyPassword")
-                storeFile = file(keystoreProperties.getProperty("storeFile") ?: "")
+                val storePath = keystoreProperties.getProperty("storeFile") ?: ""
+                val localFile = file(storePath)
+                storeFile = if (localFile.exists()) localFile else rootProject.file(storePath)
                 storePassword = keystoreProperties.getProperty("storePassword")
             } else {
                 val keystorePath = System.getenv("KEYSTORE_PATH")
@@ -68,8 +71,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            if (keystorePropertiesFile.exists() || System.getenv("KEYSTORE_PATH") != null) {
-                signingConfig = signingConfigs.getByName("release")
+            val releaseSigning = signingConfigs.getByName("release")
+            if (releaseSigning.storeFile != null && releaseSigning.storeFile?.exists() == true) {
+                signingConfig = releaseSigning
             }
             resValue("string", "app_name", "VedInsta")
         }
