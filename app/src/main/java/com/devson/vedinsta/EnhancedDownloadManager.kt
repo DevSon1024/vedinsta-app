@@ -143,13 +143,10 @@ class EnhancedDownloadManager(
             if (success) {
                 Log.d(TAG, "Download finished successfully: $filePath")
                 setProgress(workDataOf(PROGRESS to 100))
-                if (!isBatch) {
-                    val notification = createProgressNotification(fileName, 100, isBatch)
-                    try {
-                        notificationManagerCompat.notify(finalNotificationId, notification)
-                    } catch (e: SecurityException) {
-                        Log.w(TAG, "Permission denied updating notification")
-                    }
+                try {
+                    notificationManagerCompat.cancel(finalNotificationId)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to cancel worker progress notification", e)
                 }
                 val outputData = workDataOf(
                     PROGRESS to 100,
@@ -158,10 +155,20 @@ class EnhancedDownloadManager(
                 Result.success(outputData)
             } else {
                 Log.w(TAG, "Download failed or cancelled for: $filePath")
+                try {
+                    notificationManagerCompat.cancel(finalNotificationId)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to cancel worker progress notification on failure", e)
+                }
                 Result.failure()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Download failed with exception for $filePath", e)
+            try {
+                notificationManagerCompat.cancel(finalNotificationId)
+            } catch (ex: Exception) {
+                Log.w(TAG, "Failed to cancel worker progress notification on exception", ex)
+            }
             Result.failure()
         }
     }

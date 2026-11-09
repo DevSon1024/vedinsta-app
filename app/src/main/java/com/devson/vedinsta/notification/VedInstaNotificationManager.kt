@@ -198,6 +198,7 @@ class VedInstaNotificationManager private constructor(private val context: Conte
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setDefaults(0)
             .setContentIntent(pendingIntent)
+            .setOngoing(false)
             .setAutoCancel(true)
             .build()
 
@@ -406,6 +407,7 @@ class VedInstaNotificationManager private constructor(private val context: Conte
             .setContentText("Error downloading $fileName")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setOngoing(false)
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)
             .setStyle(NotificationCompat.BigTextStyle().bigText("Error downloading $fileName: $error"))
@@ -414,6 +416,12 @@ class VedInstaNotificationManager private constructor(private val context: Conte
     }
 
     // --- Helpers ---
+
+    fun cancelAllDownloadProgressNotifications() {
+        cancelBatchDownloadNotification()
+        cancelLinkProcessingNotification()
+        cancelMultipleContentNotification()
+    }
 
     fun cancelLinkProcessingNotification() {
         try {

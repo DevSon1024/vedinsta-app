@@ -30,6 +30,8 @@ class NotificationViewModel(application: Application) : AndroidViewModel(applica
             try {
                 val cutoffTime = System.currentTimeMillis() - (60L * 60L * 1000L) // 1 hour ago
                 notificationDao.markStaleDownloadsAsFailed(cutoffTime)
+                com.devson.vedinsta.notification.VedInstaNotificationManager.getInstance(getApplication())
+                    .cancelAllDownloadProgressNotifications()
             } catch (e: Exception) {
                 Log.e("NotificationViewModel", "Failed to clean stale downloads", e)
             }
@@ -45,6 +47,10 @@ class NotificationViewModel(application: Application) : AndroidViewModel(applica
                     androidx.work.WorkManager.getInstance(getApplication()).cancelAllWorkByTag(postId)
                     // Cancel DownloadService active jobs
                     com.devson.vedinsta.service.DownloadService.cancelDownload(postId)
+                    // Cancel system notifications for this post and service progress
+                    val notificationMgr = com.devson.vedinsta.notification.VedInstaNotificationManager.getInstance(getApplication())
+                    notificationMgr.cancelDownloadNotification(postId.hashCode())
+                    notificationMgr.cancelDownloadNotification(com.devson.vedinsta.service.DownloadService.NOTIFICATION_ID_DOWNLOAD_SERVICE)
                 } catch (e: Exception) {
                     Log.e("NotificationViewModel", "Failed to cancel running downloads for $postId", e)
                 }

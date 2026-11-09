@@ -70,17 +70,19 @@ class DownloadService : Service() {
         private const val TAG = "DownloadService"
         private const val USER_AGENT = "Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.193 Mobile Safari/537.36 Instagram 314.0.0.19.113 Android (34/14; 450dpi; 1440x3088; samsung; SM-S918B; dm3q; qcom; en_US; 557876543)"
 
+        const val NOTIFICATION_ID_DOWNLOAD_SERVICE = VedInstaNotificationManager.NOTIFICATION_ID_BATCH_DOWNLOAD
+
         // ConcurrentMaps for batch download progress tracking
         private val batchProgressMap = ConcurrentHashMap<String, Pair<AtomicInteger, AtomicInteger>>()
         private val batchCompletedFilesMap = ConcurrentHashMap<String, CopyOnWriteArrayList<String>>()
 
         // Map to keep track of active download jobs for cancellation
-        val activeJobs = ConcurrentHashMap<String, Job>()
+        val activeJobs = ConcurrentHashMap<String, MutableSet<Job>>()
 
         fun cancelDownload(postId: String): Boolean {
-            val job = activeJobs.remove(postId)
-            return if (job != null) {
-                job.cancel()
+            val jobs = activeJobs.remove(postId)
+            return if (!jobs.isNullOrEmpty()) {
+                jobs.forEach { it.cancel() }
                 true
             } else {
                 false
@@ -94,10 +96,7 @@ class DownloadService : Service() {
         super.onCreate()
         notificationManager = VedInstaNotificationManager.getInstance(this)
 
-        // ANR FIX: Semaphore(1) enforces strictly sequential downloads.
-        // With Semaphore(3), three coroutines hammered the SAME notification ID concurrently,
-        // causing system_server IPC deadlocks and glitched/stuck progress bars.
-        // Sequential execution guarantees the progress bar moves smoothly 0-100% without races.
+        // Semaphore(1) enforces strictly sequential downloads.
         val semaphore = Semaphore(1)
         serviceScope.launch {
             for (request in downloadChannel) {
@@ -121,14 +120,21 @@ class DownloadService : Service() {
                             val remaining = activeTasks.decrementAndGet()
                             if (remaining <= 0) {
                                 ServiceCompat.stopForeground(this@DownloadService, ServiceCompat.STOP_FOREGROUND_REMOVE)
+                                notificationManager.cancelDownloadNotification(NOTIFICATION_ID_DOWNLOAD_SERVICE)
                                 com.devson.vedinsta.VedInstaApplication.clearAppCache(applicationContext)
                                 stopSelf()
                             }
                         }
                     }
                 }
-                activeJobs[jobId] = job
-                job.invokeOnCompletion { activeJobs.remove(jobId) }
+                val jobSet = activeJobs.computeIfAbsent(jobId) { ConcurrentHashMap.newKeySet() }
+                jobSet.add(job)
+                job.invokeOnCompletion {
+                    jobSet.remove(job)
+                    if (jobSet.isEmpty()) {
+                        activeJobs.remove(jobId, jobSet)
+                    }
+                }
             }
         }
     }
@@ -155,8 +161,9 @@ class DownloadService : Service() {
                 val caption = it.getStringExtra(EXTRA_CAPTION)
 
                 val isBatch = postId != null && totalImages > 1
-                val notificationId = if (isBatch) postId!!.hashCode() else (postId?.hashCode() ?: fileNames.firstOrNull()?.hashCode() ?: 4242)
-                activeNotificationIds.add(notificationId)
+                val targetPostId = postId ?: fileNames.firstOrNull() ?: "batch_${System.currentTimeMillis()}"
+                val targetPostNotificationId = targetPostId.hashCode()
+                activeNotificationIds.add(targetPostNotificationId)
 
                 val displayUsername = username ?: "unknown"
                 val startMsg = if (isBatch) {
@@ -167,7 +174,7 @@ class DownloadService : Service() {
                 notificationManager.showDownloadStartedPopup("Download Started", startMsg)
 
                 if (isBatch) {
-                    batchProgressMap.putIfAbsent(postId!!, Pair(AtomicInteger(0), AtomicInteger(0)))
+                    batchProgressMap.putIfAbsent(postId, Pair(AtomicInteger(0), AtomicInteger(0)))
                     batchCompletedFilesMap.putIfAbsent(postId, CopyOnWriteArrayList())
                     updateProgressInDb(postId, username, "0/$totalImages", postUrl)
                 } else {
@@ -179,20 +186,12 @@ class DownloadService : Service() {
 
                 if (isFirstTask) {
                     val notification = if (isBatch) {
-                        val progress = batchProgressMap[postId]
-                        val finished = progress?.first?.get() ?: 0
-                        val remaining = totalImages - finished
-                        val subText = when {
-                            remaining <= 0 -> "All files downloaded"
-                            remaining == 1 -> "$remaining file remaining"
-                            else -> "$remaining files remaining"
-                        }
                         NotificationCompat.Builder(this, VedInstaNotificationManager.CHANNEL_ID_SILENT)
                             .setSmallIcon(android.R.drawable.stat_sys_download)
-                            .setContentTitle("VedInsta ⋅ Downloading")
-                            .setContentText("Downloading safely (Anti-Ban active)... ($finished/$totalImages files)")
-                            .setSubText(subText)
-                            .setProgress(totalImages, finished, false)
+                            .setContentTitle("VedInsta · Downloading")
+                            .setContentText("Downloading safely (Anti-Ban active)... (0/$totalImages files)")
+                            .setSubText("$totalImages files remaining")
+                            .setProgress(totalImages, 0, false)
                             .setPriority(NotificationCompat.PRIORITY_LOW)
                             .setOngoing(true)
                             .setOnlyAlertOnce(true)
@@ -205,14 +204,14 @@ class DownloadService : Service() {
                         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
                             ServiceCompat.startForeground(
                                 this,
-                                notificationId,
+                                NOTIFICATION_ID_DOWNLOAD_SERVICE,
                                 notification,
                                 android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
                             )
                         } else {
                             ServiceCompat.startForeground(
                                 this,
-                                notificationId,
+                                NOTIFICATION_ID_DOWNLOAD_SERVICE,
                                 notification,
                                 0
                             )
@@ -236,7 +235,7 @@ class DownloadService : Service() {
                                 url = url,
                                 filePath = filePath,
                                 fileName = fileName,
-                                notificationId = notificationId,
+                                notificationId = targetPostNotificationId,
                                 postId = postId,
                                 postUrl = postUrl,
                                 username = username,
@@ -261,8 +260,9 @@ class DownloadService : Service() {
 
                 if (url != null && filePath != null && fileName != null) {
                     val isBatch = postId != null && totalImages > 1
-                    val notificationId = if (isBatch) postId.hashCode() else (postId?.hashCode() ?: fileName.hashCode())
-                    activeNotificationIds.add(notificationId)
+                    val targetPostId = postId ?: fileName
+                    val targetPostNotificationId = targetPostId.hashCode()
+                    activeNotificationIds.add(targetPostNotificationId)
 
                     val displayUsername = username ?: "unknown"
                     val startMsg = if (isBatch) {
@@ -276,7 +276,7 @@ class DownloadService : Service() {
                     val isFirstTask = currentTaskCount == 1
 
                     if (isBatch) {
-                        batchProgressMap.putIfAbsent(postId!!, Pair(AtomicInteger(0), AtomicInteger(0)))
+                        batchProgressMap.putIfAbsent(postId, Pair(AtomicInteger(0), AtomicInteger(0)))
                         batchCompletedFilesMap.putIfAbsent(postId, CopyOnWriteArrayList())
                         updateProgressInDb(postId, username, "0/$totalImages", postUrl)
                     } else {
@@ -285,20 +285,12 @@ class DownloadService : Service() {
 
                     if (isFirstTask) {
                         val notification = if (isBatch) {
-                            val progress = batchProgressMap[postId]
-                            val finished = progress?.first?.get() ?: 0
-                            val remaining = totalImages - finished
-                            val subText = when {
-                                remaining <= 0 -> "All files downloaded"
-                                remaining == 1 -> "$remaining file remaining"
-                                else -> "$remaining files remaining"
-                            }
                             NotificationCompat.Builder(this, VedInstaNotificationManager.CHANNEL_ID_SILENT)
                                 .setSmallIcon(android.R.drawable.stat_sys_download)
                                 .setContentTitle("VedInsta · Downloading")
-                                .setContentText("Downloading safely (Anti-Ban active)... ($finished/$totalImages files)")
-                                .setSubText(subText)
-                                .setProgress(totalImages, finished, false)
+                                .setContentText("Downloading safely (Anti-Ban active)... (0/$totalImages files)")
+                                .setSubText("$totalImages files remaining")
+                                .setProgress(totalImages, 0, false)
                                 .setPriority(NotificationCompat.PRIORITY_LOW)
                                 .setOngoing(true)
                                 .setOnlyAlertOnce(true)
@@ -311,14 +303,14 @@ class DownloadService : Service() {
                             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
                                 ServiceCompat.startForeground(
                                     this,
-                                    notificationId,
+                                    NOTIFICATION_ID_DOWNLOAD_SERVICE,
                                     notification,
                                     android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
                                 )
                             } else {
                                 ServiceCompat.startForeground(
                                     this,
-                                    notificationId,
+                                    NOTIFICATION_ID_DOWNLOAD_SERVICE,
                                     notification,
                                     0
                                 )
@@ -334,7 +326,7 @@ class DownloadService : Service() {
                                 url = url,
                                 filePath = filePath,
                                 fileName = fileName,
-                                notificationId = notificationId,
+                                notificationId = targetPostNotificationId,
                                 postId = postId,
                                 postUrl = postUrl,
                                 username = username,
@@ -421,7 +413,7 @@ class DownloadService : Service() {
                                 if (now - lastUpdateTime >= 500) {
                                     val progress = (currentTotalBytesRead * 100 / contentLength).toInt()
                                     updateProgressInDb(postId ?: fileName, username, "$progress%", postUrl)
-                                    notificationManager.showSingleDownloadProgress(notificationId, postId ?: fileName, progress)
+                                    notificationManager.showSingleDownloadProgress(NOTIFICATION_ID_DOWNLOAD_SERVICE, postId ?: fileName, progress)
                                     lastUpdateTime = now
                                 }
                             }
@@ -505,28 +497,23 @@ class DownloadService : Service() {
                 val finished = progress.first.incrementAndGet() // increment finished count
                 batchCompletedFilesMap[postId]?.add(filePath)
 
-                notificationManager.showDownloadProgress(
-                    notificationId = postId.hashCode(),
-                    completedFiles = finished,
-                    totalFiles = totalImages
-                )
+                val postNotificationId = postId.hashCode()
 
                 if (finished >= totalImages) {
                     val successes = progress.second.get()
                     val title = "Download Completed"
                     val msg = "Saved $successes/$totalImages files from @$displayUsername"
                     
-                    val uniqueCompletionId = System.currentTimeMillis().toInt()
+                    notificationManager.cancelDownloadNotification(postNotificationId)
                     notificationManager.showDownloadCompleted(
-                        notificationId = uniqueCompletionId,
+                        notificationId = postNotificationId,
                         title = title,
                         message = msg
                     )
 
                     serviceScope.launch {
-                        // BUG FIX: NonCancellable prevents JobCancellationException when
-                        // stopSelf() fires (cancelling serviceScope) before this DB insert
-                        // completes. Terminal writes MUST survive service shutdown.
+                        // NonCancellable prevents JobCancellationException when
+                        // stopSelf() fires before DB insert completes.
                         withContext(NonCancellable) {
                             try {
                                 val completedPaths = batchCompletedFilesMap[postId]
@@ -560,10 +547,15 @@ class DownloadService : Service() {
                         }
                     }
 
-                    activeNotificationIds.remove(postId.hashCode())
+                    activeNotificationIds.remove(postNotificationId)
                     batchProgressMap.remove(postId)
                     batchCompletedFilesMap.remove(postId)
                 } else {
+                    notificationManager.showDownloadProgress(
+                        notificationId = NOTIFICATION_ID_DOWNLOAD_SERVICE,
+                        completedFiles = finished,
+                        totalFiles = totalImages
+                    )
                     updateProgressInDb(postId, username, "$finished/$totalImages", postUrl)
                 }
             }
@@ -572,15 +564,15 @@ class DownloadService : Service() {
             val mediaTypeWord = if (isVideo) "reel" else "post"
             val title = "Download Completed"
             val msg = "Saved $mediaTypeWord from @$displayUsername"
-            notificationManager.showSingleDownloadProgress(notificationId, postId ?: fileName, 100)
+            val postNotificationId = (postId ?: fileName).hashCode()
+
             updateProgressInDb(postId ?: fileName, username, "100%", postUrl)
-            val uniqueCompletionId = System.currentTimeMillis().toInt()
-            notificationManager.showDownloadCompleted(notificationId = uniqueCompletionId, title = title, message = msg)
+            notificationManager.cancelDownloadNotification(postNotificationId)
+            notificationManager.showDownloadCompleted(notificationId = postNotificationId, title = title, message = msg)
 
             serviceScope.launch {
-                // BUG FIX: NonCancellable prevents JobCancellationException when
-                // stopSelf() fires (cancelling serviceScope) before this DB insert
-                // completes. Terminal writes MUST survive service shutdown.
+                // NonCancellable prevents JobCancellationException when
+                // stopSelf() fires before DB insert completes.
                 withContext(NonCancellable) {
                     try {
                         val db = com.devson.vedinsta.database.AppDatabase.getDatabase(applicationContext)
@@ -607,7 +599,7 @@ class DownloadService : Service() {
                     notificationManager.removeProgressFromDb(postId ?: fileName)
                 }
             }
-            activeNotificationIds.remove(notificationId)
+            activeNotificationIds.remove(postNotificationId)
         }
     }
 
@@ -621,16 +613,11 @@ class DownloadService : Service() {
         notificationId: Int
     ) {
         val displayUsername = username ?: "unknown"
+        val postNotificationId = if (postId != null && totalImages > 1) postId.hashCode() else (postId ?: fileName).hashCode()
         if (postId != null && totalImages > 1) {
             val progress = batchProgressMap[postId]
             if (progress != null) {
                 val finished = progress.first.incrementAndGet() // increment finished count
-
-                notificationManager.showDownloadProgress(
-                    notificationId = postId.hashCode(),
-                    completedFiles = finished,
-                    totalFiles = totalImages
-                )
 
                 if (finished >= totalImages) {
                     val successes = progress.second.get()
@@ -638,16 +625,14 @@ class DownloadService : Service() {
                         val title = "Download Completed with errors"
                         val msg = "Saved $successes/$totalImages files from @$displayUsername"
                         
-                        val uniqueCompletionId = System.currentTimeMillis().toInt()
+                        notificationManager.cancelDownloadNotification(postNotificationId)
                         notificationManager.showDownloadCompleted(
-                            notificationId = uniqueCompletionId,
+                            notificationId = postNotificationId,
                             title = title,
                             message = msg
                         )
 
                         serviceScope.launch {
-                            // BUG FIX: NonCancellable prevents JobCancellationException when
-                            // stopSelf() races ahead of this DB insert on batch partial-success.
                             withContext(NonCancellable) {
                                 try {
                                     notificationManager.addCustomNotification(
@@ -669,16 +654,14 @@ class DownloadService : Service() {
                         val title = "Download Failed"
                         val msg = "Could not download files from @$displayUsername"
                         
-                        val uniqueId = System.currentTimeMillis().toInt()
+                        notificationManager.cancelDownloadNotification(postNotificationId)
                         notificationManager.showDownloadError(
-                            notificationId = uniqueId,
+                            notificationId = postNotificationId,
                             fileName = "Batch Download Failed",
                             error = msg
                         )
 
                         serviceScope.launch {
-                            // BUG FIX: NonCancellable prevents JobCancellationException when
-                            // stopSelf() races ahead of this DB insert on batch full-failure.
                             withContext(NonCancellable) {
                                 try {
                                     val resolvedUrl = postUrl 
@@ -702,10 +685,15 @@ class DownloadService : Service() {
                             }
                         }
                     }
-                    activeNotificationIds.remove(postId.hashCode())
+                    activeNotificationIds.remove(postNotificationId)
                     batchProgressMap.remove(postId)
                     batchCompletedFilesMap.remove(postId)
                 } else {
+                    notificationManager.showDownloadProgress(
+                        notificationId = NOTIFICATION_ID_DOWNLOAD_SERVICE,
+                        completedFiles = finished,
+                        totalFiles = totalImages
+                    )
                     updateProgressInDb(postId, username, "$finished/$totalImages", postUrl)
                 }
             }
@@ -713,16 +701,14 @@ class DownloadService : Service() {
             val title = "Download Failed"
             val msg = "Error downloading $fileName: $errorMessage"
             
-            val uniqueId = System.currentTimeMillis().toInt()
+            notificationManager.cancelDownloadNotification(postNotificationId)
             notificationManager.showDownloadError(
-                notificationId = uniqueId,
+                notificationId = postNotificationId,
                 fileName = fileName,
                 error = errorMessage
             )
 
             serviceScope.launch {
-                // BUG FIX: NonCancellable prevents JobCancellationException when
-                // stopSelf() races ahead of this single-download error DB insert.
                 withContext(NonCancellable) {
                     try {
                         val targetKey = postId ?: fileName
@@ -746,7 +732,7 @@ class DownloadService : Service() {
                     notificationManager.removeProgressFromDb(postId ?: fileName)
                 }
             }
-            activeNotificationIds.remove(notificationId)
+            activeNotificationIds.remove(postNotificationId)
         }
     }
 
@@ -873,6 +859,7 @@ class DownloadService : Service() {
         super.onDestroy()
         serviceScope.cancel()
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        notificationManager.cancelDownloadNotification(NOTIFICATION_ID_DOWNLOAD_SERVICE)
         for (id in activeNotificationIds) {
             try {
                 notificationManager.cancelDownloadNotification(id)
@@ -881,6 +868,9 @@ class DownloadService : Service() {
             }
         }
         activeNotificationIds.clear()
+        batchProgressMap.clear()
+        batchCompletedFilesMap.clear()
+        activeJobs.clear()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

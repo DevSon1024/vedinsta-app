@@ -93,6 +93,7 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
         super.onCreate()
         instance = this
         settingsViewModel = SettingsViewModel(this)
+        VedInstaNotificationManager.getInstance(this).cancelAllDownloadProgressNotifications()
     }
 
     override fun newImageLoader(): ImageLoader {
@@ -813,9 +814,10 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
                             withContext(Dispatchers.Main) {
                                 val message = "Downloaded ${completedFilePaths.size}/$expectedCount files for $finalUsername."
                                 Toast.makeText(context, message, Toast.LENGTH_LONG).show()
-                                val uniqueCompletionId = System.currentTimeMillis().toInt()
+                                val postNotificationId = groupTag.hashCode()
+                                notificationManager.cancelDownloadNotification(postNotificationId)
                                 notificationManager.showDownloadCompleted(
-                                    notificationId = uniqueCompletionId,
+                                    notificationId = postNotificationId,
                                     title = "Download Completed",
                                     message = "Saved ${completedFilePaths.size}/$expectedCount files from @$finalUsername"
                                 )
@@ -840,9 +842,10 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
                             }
                             withContext(Dispatchers.Main) {
                                 Toast.makeText(context, "Download failed for post $finalUsername.", Toast.LENGTH_LONG).show()
-                                val uniqueId = System.currentTimeMillis().toInt()
+                                val postNotificationId = groupTag.hashCode()
+                                notificationManager.cancelDownloadNotification(postNotificationId)
                                 notificationManager.showDownloadError(
-                                    notificationId = uniqueId,
+                                    notificationId = postNotificationId,
                                     fileName = "Post $finalUsername",
                                     error = "All downloads failed"
                                 )
@@ -926,9 +929,11 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
             // Show completion feedback on Main thread
             withContext(Dispatchers.Main) {
                 Toast.makeText(context, "Download complete: $fileName", Toast.LENGTH_SHORT).show()
-                val uniqueCompletionId = System.currentTimeMillis().toInt()
+                val postNotificationId = tag.hashCode()
+                notificationManager.cancelDownloadNotification(notificationId)
+                notificationManager.cancelDownloadNotification(postNotificationId)
                 notificationManager.showDownloadCompleted(
-                    notificationId = uniqueCompletionId,
+                    notificationId = postNotificationId,
                     title = "Download Completed",
                     message = "Saved $mediaTypeWord from @$finalUsername"
                 )
@@ -964,8 +969,14 @@ class VedInstaApplication : Application(), ImageLoaderFactory {
             }
             withContext(Dispatchers.Main) {
                 Toast.makeText(context, "Download failed: $fileName", Toast.LENGTH_SHORT).show()
-                val uniqueId = System.currentTimeMillis().toInt()
-                notificationManager.showDownloadError(notificationId = uniqueId, fileName = fileName, error = "Download failed or cancelled")
+                val postNotificationId = tag.hashCode()
+                notificationManager.cancelDownloadNotification(notificationId)
+                notificationManager.cancelDownloadNotification(postNotificationId)
+                notificationManager.showDownloadError(
+                    notificationId = postNotificationId,
+                    fileName = fileName,
+                    error = "Download failed or cancelled"
+                )
             }
         }
     }
