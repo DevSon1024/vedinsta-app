@@ -70,8 +70,19 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.material.icons.filled.Tag
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Link
+import com.devson.vedinsta.ui.safeCombinedClickable
 import androidx.core.view.WindowCompat
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -91,7 +102,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.absoluteValue
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun PostViewScreen(
     post: DownloadedPost,
@@ -176,9 +187,24 @@ fun PostViewScreen(
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var showCaptionSheet by remember { mutableStateOf(false) }
     var showShareMenu by remember { mutableStateOf(false) }
+    var selectedSpanForDialog by remember { mutableStateOf<CaptionClickableSpan?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showMoreOptionsSheet by remember { mutableStateOf(false) }
     val moreOptionsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    // Calculate stable top padding to prevent the back button from jumping to the top corner when status bar is hidden
+    val systemStatusBarHeight = remember(context) {
+        val resourceId = context.resources.getIdentifier("status_bar_height", "dimen", "android")
+        if (resourceId > 0) {
+            val px = context.resources.getDimensionPixelSize(resourceId)
+            (px / context.resources.displayMetrics.density).dp
+        } else {
+            24.dp
+        }
+    }
+    val insetsStatusBarTop = WindowInsets.statusBarsIgnoringVisibility.asPaddingValues().calculateTopPadding()
+    val cutoutTop = WindowInsets.displayCutout.asPaddingValues().calculateTopPadding()
+    val stableTopPadding = maxOf(insetsStatusBarTop, cutoutTop, systemStatusBarHeight)
 
     val dateString = remember(post.downloadDate) {
         val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
@@ -348,8 +374,7 @@ fun PostViewScreen(
                         onClick = onBackClick,
                         modifier = Modifier
                             .align(Alignment.TopStart)
-                            .statusBarsPadding()
-                            .padding(top = 16.dp, start = 16.dp)
+                            .padding(top = stableTopPadding + 16.dp, start = 16.dp)
                             .background(Color.Black.copy(alpha = 0.5f), CircleShape)
                             .size(40.dp)
                     ) {
@@ -403,16 +428,12 @@ fun PostViewScreen(
                             if (mediaFiles.size <= 1) Modifier.padding(top = 12.dp) else Modifier
                         )
                 ) {
-                    val annotatedCaption = buildAnnotatedString {
-                        withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)) {
-                            append("@${post.username}")
-                        }
-                        if (!post.caption.isNullOrEmpty()) {
-                            append(" ")
-                            withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurface)) {
-                                append(post.caption)
-                            }
-                        }
+                    val annotatedCaption = remember<AnnotatedString>(post.username, post.caption) {
+                        buildPreviewAnnotatedString(
+                            username = post.username,
+                            caption = post.caption.orEmpty(),
+                            primaryColor = Color(0xFF1E88E5)
+                        )
                     }
 
                     Text(
@@ -661,14 +682,15 @@ fun PostViewScreen(
                             )
                         }
                     } else {
-                        SelectionContainer {
-                            Text(
-                                text = post.caption,
-                                style = MaterialTheme.typography.bodyLarge,
-                                lineHeight = 24.sp,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
+                        ClickableCaptionText(
+                            caption = post.caption.orEmpty(),
+                            onSpanClick = { span ->
+                                openEndpointOrBrowser(context, span.targetUrl)
+                            },
+                            onSpanLongPress = { span ->
+                                selectedSpanForDialog = span
+                            }
+                        )
 
                         if (hashtags.isNotEmpty()) {
                             Spacer(modifier = Modifier.height(20.dp))
@@ -685,15 +707,48 @@ fun PostViewScreen(
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 items(hashtags) { tag ->
-                                    SuggestionChip(
-                                        onClick = {
-                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                            val clip = ClipData.newPlainText("hashtag", tag)
-                                            clipboard.setPrimaryClip(clip)
-                                            Toast.makeText(context, "Copied hashtag: $tag", Toast.LENGTH_SHORT).show()
-                                        },
-                                        label = { Text(text = tag, fontWeight = FontWeight.SemiBold) }
-                                    )
+                                    val cleanTag = tag.removePrefix("#").trimEnd('.', ',', '!', '?', ':', ';')
+                                    val endpointUrl = "https://instagram.com/explore/tags/$cleanTag/"
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                                        modifier = Modifier.safeCombinedClickable(
+                                            onLongClick = {
+                                                selectedSpanForDialog = CaptionClickableSpan(
+                                                    id = -1,
+                                                    type = CaptionSpanType.HASHTAG,
+                                                    rawText = tag,
+                                                    cleanValue = cleanTag,
+                                                    targetUrl = endpointUrl,
+                                                    start = 0,
+                                                    end = 0
+                                                )
+                                            },
+                                            onClick = {
+                                                openEndpointOrBrowser(context, endpointUrl)
+                                            }
+                                        )
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Tag,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Text(
+                                                text = tag,
+                                                fontWeight = FontWeight.SemiBold,
+                                                style = MaterialTheme.typography.labelLarge,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                    }
                                 }
                             }
 
@@ -865,6 +920,24 @@ fun PostViewScreen(
             }
         )
     }
+
+    selectedSpanForDialog?.let { span ->
+        CaptionSpanActionDialog(
+            span = span,
+            onDismiss = { selectedSpanForDialog = null },
+            onCopyText = { label, text, successMsg ->
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                val clip = ClipData.newPlainText(label, text)
+                clipboard.setPrimaryClip(clip)
+                Toast.makeText(context, successMsg, Toast.LENGTH_SHORT).show()
+                selectedSpanForDialog = null
+            },
+            onOpenLink = { url ->
+                openEndpointOrBrowser(context, url)
+                selectedSpanForDialog = null
+            }
+        )
+    }
 }
 
 @Composable
@@ -1029,6 +1102,451 @@ fun VideoPlayer(file: File, isCurrentPage: Boolean) {
                     .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(28.dp))
                     .padding(12.dp)
             )
+        }
+    }
+}
+
+// Caption link and span helpers
+
+enum class CaptionSpanType {
+    USERNAME,
+    HASHTAG,
+    URL
+}
+
+data class CaptionClickableSpan(
+    val id: Int,
+    val type: CaptionSpanType,
+    val rawText: String,
+    val cleanValue: String,
+    val targetUrl: String,
+    val start: Int,
+    val end: Int
+)
+
+private val CAPTION_TOKEN_REGEX = Regex(
+    """(https?://[^\s]+)|(@[a-zA-Z0-9._]+)|(#[a-zA-Z0-9_\u0080-\uFFFF]+)"""
+)
+
+fun parseCaptionSpans(text: String): List<CaptionClickableSpan> {
+    if (text.isEmpty()) return emptyList()
+    val list = mutableListOf<CaptionClickableSpan>()
+    var idCounter = 0
+
+    CAPTION_TOKEN_REGEX.findAll(text).forEach { match ->
+        val raw = match.value
+        val start = match.range.first
+
+        when {
+            raw.startsWith("http://", ignoreCase = true) || raw.startsWith("https://", ignoreCase = true) -> {
+                val cleanUrl = raw.trimEnd('.', ',', '!', '?', ':', ';', ')', ']', '}', '"', '\'')
+                if (cleanUrl.isNotEmpty()) {
+                    list.add(
+                        CaptionClickableSpan(
+                            id = idCounter++,
+                            type = CaptionSpanType.URL,
+                            rawText = cleanUrl,
+                            cleanValue = cleanUrl,
+                            targetUrl = cleanUrl,
+                            start = start,
+                            end = start + cleanUrl.length
+                        )
+                    )
+                }
+            }
+            raw.startsWith("@") -> {
+                val cleanRaw = raw.trimEnd('.', ',', '!', '?', ':', ';', ')', ']', '}', '"', '\'')
+                val username = cleanRaw.removePrefix("@")
+                if (username.isNotEmpty()) {
+                    list.add(
+                        CaptionClickableSpan(
+                            id = idCounter++,
+                            type = CaptionSpanType.USERNAME,
+                            rawText = cleanRaw,
+                            cleanValue = username,
+                            targetUrl = "https://instagram.com/$username",
+                            start = start,
+                            end = start + cleanRaw.length
+                        )
+                    )
+                }
+            }
+            raw.startsWith("#") -> {
+                val cleanRaw = raw.trimEnd('.', ',', '!', '?', ':', ';', ')', ']', '}', '"', '\'')
+                val hashtag = cleanRaw.removePrefix("#")
+                if (hashtag.isNotEmpty()) {
+                    list.add(
+                        CaptionClickableSpan(
+                            id = idCounter++,
+                            type = CaptionSpanType.HASHTAG,
+                            rawText = cleanRaw,
+                            cleanValue = hashtag,
+                            targetUrl = "https://instagram.com/explore/tags/$hashtag/",
+                            start = start,
+                            end = start + cleanRaw.length
+                        )
+                    )
+                }
+            }
+        }
+    }
+    return list
+}
+
+fun buildClickableCaptionAnnotatedString(
+    caption: String,
+    spans: List<CaptionClickableSpan>,
+    linkColor: Color
+): AnnotatedString {
+    return buildAnnotatedString {
+        var cursor = 0
+        for (span in spans) {
+            if (span.start > cursor) {
+                append(caption.substring(cursor, span.start))
+            }
+            if (span.end > span.start && span.end <= caption.length) {
+                pushStringAnnotation(tag = "CAPTION_LINK_ID", annotation = span.id.toString())
+                withStyle(
+                    SpanStyle(
+                        color = linkColor,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                ) {
+                    append(caption.substring(span.start, span.end))
+                }
+                pop()
+                cursor = span.end
+            }
+        }
+        if (cursor < caption.length) {
+            append(caption.substring(cursor))
+        }
+    }
+}
+
+fun buildPreviewAnnotatedString(
+    username: String,
+    caption: String,
+    primaryColor: Color
+): AnnotatedString {
+    return buildAnnotatedString {
+        withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = primaryColor)) {
+            append("@$username")
+        }
+        if (caption.isNotEmpty()) {
+            append(" ")
+            val spans = parseCaptionSpans(caption)
+            var cursor = 0
+            for (span in spans) {
+                if (span.start > cursor) {
+                    append(caption.substring(cursor, span.start))
+                }
+                if (span.end > span.start && span.end <= caption.length) {
+                    withStyle(
+                        SpanStyle(
+                            color = primaryColor,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    ) {
+                        append(caption.substring(span.start, span.end))
+                    }
+                    cursor = span.end
+                }
+            }
+            if (cursor < caption.length) {
+                append(caption.substring(cursor))
+            }
+        }
+    }
+}
+
+fun openEndpointOrBrowser(context: Context, url: String) {
+    try {
+        val uri = Uri.parse(url)
+        val isInstagramUrl = url.contains("instagram.com", ignoreCase = true)
+        if (isInstagramUrl) {
+            val appIntent = Intent(Intent.ACTION_VIEW, uri).apply {
+                setPackage("com.instagram.android")
+            }
+            try {
+                context.startActivity(appIntent)
+                return
+            } catch (_: Exception) {
+                // Fallback to web browser below
+            }
+        }
+        val webIntent = Intent(Intent.ACTION_VIEW, uri)
+        context.startActivity(webIntent)
+    } catch (_: Exception) {
+        Toast.makeText(context, "Could not open link", Toast.LENGTH_SHORT).show()
+    }
+}
+
+@Composable
+fun ClickableCaptionText(
+    caption: String,
+    onSpanClick: (CaptionClickableSpan) -> Unit,
+    onSpanLongPress: (CaptionClickableSpan) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val linkColor = Color(0xFF1E88E5)
+    val spans = remember(caption) { parseCaptionSpans(caption) }
+    val annotatedString = remember<AnnotatedString>(caption, linkColor) {
+        buildClickableCaptionAnnotatedString(caption, spans, linkColor)
+    }
+    var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
+    val haptic = LocalHapticFeedback.current
+
+    Text(
+        text = annotatedString,
+        style = MaterialTheme.typography.bodyLarge,
+        lineHeight = 24.sp,
+        color = MaterialTheme.colorScheme.onSurface,
+        onTextLayout = { textLayoutResult = it },
+        modifier = modifier
+            .fillMaxWidth()
+            .pointerInput(annotatedString, spans) {
+                detectTapGestures(
+                    onTap = { offset ->
+                        textLayoutResult?.let { layout ->
+                            val position = layout.getOffsetForPosition(offset)
+                            val line = layout.getLineForOffset(position)
+                            val lineLeft = layout.getLineLeft(line)
+                            val lineRight = layout.getLineRight(line)
+                            if (offset.x in lineLeft..lineRight) {
+                                val annotations = annotatedString.getStringAnnotations(
+                                    tag = "CAPTION_LINK_ID",
+                                    start = position,
+                                    end = position
+                                )
+                                annotations.firstOrNull()?.let { ann ->
+                                    val spanId = ann.item.toIntOrNull()
+                                    val span = spans.firstOrNull { it.id == spanId }
+                                    if (span != null) {
+                                        onSpanClick(span)
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    onLongPress = { offset ->
+                        textLayoutResult?.let { layout ->
+                            val position = layout.getOffsetForPosition(offset)
+                            val line = layout.getLineForOffset(position)
+                            val lineLeft = layout.getLineLeft(line)
+                            val lineRight = layout.getLineRight(line)
+                            if (offset.x in lineLeft..lineRight) {
+                                val annotations = annotatedString.getStringAnnotations(
+                                    tag = "CAPTION_LINK_ID",
+                                    start = position,
+                                    end = position
+                                )
+                                annotations.firstOrNull()?.let { ann ->
+                                    val spanId = ann.item.toIntOrNull()
+                                    val span = spans.firstOrNull { it.id == spanId }
+                                    if (span != null) {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        onSpanLongPress(span)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                )
+            }
+    )
+}
+
+@Composable
+fun CaptionSpanActionDialog(
+    span: CaptionClickableSpan,
+    onDismiss: () -> Unit,
+    onCopyText: (label: String, text: String, successMsg: String) -> Unit,
+    onOpenLink: (url: String) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val icon = when (span.type) {
+                    CaptionSpanType.HASHTAG -> Icons.Default.Tag
+                    CaptionSpanType.USERNAME -> Icons.Default.Person
+                    CaptionSpanType.URL -> Icons.Default.Link
+                }
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Text(
+                    text = span.rawText,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                when (span.type) {
+                    CaptionSpanType.HASHTAG -> {
+                        DialogActionItem(
+                            icon = Icons.Default.ContentCopy,
+                            title = "Copy hashtag endpoint URL",
+                            subtitle = span.targetUrl,
+                            onClick = {
+                                onCopyText(
+                                    "hashtag_endpoint_url",
+                                    span.targetUrl,
+                                    "Hashtag endpoint URL copied"
+                                )
+                            }
+                        )
+
+                        DialogActionItem(
+                            icon = Icons.Default.ContentCopy,
+                            title = "Copy hashtag",
+                            subtitle = span.rawText,
+                            onClick = {
+                                onCopyText(
+                                    "hashtag",
+                                    span.rawText,
+                                    "Hashtag copied"
+                                )
+                            }
+                        )
+
+                        DialogActionItem(
+                            icon = Icons.AutoMirrored.Filled.Launch,
+                            title = "Open in Instagram",
+                            subtitle = span.targetUrl,
+                            onClick = {
+                                onOpenLink(span.targetUrl)
+                            }
+                        )
+                    }
+
+                    CaptionSpanType.USERNAME -> {
+                        DialogActionItem(
+                            icon = Icons.Default.ContentCopy,
+                            title = "Copy username endpoint URL",
+                            subtitle = span.targetUrl,
+                            onClick = {
+                                onCopyText(
+                                    "username_endpoint_url",
+                                    span.targetUrl,
+                                    "Username endpoint URL copied"
+                                )
+                            }
+                        )
+
+                        DialogActionItem(
+                            icon = Icons.Default.ContentCopy,
+                            title = "Copy username",
+                            subtitle = span.rawText,
+                            onClick = {
+                                onCopyText(
+                                    "username",
+                                    span.rawText,
+                                    "Username copied"
+                                )
+                            }
+                        )
+
+                        DialogActionItem(
+                            icon = Icons.AutoMirrored.Filled.Launch,
+                            title = "Open in Instagram",
+                            subtitle = span.targetUrl,
+                            onClick = {
+                                onOpenLink(span.targetUrl)
+                            }
+                        )
+                    }
+
+                    CaptionSpanType.URL -> {
+                        DialogActionItem(
+                            icon = Icons.Default.ContentCopy,
+                            title = "Copy URL",
+                            subtitle = span.targetUrl,
+                            onClick = {
+                                onCopyText(
+                                    "link_url",
+                                    span.targetUrl,
+                                    "URL copied"
+                                )
+                            }
+                        )
+
+                        DialogActionItem(
+                            icon = Icons.AutoMirrored.Filled.Launch,
+                            title = "Open Link",
+                            subtitle = span.targetUrl,
+                            onClick = {
+                                onOpenLink(span.targetUrl)
+                            }
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+@Composable
+private fun DialogActionItem(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(12.dp),
+        color = Color.Transparent,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
